@@ -1,0 +1,96 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Schema file written by PDE -->
+<schema targetNamespace="com.codesourcery.installer" xmlns="http://www.w3.org/2001/XMLSchema">
+<annotation>
+      <appInfo>
+         <meta.schema plugin="com.codesourcery.installer" id="modules" name="Installer module"/>
+      </appInfo>
+      <documentation>
+         This extension point adds new installer modules.  An installer module can contribute install wizard pages and actions that will be performed during installation.
+Install modules must implement the IInstallModule interface.
+      </documentation>
+   </annotation>
+
+   <element name="extension">
+      <annotation>
+         <appInfo>
+            <meta.element />
+         </appInfo>
+      </annotation>
+      <complexType>
+         <sequence>
+            <element ref="module" minOccurs="1" maxOccurs="unbounded"/>
+         </sequence>
+         <attribute name="point" type="string" use="required">
+            <annotation>
+               <documentation>
+                  
+               </documentation>
+            </annotation>
+         </attribute>
+         <attribute name="id" type="string">
+            <annotation>
+               <documentation>
+                  
+               </documentation>
+            </annotation>
+         </attribute>
+      </complexType>
+   </element>
+
+   <element name="module">
+      <complexType>
+         <attribute name="id" type="string">
+            <annotation>
+               <documentation>
+                  Product identifier
+               </documentation>
+            </annotation>
+         </attribute>
+         <attribute name="class" type="string" use="required">
+            <annotation>
+               <documentation>
+                  
+               </documentation>
+               <appInfo>
+                  <meta.attribute kind="java" basedOn=":com.codesourcery.installer.IInstallModule"/>
+               </appInfo>
+            </annotation>
+         </attribute>
+      </complexType>
+   </element>
+
+
+   <annotation>
+      <appInfo>
+         <meta.section type="examples"/>
+      </appInfo>
+      <documentation>
+         &lt;extension
+         point=&quot;com.codesourcery.installer.modules&quot;&gt;
+      &lt;module
+            class=&quot;com.codesourcery.installer.codebench.CodeBenchInstallModule&quot;
+            id=&quot;com.codesourcery.installer.codebench.module&quot;&gt;
+      &lt;/module&gt;
+   &lt;/extension&gt;
+      </documentation>
+   </annotation>
+
+
+
+   <annotation>
+      <appInfo>
+         <meta.section type="copyright"/>
+      </appInfo>
+      <documentation>
+         Copyright (c) 2014 Mentor Graphics
+                 
+PROPRIETARY RIGHTS of Mentor Graphics are involved in the
+subject matter of this material.  All manufacturing, reproduction,
+use, and sales rights pertaining to this subject matter are governed
+by the license agreement.  The recipient of this software implicitly
+accepts the terms of the license.
+      </documentation>
+   </annotation>
+
+</schema>

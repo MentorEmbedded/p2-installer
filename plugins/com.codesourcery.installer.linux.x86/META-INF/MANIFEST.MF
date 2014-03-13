@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: X86
+Bundle-SymbolicName: com.codesourcery.installer.linux.x86
+Bundle-Version: 1.0.0.qualifier
+Fragment-Host: com.codesourcery.installer;bundle-version="1.0.300"
+Eclipse-PlatformFilter: (&(osgi.os=linux)(osgi.arch=x86))
+Bundle-RequiredExecutionEnvironment: JavaSE-1.7

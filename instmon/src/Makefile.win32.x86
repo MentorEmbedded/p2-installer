@@ -1,0 +1,5 @@
+OUTPUT = ../../plugins/com.codesourcery.installer.win32.x86/exe/instmon-win32-x86.exe
+CFLAGS = -lole32 -luuid
+CC = i586-mingw32msvc-gcc
+
+include Makefile

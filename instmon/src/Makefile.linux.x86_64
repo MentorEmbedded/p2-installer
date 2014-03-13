@@ -1,0 +1,4 @@
+OUTPUT = ../../plugins/com.codesourcery.installer.linux.x86_64/exe/instmon-linux-x86_64
+CC = gcc
+
+include Makefile

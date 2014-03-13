@@ -1,0 +1,13 @@
+Note these instructions are for Linux hosts only. 
+
+To build the instmon binary, cd into the "src" directory and run:
+
+make -f Makefile.<platform>
+
+Building for Windows
+====================
+Ensure you have the mingw32 tools installed on your host. See 
+http://www.mingw.org/ for details. You may have to change the 
+name of the compiler in Makefile.win32 depending on the version 
+of mingw you're running. Note that currently the 64-bit Windows 
+Makefile actually generates a 32-bit instmon binary.

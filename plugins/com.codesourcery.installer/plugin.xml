@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.2"?>
+<plugin>
+   <extension-point id="modules" name="Installer modules" schema="schema/modules.exsd"/>
+   <extension-point id="actions" name="Installer actions" schema="schema/actions.exsd"/>
+   <extension-point id="verifiers" name="Installer verifiers" schema="schema/verifiers.exsd"/>
+   <extension-point id="icon" name="Wizard Icon" schema="schema/icon.exsd"/>
+
+   <extension
+         id="application"
+         point="org.eclipse.core.runtime.applications">
+      <application>
+         <run
+               class="com.codesourcery.internal.installer.InstallApplication">
+         </run>
+      </application>
+   </extension>
+   <extension
+         id="product"
+         point="org.eclipse.core.runtime.products">
+      <product
+            application="com.codesourcery.installer.application"
+            name="P2 Installer">
+         <property
+               name="appName"
+               value="P2 Installer">
+         </property>
+         <property
+               name="aboutImage"
+               value="product_lg.gif">
+         </property>
+         <property
+               name="aboutText"
+               value="P2 Installer">
+         </property>
+         <property
+               name="windowImages"
+               value="icons/csl-16x16-32bit.png,icons/csl-32x32-32bit.png,icons/csl-48x48-32bit.png,icons/csl-64x64-32bit.png,icons/csl-128x128-32bit.png">
+         </property>
+      </product>
+   </extension>
+      
+   <extension point="com.codesourcery.installer.modules">
+   		<module
+   			id="com.codesourcery.installer.generalModule" 
+   			class="com.codesourcery.internal.installer.GeneralInstallModule" />
+   </extension>
+   <extension
+         point="com.codesourcery.installer.actions">
+      <action
+            id="com.codesourcery.installer.installIUAction"
+            class="com.codesourcery.internal.installer.actions.InstallIUAction" />
+      <action
+            id="com.codesourcery.installer.pathAction"
+            class="com.codesourcery.internal.installer.actions.PathAction" />
+      <action
+            id="com.codesourcery.installer.shortcutAction"
+            class="com.codesourcery.internal.installer.actions.ShortcutAction" />
+      <action
+            id="com.codesourcery.installer.unityShortcutAction"
+            class="com.codesourcery.internal.installer.actions.UnityShortcutAction" />
+      <action
+            id="com.codesourcery.installer.uninstallLinkAction"
+            class="com.codesourcery.internal.installer.actions.UninstallLinkAction" />
+   </extension>
+   <extension
+         point="com.codesourcery.installer.verifiers">
+      <verifier
+            class="com.codesourcery.internal.installer.GeneralInstallVerifier"
+            id="com.codesourcery.installVerifier">
+      </verifier>
+   </extension>
+
+</plugin>

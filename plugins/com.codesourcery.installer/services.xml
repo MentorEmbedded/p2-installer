@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scr:component xmlns:scr="http://www.osgi.org/xmlns/scr/v1.1.0" name="com.codesourcery.Installer.Services">
+	<property name="service.ranking" type="Integer">255</property>
+	<implementation class="com.codesourcery.internal.installer.InstallerAgentServiceFactory"/>
+	<service>
+		<provide interface="org.eclipse.equinox.p2.core.spi.IAgentServiceFactory"/>
+	</service>
+	<property name="p2.agent.servicename" type="String" value="org.eclipse.equinox.p2.core.UIServices"/>
+</scr:component>
