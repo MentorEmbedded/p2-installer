@@ -21,10 +21,10 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 import com.codesourcery.installer.IInstallMode;
-import com.codesourcery.installer.AbstractInstallAction;
 import com.codesourcery.installer.IInstallPlatform;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.Installer;
+import com.codesourcery.installer.actions.AbstractInstallAction;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.InstallUtils;
 

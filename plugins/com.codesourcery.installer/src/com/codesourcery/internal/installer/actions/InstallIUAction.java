@@ -50,11 +50,11 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-import com.codesourcery.installer.AbstractInstallAction;
 import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.UpdateSite;
+import com.codesourcery.installer.actions.AbstractInstallAction;
 import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.InstallUtils;

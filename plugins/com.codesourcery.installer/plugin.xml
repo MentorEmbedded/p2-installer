@@ -62,6 +62,9 @@
       <action
             id="com.codesourcery.installer.uninstallLinkAction"
             class="com.codesourcery.internal.installer.actions.UninstallLinkAction" />
+      <action
+            id="com.codesourcery.installer.EnvironmentAction"
+            class="com.codesourcery.installer.actions.EnvironmentAction" />
    </extension>
    <extension
          point="com.codesourcery.installer.verifiers">

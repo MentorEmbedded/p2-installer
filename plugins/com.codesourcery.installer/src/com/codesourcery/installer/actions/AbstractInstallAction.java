@@ -8,12 +8,14 @@
  *  Contributors:
  *     Mentor Graphics - initial API and implementation
  *******************************************************************************/
-package com.codesourcery.installer;
+package com.codesourcery.installer.actions;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.Platform;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+
+import com.codesourcery.installer.IInstallAction;
 
 /**
  * Abstract install action

@@ -20,10 +20,10 @@ import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 
 import com.codesourcery.installer.IInstallMode;
-import com.codesourcery.installer.AbstractInstallAction;
 import com.codesourcery.installer.IInstallPlatform;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.Installer;
+import com.codesourcery.installer.actions.AbstractInstallAction;
 import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.InstallMessages;
 

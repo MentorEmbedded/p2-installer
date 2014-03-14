@@ -143,7 +143,7 @@ public class InstallMessages extends NLS {
 	public static String LoadingRepositories;
 	public static String CreatingShortcuts;
 	public static String SettingUpPaths;
-	public static String SettingPaths;
+	public static String SettingEnvironment;
 	public static String CreatingAddRemove;
 	public static String RemovingAddRemove;
 	public static String ChooseShortcutDirectory;

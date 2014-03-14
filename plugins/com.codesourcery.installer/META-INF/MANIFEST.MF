@@ -28,12 +28,9 @@ Require-Bundle: org.eclipse.osgi,
  org.eclipse.equinox.p2.touchpoint.eclipse
 Bundle-RequiredExecutionEnvironment: JavaSE-1.7
 Export-Package: com.codesourcery.installer,
+ com.codesourcery.installer.actions,
  com.codesourcery.installer.console,
  com.codesourcery.installer.ui,
- com.codesourcery.internal.installer;x-internal:=true,
- com.codesourcery.internal.installer.actions;x-internal:=true,
- com.codesourcery.internal.installer.ui;x-internal:=true,
- com.codesourcery.internal.installer.ui.pages;x-internal:=true,
  org.apache.commons.io;x-internal:=true,
  org.apache.commons.io.comparator;x-internal:=true,
  org.apache.commons.io.filefilter;x-internal:=true,
