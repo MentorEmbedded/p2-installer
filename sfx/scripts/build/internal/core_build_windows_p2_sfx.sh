@@ -226,7 +226,6 @@ p2_sfx_windows_add_repo_definitions()
     REPO_COMMANDS="repoCommands"
     REPO_NUM_COMMANDS=2
 
-    local repo_list
     local count
     local basename_repos_list
     local repos_list
@@ -236,27 +235,22 @@ p2_sfx_windows_add_repo_definitions()
     local file_name
     local vm_arg
 
-    repo_cmd_list=
-    repo_list=
-
     basename_repos_list=$(ls -1 "$installer"/repos)
     num_repos=$(echo "$basename_repos_list" | wc -w)
 
     pushd "$installer"/repos > /dev/null
     count=0
     for repo in $basename_repos_list; do
-        if [ -d "$installer"/repos/$repo ]; then
-            zip -r "$scratch"/repo_$repo $repo -q
-            CLEANUP_LIST="$CLEANUP_LIST $scratch/repo_$repo.zip"
-            repos_list="$repos_list "$scratch"/repo_$repo.zip"
-            repo_cmd_list="\"\\\"${p2_sfx_windows_base_path}unzip.exe\\\" -q \\\"${p2_sfx_unix_base_path}$(basename ${installer})/repos/repo_${repo}.zip\\\" -d \\\"${p2_sfx_unix_base_path}$(basename ${installer})/repos\\\"\", \"cmd /C del \\\"${p2_sfx_windows_base_path}$(basename ${installer})\\\\repos\\\\repo_${repo}.zip\\\"\", $repo_cmd_list"
-            REPO_NUM_COMMANDS=$(expr $REPO_NUM_COMMANDS + "2")
-        else
-            p2_sfx_windows_repo_process "$repo" "$repo_cmd_list"
-            repos_list="$repos_list "$installer"/repos/$repo"
-        fi
-        p2_sfx_windows_global_statement repo_$count 
-        count=$(expr $count + "1")
+        case $repo in
+            *\.zip)
+                p2_sfx_windows_repo_process "$repo" "$repo_cmd_list"
+                repos_list="$repos_list "$installer"/repos/$repo"
+                p2_sfx_windows_global_statement repo_$count 
+                count=$(expr $count + "1")
+            ;;
+            *)
+            ;;
+         esac
     done
     popd > /dev/null
 
@@ -412,8 +406,7 @@ p2_sfx_windows_build()
     rm -f "$tmp_output"
     chmod a+x $output
     for item in "$CLEANUP_LIST"; do
-#        rm -f ${item}
-:
+        rm -f ${item}
     done
 }
 
