@@ -51,7 +51,7 @@
 #define RANDOM_STRING_LEN 6
 #define DIRSEPSTR "\\"
 #define INSTALL_ONCE " -install.once "
-#define INSTALL_LOG " -install.log="
+#define INSTALL_LOG " -install.data="
 #define P2_SFX_HIDE_WIN (WM_USER + 1)
 
 /* The bundles[] array and P2_SFX_NUM_BUNDLES variables are defined in the

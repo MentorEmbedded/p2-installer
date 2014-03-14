@@ -265,9 +265,9 @@ then
 
     if test "$suppress_errors" = "false"
     then
-        "$installer_dir/setup" -vm $installer_dir/jre/bin $args -install.once -install.log="$log_dir" -vmargs -XX:ErrorFile="$log_dir"/vm_`date +%b_%d_%Y_%H_%M_%S`.log 
+        "$installer_dir/setup" -vm $installer_dir/jre/bin $args -install.once -install.data="$log_dir" -vmargs -XX:ErrorFile="$log_dir"/vm_`date +%b_%d_%Y_%H_%M_%S`.log 
     else
-        "$installer_dir/setup" -vm $installer_dir/jre/bin $args -install.once -install.log="$log_dir" -vmargs -XX:ErrorFile="$log_dir"/vm_`date +%b_%d_%Y_%H_%M_%S`.log 2> /dev/null
+        "$installer_dir/setup" -vm $installer_dir/jre/bin $args -install.once -install.data="$log_dir" -vmargs -XX:ErrorFile="$log_dir"/vm_`date +%b_%d_%Y_%H_%M_%S`.log 2> /dev/null
     fi
 else
     echo "Installer extracted to $work_dir"
