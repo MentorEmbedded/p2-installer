@@ -26,6 +26,7 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.program.Program;
@@ -152,6 +153,16 @@ public class InstallContext implements IInstallContext {
 		}
 	}
 
+	/**
+	 * Returns if an action is supported on the platform.
+	 * 
+	 * @param action Action
+	 * @return <code>true</code> if the action is supported
+	 */
+	private boolean isActionSupported(IInstallAction action) {
+		return action.isSupported(Platform.getOS(), Platform.getOSArch());
+	}
+	
 	@Override
 	public void uninstall(IInstallProduct[] products, IProgressMonitor monitor) throws CoreException {
 		SubMonitor progress = SubMonitor.convert(monitor, 
@@ -174,7 +185,9 @@ public class InstallContext implements IInstallContext {
 			
 			int work = PRODUCT_PROGRESS / product.getActions().length;
 			for (IInstallAction action : product.getActions()) {
-				action.run(RepositoryManager.getDefault().getAgent(), product, mode, progress.newChild(work));
+				if (isActionSupported(action)) {
+					action.run(RepositoryManager.getDefault().getAgent(), product, mode, progress.newChild(work));
+				}
 				if (monitor.isCanceled())
 					break;
 			}
@@ -249,8 +262,10 @@ public class InstallContext implements IInstallContext {
 		if (upgradeProduct != null) {
 			for (IInstallAction action : upgradeProduct.getActions()) {
 				if (action.uninstallOnUpgrade()) {
-					action.run(RepositoryManager.getDefault().getAgent(), 
-							upgradeProduct, new InstallMode(false), new NullProgressMonitor());
+					if (isActionSupported(action)) {
+						action.run(RepositoryManager.getDefault().getAgent(), 
+								upgradeProduct, new InstallMode(false), new NullProgressMonitor());
+					}
 				}
 				
 				if (monitor.isCanceled())
@@ -285,8 +300,10 @@ public class InstallContext implements IInstallContext {
 		IInstallAction[] actionsToPerform = product.getActions();
 		for (index = 0; index < actionsToPerform.length; index ++) {
 			IInstallAction action = actionsToPerform[index];
-			action.run(RepositoryManager.getDefault().getAgent(), 
-					product, mode, progress.newChild(action.getProgressWeight()));
+			if (isActionSupported(action)) {
+				action.run(RepositoryManager.getDefault().getAgent(), 
+						product, mode, progress.newChild(action.getProgressWeight()));
+			}
 			if (monitor.isCanceled())
 				break;
 		}
@@ -301,8 +318,10 @@ public class InstallContext implements IInstallContext {
 			
 			// Uninstall performed actions
 			for (int rollbackIndex = 0; rollbackIndex <= index; rollbackIndex ++) {
-				actionsToPerform[rollbackIndex].run(RepositoryManager.getDefault().getAgent(), 
-						product, mode, new NullProgressMonitor());
+				if (isActionSupported(actionsToPerform[rollbackIndex])) {
+					actionsToPerform[rollbackIndex].run(RepositoryManager.getDefault().getAgent(), 
+							product, mode, new NullProgressMonitor());
+				}
 			}
 			
 			// Remove product directory

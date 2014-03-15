@@ -176,7 +176,7 @@ public class UninstallLinkAction extends AbstractInstallAction {
 	}
 
 	@Override
-	public boolean isSupported(String platform) {
+	public boolean isSupported(String platform, String arch) {
 		// Only supported on Windows
 		return isWindows(platform);
 	}

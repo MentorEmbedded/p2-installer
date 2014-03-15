@@ -47,13 +47,15 @@ public interface IInstallAction {
 	public String getId();
 	
 	/**
-	 * Returns if the action is supported for a platform.
+	 * Returns if the action is supported for a platform. 
 	 *  
-	 * @param platform Platform identifier.
+	 * @param platform Operating system
+	 * @param arch Architecture
 	 * @return <code>true</code> if supported
-	 * @see Platform.getOS() for platform identifiers.
+	 * @see {@link org.eclipse.core.runtime.Platform} for operating system
+	 * and architecture identifiers.
 	 */
-	public boolean isSupported(String platform);
+	public boolean isSupported(String platform, String arch);
 
 	/**
 	 * Returns if the action should be uninstalled on an upgrade.  Some actions

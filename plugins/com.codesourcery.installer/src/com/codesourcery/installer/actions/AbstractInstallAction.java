@@ -40,7 +40,7 @@ public abstract class AbstractInstallAction implements IInstallAction {
 	}
 
 	@Override
-	public boolean isSupported(String platform) {
+	public boolean isSupported(String platform, String arch) {
 		// Default supports all platforms
 		return true;
 	}
@@ -63,6 +63,16 @@ public abstract class AbstractInstallAction implements IInstallAction {
 	 */
 	protected boolean isLinux(String platform) {
 		return platform.equals(Platform.OS_LINUX);
+	}
+
+	/**
+	 * Returns if the platform is Mac OSX
+	 * 
+	 * @param platform Platform
+	 * @return <code>true</code> if platform is Mac OSX.
+	 */
+	protected boolean isMac(String platform) {
+		return platform.equals(Platform.OS_MACOSX);
 	}
 
 	@Override
