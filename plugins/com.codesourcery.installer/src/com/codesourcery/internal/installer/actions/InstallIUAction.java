@@ -18,11 +18,9 @@ import java.util.Iterator;
 import java.util.Map;
 
 import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.equinox.internal.p2.touchpoint.eclipse.actions.ActionConstants;
 import org.eclipse.equinox.internal.p2.touchpoint.eclipse.actions.AddRepositoryAction;
@@ -55,7 +53,6 @@ import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.UpdateSite;
 import com.codesourcery.installer.actions.AbstractInstallAction;
-import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.InstallUtils;
 import com.codesourcery.internal.installer.ProvisioningProgressMonitor;
@@ -69,7 +66,6 @@ public class InstallIUAction extends AbstractInstallAction {
 	private static final String ID = "com.codesourcery.installer.installIUAction";
 	private static final String ELEMENT_ROOTS = "roots";
 	private static final String ELEMENT_ROOT = "root";
-	private static final String ATTRIBUTE_INSTALL_LOCATION = "installLocation";
 	private static final String ATTRIBUTE_PROFILE = "profile";
 	private static final String ATTRIBUTE_ID = "id";
 	private static final String ATTRIBUTE_VERSION = "version";
@@ -86,12 +82,6 @@ public class InstallIUAction extends AbstractInstallAction {
 	private IMetadataRepositoryManager metadataRepoMan;
 	/** Profile registry */
 	private IProfileRegistry profileRegistry;
-	/** p2 install location */
-	private IPath installLocation;
-	/** Shared bundle location */
-	private IPath bundleLocation;
-	/** p2 agent location */
-	private IPath agentLocation;
 	/** Profile for operation */
 	private String profileName;
 	/** Update sites */
@@ -113,7 +103,6 @@ public class InstallIUAction extends AbstractInstallAction {
 	/**
 	 * Constructor for install operation
 	 * 
-	 * @param installLocation Install location
 	 * @param profileName Profile name
 	 * @param profileProperties Profile properties
 	 * @param productName Product name
@@ -124,14 +113,11 @@ public class InstallIUAction extends AbstractInstallAction {
 	 * @param progressFindPatterns P2 progress regular expression find patterns
 	 * @param progressReplacePatterns P2 progress regular expression replacement patterns
 	 */
-	public InstallIUAction(IPath installLocation, String profileName, Map<String, String> profileProperties,
+	public InstallIUAction(String profileName, Map<String, String> profileProperties,
 			UpdateSite[] updateSites, IVersionedId[] rootsToInstall, IVersionedId[] rootsToUninstall, 
 			String[] progressFindPatterns, String[] progressReplacePatterns) {
 		super(ID);
 		
-		this.installLocation = installLocation;
-		this.bundleLocation = installLocation;
-		this.agentLocation = installLocation.append(IInstallConstants.P2_DIRECTORY);
 		this.profileName = profileName;
 		this.updateSites = updateSites;
 		this.rootsToInstall = rootsToInstall;
@@ -141,42 +127,6 @@ public class InstallIUAction extends AbstractInstallAction {
 		this.progressReplacePatterns = progressReplacePatterns;
 	}
 
-	/**
-	 * Sets the install location.
-	 * 
-	 * @param installLocation Install location
-	 */
-	private void setInstallLocation(IPath installLocation) {
-		this.installLocation = installLocation;
-	}
-
-	/**
-	 * Returns the install location.
-	 * 
-	 * @return Install location
-	 */
-	public IPath getInstallLocation() {
-		return installLocation;
-	}
-	
-	/**
-	 * Returns the bundle location.
-	 * 
-	 * @return bundle location
-	 */
-	public IPath getBundleLocation() {
-		return bundleLocation;
-	}
-	
-	/**
-	 * Returns the p2 agent location.
-	 * 
-	 * @return Agent location
-	 */
-	public IPath getAgentLocation() {
-		return agentLocation;
-	}
-	
 	/**
 	 * Returns the profile name.
 	 * 
@@ -399,7 +349,6 @@ public class InstallIUAction extends AbstractInstallAction {
 	public void save(Document document, Element node) throws CoreException {
 		Element element = document.createElement(ELEMENT_ROOTS);
 		node.appendChild(element);
-		element.setAttribute(ATTRIBUTE_INSTALL_LOCATION, getInstallLocation().toPortableString());
 		element.setAttribute(ATTRIBUTE_PROFILE, getProfileName());
 		for (IVersionedId root : rootsToInstall) {
 			Element rootElement = document.createElement(ELEMENT_ROOT);
@@ -422,8 +371,6 @@ public class InstallIUAction extends AbstractInstallAction {
 			if (rootsNode.getNodeType() == Node.ELEMENT_NODE) {
 				Element rootsElement = (Element)rootsNode;
 				profileName = rootsElement.getAttribute(ATTRIBUTE_PROFILE);
-				String location = rootsElement.getAttribute(ATTRIBUTE_INSTALL_LOCATION);
-				setInstallLocation(Path.fromPortableString(location));
 				NodeList rootNodes = rootsElement.getElementsByTagName(ELEMENT_ROOT);
 				for (int rootIndex = 0; rootIndex < rootNodes.getLength(); rootIndex ++) {
 					Node rootNode = rootNodes.item(rootIndex);

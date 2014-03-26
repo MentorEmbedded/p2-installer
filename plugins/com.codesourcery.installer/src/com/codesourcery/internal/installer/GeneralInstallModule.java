@@ -82,7 +82,6 @@ public class GeneralInstallModule extends AbstractInstallModule {
 			roots = defaultRoots.toArray(new IVersionedId[defaultRoots.size()]);
 		}
 		actions.add(new InstallIUAction(
-				RepositoryManager.getDefault().getAgentLocation(),
 				installDescription.getProfileName(),
 				installDescription.getProfileProperties(),
 				installDescription.getUpdateSites(),

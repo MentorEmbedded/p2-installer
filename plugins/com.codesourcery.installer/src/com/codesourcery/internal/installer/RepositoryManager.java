@@ -195,7 +195,7 @@ public final class RepositoryManager {
 			properties.put(IProfile.PROP_NAME, profileId);
 			if (Installer.getDefault().getInstallDescription().getProfileProperties() != null)
 				properties.putAll(Installer.getDefault().getInstallDescription().getProfileProperties());
-			properties.put(IProfile.PROP_CACHE, getAgentLocation().toOSString());
+			properties.put(IProfile.PROP_CACHE, getInstallLocation().toOSString());
 			profile = profileRegistry.addProfile(profileId, properties);
 		}
 		
