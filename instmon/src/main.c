@@ -1,13 +1,13 @@
-/*
- *                  Copyright (c) 2013 Mentor Graphics
+/*******************************************************************************
+ *  Copyright (c) 2014 Mentor Graphics and others.
+ *  All rights reserved. This program and the accompanying materials
+ *  are made available under the terms of the Eclipse Public License v1.0
+ *  which accompanies this distribution, and is available at
+ *  http://www.eclipse.org/legal/epl-v10.html
  *
- * PROPRIETARY RIGHTS of Mentor Graphics are involved in the
- * subject matter of this material.  All manufacturing, reproduction,
- * use, and sales rights pertaining to this subject matter are governed
- * by the license agreement.  The recipient of this software implicitly
- * accepts the terms of the license.
- *
- *****************************************************************************/
+ *  Contributors:
+ *     Mentor Graphics - initial API and implementation
+ *******************************************************************************/
 #ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
