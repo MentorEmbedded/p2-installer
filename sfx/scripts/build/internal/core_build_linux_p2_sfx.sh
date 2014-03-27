@@ -90,6 +90,7 @@ p2_sfx_linux_build()
     sfx_script=$(readlink -e "$script_dir/../../src/linux/p2_sfx.sh")
     cp "$sfx_script" "$scratch/p2_sfx.sh"
     sfx_script="$scratch/p2_sfx.sh"
+    chmod a+rw $sfx_script
 
     if test -z "$silent"
     then
