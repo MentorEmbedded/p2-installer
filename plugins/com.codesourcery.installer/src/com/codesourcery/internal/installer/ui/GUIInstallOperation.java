@@ -10,28 +10,24 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer.ui;
 
-import org.eclipse.swt.widgets.Display;
-
 import com.codesourcery.installer.Installer;
 import com.codesourcery.internal.installer.IInstallContext;
 import com.codesourcery.internal.installer.InstallOperation;
 
 /**
  * Install operation that shows a GUI wizard.
+ * The display must be created before this operation is run.
  */
 public class GUIInstallOperation extends InstallOperation {
 	private boolean started = false;
 	private boolean stopped = false;
-
+	
 	@Override
 	public synchronized void run(IInstallContext context) {
 		if (stopped || started)
 			return;
 		started = true;
-		Display display = Display.getCurrent();
-		if (display == null)
-			display = new Display();
-
+		
 		// Initialize images
 		Installer.getDefault().initializeImages();
 

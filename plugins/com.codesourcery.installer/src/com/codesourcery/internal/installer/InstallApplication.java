@@ -27,6 +27,7 @@ import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.core.runtime.URIUtil;
 import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
+import org.eclipse.swt.widgets.Display;
 
 import com.codesourcery.installer.Installer;
 import com.codesourcery.internal.installer.ui.GUIInstallOperation;
@@ -47,21 +48,19 @@ public class InstallApplication implements IApplication {
 
 		// Silent installation
 		if (Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_SILENT)) {
-			operation = new SilentInstallOperation();
+			operation = createSilentInstallOperation();
 		}
 		// Console installation
 		else if (Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_CONSOLE)) {
-			ConsoleInstallOperation consoleOperation = new ConsoleInstallOperation();
-			operation = consoleOperation;
-			// Set maximum number of lines to display
-			String consoleArg = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_CONSOLE);
-			if (consoleArg != null) {
-				consoleOperation.setMaxLines(Integer.parseInt(consoleArg));
-			}
+			operation = createConsoleInstallOperation();
 		}
 		// Wizard based UI installation
 		else {
-			operation = new GUIInstallOperation();
+			operation = createGuiInstallOperation();
+			// If no display is available, use console install
+			if (operation == null) {
+				operation = createConsoleInstallOperation();
+			}
 		}
 		
 		// Status file option
@@ -70,6 +69,57 @@ public class InstallApplication implements IApplication {
 		}
 		
 		return operation;
+	}
+
+	/**
+	 * Creates a console install operation.
+	 * 
+	 * @return Console install operation
+	 */
+	private InstallOperation createConsoleInstallOperation() {
+		ConsoleInstallOperation consoleOperation = new ConsoleInstallOperation();
+
+		// Set maximum number of lines to display
+		String consoleArg = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_CONSOLE);
+		if (consoleArg != null) {
+			consoleOperation.setMaxLines(Integer.parseInt(consoleArg));
+		}
+		
+		return consoleOperation;
+	}
+	
+	/**
+	 * Creates a silent install operation.
+	 * 
+	 * @return Silent install operation
+	 */
+	private InstallOperation createSilentInstallOperation() {
+		return new SilentInstallOperation();
+	}
+	
+	/**
+	 * Creates a GUI install operation.
+	 * 
+	 * @return GUI install operation or <code>null</code> if no display is
+	 * available
+	 */
+	private InstallOperation createGuiInstallOperation() {
+		GUIInstallOperation guiInstallOperation = null;
+		
+		Display display = Display.getCurrent();
+		if (display == null) {
+			try {
+				display = new Display();
+			}
+			catch (Throwable e) {
+				// Ignore - no display available
+			}
+		}
+		if (display != null) {
+			guiInstallOperation = new GUIInstallOperation();
+		}
+
+		return guiInstallOperation;
 	}
 
 	/**
