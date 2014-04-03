@@ -81,7 +81,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	 */
 	protected InstallWizardPage(String pageName, String title) {
 		super(pageName, "", null); //$NON-NLS-1$
-		this.pageLabel = title;
+		setPageLabel(title);
 	}
 	
 	/**
@@ -136,8 +136,17 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	 * 
 	 * @return Page label
 	 */
-	protected String getPageLabel() {
+	public String getPageLabel() {
 		return pageLabel;
+	}
+	
+	/**
+	 * Sets the page label.
+	 * 
+	 * @param pageLabel Page label
+	 */
+	public void setPageLabel(String pageLabel) {
+		this.pageLabel = pageLabel;
 	}
 	
 	@Override

@@ -609,4 +609,18 @@ public interface IInstallDescription {
 	 * @return Page navigation
 	 */
 	public PageNavigation getPageNavigation();
+	
+	/**
+	 * Sets the install wizard page titles.
+	 * 
+	 * @param pageTitles Page titles
+	 */
+	public void setPageTitles(InstallPageTitle[] pageTitles);
+	
+	/**
+	 * Returns the install wizard page titles.
+	 * 
+	 * @return Page title or <code>null</code>
+	 */
+	public InstallPageTitle[] getPageTitles();
 }
