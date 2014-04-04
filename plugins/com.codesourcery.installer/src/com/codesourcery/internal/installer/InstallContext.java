@@ -37,6 +37,7 @@ import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallModule;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.IInstallWizardPage;
+import com.codesourcery.installer.InstallPageTitle;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LaunchItem;
 import com.codesourcery.installer.LaunchItem.LaunchItemType;
@@ -399,9 +400,24 @@ public class InstallContext implements IInstallContext {
 			IInstallWizardPage[] modulePages = module.getInstallPages();
 			// Module contributes pages
 			if (modulePages != null) {
+				// Page titles
+				InstallPageTitle[] pageTitles = getInstallDescription().getPageTitles();
+				
 				for (IInstallWizardPage modulePage : modulePages) {
 					// Verify page base class
 					if (modulePage instanceof InstallWizardPage) {
+						InstallWizardPage page = (InstallWizardPage)modulePage;
+						
+						// Set page title if available
+						if (pageTitles != null) {
+							for (InstallPageTitle pageTitle : pageTitles) {
+								if (pageTitle.getPageName().equals(modulePage.getName())) {
+									page.setPageLabel(pageTitle.getPageTitle());
+									break;
+								}
+							}
+						}
+
 						// Check if the page is found in the order
 						int pos = -1;
 						if (wizardPageNames != null) {
