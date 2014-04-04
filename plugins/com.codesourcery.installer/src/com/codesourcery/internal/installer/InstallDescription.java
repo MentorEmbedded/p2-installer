@@ -42,7 +42,6 @@ import org.eclipse.osgi.util.NLS;
 
 import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallPlatform.ShortcutFolder;
-import com.codesourcery.installer.InstallPageTitle;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LaunchItem;
 import com.codesourcery.installer.LaunchItem.LaunchItemType;
@@ -128,8 +127,6 @@ public class InstallDescription implements IInstallDescription {
 	public static final String PROP_ADDONS_REQUIRE_LOGIN = "eclipse.p2.addons.requiresLogin";//$NON-NLS-1$
 	/** Install wizard page navigation property */
 	public static final String PROP_WIZARD_NAVIGATION = "org.eclipse.p2.wizardNavigation";//$NON-NLS-1$
-	/** Install wizard page titles property */
-	public static final String PROP_WIZARD_PAGE_TITLES = "eclipse.p2.wizardPageTitles";//$NON-NLS-1$
 		
 	/** Base location for installer */
 	private URI base;
@@ -211,8 +208,6 @@ public class InstallDescription implements IInstallDescription {
 	private boolean addonsRequiresLogin;
 	/** Install wizard page navigation */
 	private PageNavigation pageNavigation;
-	/** Wizard page titles */
-	private InstallPageTitle[] pageTitles;
 
 	/**
 	 * Loads an install description.
@@ -673,24 +668,6 @@ public class InstallDescription implements IInstallDescription {
 			setWizardPagesOrder(pages);
 		}
 		
-		// Wizard page titles
-		property = properties.get(PROP_WIZARD_PAGE_TITLES);
-		if (property != null) {
-			ArrayList<InstallPageTitle> titles = new ArrayList<InstallPageTitle>();
-			
-			String[] pages = getArrayFromString(property, ",");
-			for (String page : pages) {
-				int index = page.indexOf(':');
-				if (index != -1) {
-					String pageName = page.substring(0, index);
-					String pageTitle = page.substring(index + 1);
-					titles.add(new InstallPageTitle(pageName, pageTitle));
-				}
-				
-			}
-			setPageTitles(titles.toArray(new InstallPageTitle[titles.size()]));
-		}
-
 		// P2 progress find/replace
 		if (properties.get(PROP_PROGRESS_FIND + "0") != null) {
 			int index = 0;
@@ -1322,15 +1299,5 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public boolean getLicenseIU() {
 		return licenseIU;
-	}
-
-	@Override
-	public void setPageTitles(InstallPageTitle[] pageTitles) {
-		this.pageTitles = pageTitles;
-	}
-
-	@Override
-	public InstallPageTitle[] getPageTitles() {
-		return pageTitles;
 	}
 }

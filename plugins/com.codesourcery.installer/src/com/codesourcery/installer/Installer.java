@@ -232,12 +232,32 @@ public class Installer implements BundleActivator {
 	 * @return Log directory path
 	 */
 	public IPath getLogPath() {
-		IPath logDirPath = Installer.getDefault().getDataFolder().append(IInstallConstants.LOGS_DIRECTORY);
-		String dateNow = new SimpleDateFormat("yyyyMMddhhmmss").format(new Date());
-		logDirPath = logDirPath.append(dateNow);
+		IPath logDirPath = null;
+		
 		try {
-			Files.createDirectories(logDirPath.toFile().toPath());
-		} catch (IOException e) {
+			IPath platformLogPath = Platform.getLogFileLocation().removeLastSegments(1);
+			File installArea = getInstallFile("");
+			IPath installPath = new Path(installArea.getAbsolutePath());
+			
+			// If the platform log directory is in the installer directory,
+			// use a log location in the data directory.  This prevents the
+			// log from blocking removal of the directory during uninstallation.
+			if (installPath.isPrefixOf(platformLogPath)) {
+				logDirPath = Installer.getDefault().getDataFolder().append(IInstallConstants.LOGS_DIRECTORY);
+				String dateNow = new SimpleDateFormat("yyyyMMddhhmmss").format(new Date());
+				logDirPath = logDirPath.append(dateNow);
+				try {
+					Files.createDirectories(logDirPath.toFile().toPath());
+				} catch (IOException e) {
+					log(e);
+				}
+			}
+			// Otherwise write the log to the platform log directory
+			else {
+				logDirPath = platformLogPath;
+			}
+		}
+		catch (Exception e) {
 			log(e);
 		}
 		

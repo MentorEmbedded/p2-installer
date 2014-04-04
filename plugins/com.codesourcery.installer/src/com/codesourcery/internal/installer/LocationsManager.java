@@ -282,7 +282,7 @@ public class LocationsManager {
 		
 		// Some files failed to remove
 		if (!removeStatus.isOK()) {
-			Installer.fail(removeStatus.getMessage());
+			Installer.log(removeStatus.getMessage());
 		}
 	}
 
