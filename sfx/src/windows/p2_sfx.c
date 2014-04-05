@@ -49,9 +49,14 @@
 #define BMP_IMAGE_HEIGHT_OFFSET 22
 #define STACK_SIZE 524288
 #define RANDOM_STRING_LEN 6
+#define TIMESTAMP_LEN 30
 #define DIRSEPSTR "\\"
 #define INSTALL_ONCE " -install.once "
 #define INSTALL_LOG " -install.data="
+#define DASH_DATA " -data "
+#define LOGS_DIR "logs"
+#define VM_ARGS " -vmargs -XX:ErrorFile="
+#define VM_ARG_FILE "/jre_error.log"
 #define P2_SFX_HIDE_WIN (WM_USER + 1)
 
 /* The bundles[] array and P2_SFX_NUM_BUNDLES variables are defined in the
@@ -75,18 +80,24 @@ static FILE * g_logFile;
 /* Fixed size strings */
 static char temp_dir_path[MAX_PATH];
 static char home_dir_path[MAX_PATH];
-static char sfx_log_path[MAX_PATH + 
-                         2 * sizeof(DIRSEPSTR) + 
-                         sizeof(LOG_DIRECTORY) + 
-                         sizeof(LOG_FILE)];
-static char sfx_log_dir[MAX_PATH +
-                        sizeof(DIRSEPSTR) +
-                        sizeof(LOG_DIRECTORY)];
+static char base_log_dir[MAX_PATH + 
+                         sizeof(DIRSEPSTR) + 
+                         sizeof(LOG_DIRECTORY) + 1];
+static char timestamp_log_dir[sizeof(base_log_dir) +
+                              2 * sizeof(DIRSEPSTR) + 
+                              sizeof(LOGS_DIR) +
+                              TIMESTAMP_LEN + 1];
+static char sfx_log_file[sizeof(timestamp_log_dir) +
+                         sizeof(DIRSEPSTR) + 
+                         sizeof(LOG_FILE) + 1];
 static char work_dir_basename[] = BASE_PATH;
 static char random_chars[] =
         "abcdefghijklmnopqrstuvwxyz"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "0123456789";
+
+static char msg_box_string[5 * sizeof(timestamp_log_dir)];
+static char timestamp[TIMESTAMP_LEN + 1];
 
 /******************************************************************************
  * log_message - Writes a message to the log if logging is enabled.
@@ -379,7 +390,7 @@ write_file_desc (P2_SFX_FILE_DESC *file_desc, char *path)
     if (file_desc == NULL || path == NULL)
     {
         log_message("Error: Invalid file descriptor\n");
-        return 1;
+        return -1;
     }
 
     path_size = strlen(path);
@@ -388,14 +399,14 @@ write_file_desc (P2_SFX_FILE_DESC *file_desc, char *path)
     if (path_size == 0 || file_name_size == 0)
     {
         log_message("Error: Invalid path or filename\n");
-        return 1;
+        return -1;
     }
 
     buffer = allocate_string_buffer(path_size + file_name_size);    
 
     if (buffer == NULL)
     {
-        return 1;
+        return -1;
     }
 
     strcpycat(path, file_desc->file_name, buffer);
@@ -407,7 +418,7 @@ write_file_desc (P2_SFX_FILE_DESC *file_desc, char *path)
     if(fout == NULL || ferror(fout))
     {
         log_message("Error opening %s", buffer);
-        return 1;
+        return -1;
     }
 
     num_bytes_to_write = file_desc->file_end_symbol - file_desc->file_start_symbol;
@@ -421,8 +432,9 @@ write_file_desc (P2_SFX_FILE_DESC *file_desc, char *path)
     if(ferror(fout))
     {
         log_message("Error restoring %s", buffer);
+        log_message("Possibly out of disk space");
 
-        return 1;
+        return -1;
     }
 
     fclose(fout);
@@ -735,6 +747,8 @@ extract_files(HWND hwnd)
             fclose(g_logFile);
             if (g_console_install == FALSE || g_nosplash == FALSE)
             {
+                sprintf(msg_box_string, "%s%s%s", "Error extracting files\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+                MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                 SendMessage(hwnd, WM_DESTROY, 0, 0);
             }
             exit(20);
@@ -764,6 +778,8 @@ extract_files(HWND hwnd)
                 fclose(g_logFile);
                 if (g_console_install == FALSE || g_nosplash == FALSE)
                 {
+                    sprintf(msg_box_string, "%s%s%s", "Error extracting files\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+                    MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                     SendMessage(hwnd, WM_DESTROY, 0, 0);
                 }
                 exit(21);
@@ -786,6 +802,8 @@ extract_files(HWND hwnd)
             fclose(g_logFile);
             if (g_console_install == FALSE || g_nosplash == FALSE)
             {
+                sprintf(msg_box_string, "%s%s%s", "Error extracting files\nUnable to create directory\n\n", "See the log file at:\n\n", sfx_log_file);
+                MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                 SendMessage(hwnd, WM_DESTROY, 0, 0);
             }
         exit(22);
@@ -799,6 +817,8 @@ extract_files(HWND hwnd)
         fclose(g_logFile);
         if (g_console_install == FALSE || g_nosplash == FALSE)
         {
+            sprintf(msg_box_string, "%s%s%s", "Error extracting files\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+            MessageBox(hwnd, msg_box_string, NULL, MB_OK);
             SendMessage(hwnd, WM_DESTROY, 0, 0);
         }
         exit(23);
@@ -817,6 +837,8 @@ extract_files(HWND hwnd)
             fclose(g_logFile);
             if (g_console_install == FALSE || g_nosplash == FALSE)
             {
+                sprintf(msg_box_string, "%s%s%s", "Error extracting files\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+                MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                 SendMessage(hwnd, WM_DESTROY, 0, 0);
             }
             exit(24);
@@ -833,6 +855,8 @@ extract_files(HWND hwnd)
                 fclose(g_logFile);
                 if (g_console_install == FALSE || g_nosplash == FALSE)
                 {
+                    sprintf(msg_box_string, "%s%s%s", "Error extracting files\nPossibly check available disk space.\n\n", "See the log file at:\n\n", sfx_log_file);
+                    MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                     SendMessage(hwnd, WM_DESTROY, 0, 0);
                 }
                 exit(25);
@@ -886,6 +910,8 @@ extract_files(HWND hwnd)
                     fclose(g_logFile);
                     if (g_console_install == FALSE || g_nosplash == FALSE)
                     {
+                        sprintf(msg_box_string, "%s%s%s", "Error extracting files\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+                        MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                         SendMessage(hwnd, WM_DESTROY, 0, 0);
                     }
                     exit(26);
@@ -901,6 +927,8 @@ extract_files(HWND hwnd)
                     fclose(g_logFile);
                     if (g_console_install == FALSE || g_nosplash == FALSE)
                     {
+                        sprintf(msg_box_string, "%s%s%s", "Error extracting files\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+                        MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                         SendMessage(hwnd, WM_DESTROY, 0, 0);
                     }
                     exit(27);
@@ -910,16 +938,19 @@ extract_files(HWND hwnd)
                 {
                     char * install_once = INSTALL_ONCE;
                     char * install_log = INSTALL_LOG;
+                    char * dash_data = DASH_DATA;
 
-                    string_length = strlen(pch2) + strlen(install_once) + 1;
-                    string_length += strlen(install_log) + strlen(sfx_log_dir) + 1;
+                    string_length = strlen(pch2) + strlen(install_once) + strlen(dash_data) + (4 * strlen("\"")) + 1;
+                    string_length += strlen(install_log) + strlen(base_log_dir) + strlen(timestamp_log_dir) + 1;
                     tmp = allocate_string_buffer(string_length);
                     if (tmp == NULL)
                     {
-                        log_message("Error: Failed to allocate memory for install.once argument\n");
+                        log_message("Error: Failed to allocate memory for implicit arguments\n");
                         fclose(g_logFile);
                         if (g_console_install == FALSE || g_nosplash == FALSE)
                         {
+                            sprintf(msg_box_string, "%s%s%s", "Error extracting files\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+                            MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                             SendMessage(hwnd, WM_DESTROY, 0, 0);
                         }
                         exit(28);
@@ -927,7 +958,14 @@ extract_files(HWND hwnd)
                     strcpy(tmp, pch2);
                     strcat(tmp, install_once);
                     strcat(tmp, install_log);
-                    strcat(tmp, sfx_log_dir);
+                    strcat(tmp, "\"");
+                    strcat(tmp, base_log_dir);
+                    strcat(tmp, "\"");
+                    strcat(tmp, dash_data);
+                    strcat(tmp, "\"");
+                    strcat(tmp, timestamp_log_dir);
+                    strcat(tmp, "\"");
+
                     free(pch2); 
                     pch2 = tmp;
                 }
@@ -944,6 +982,8 @@ extract_files(HWND hwnd)
                         fclose(g_logFile);
                         if (g_console_install == FALSE || g_nosplash == FALSE)
                         {
+                            sprintf(msg_box_string, "%s%s%s", "Error extracting files\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+                            MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                             SendMessage(hwnd, WM_DESTROY, 0, 0);
                         }
                         exit(29);
@@ -967,6 +1007,8 @@ extract_files(HWND hwnd)
                         fclose(g_logFile);
                         if (g_console_install == FALSE || g_nosplash == FALSE)
                         {
+                            sprintf(msg_box_string, "%s%s%s", "Error extracting files\nCommand failure\n\n", "See the log file at:\n\n", sfx_log_file);
+                            MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                             SendMessage(hwnd, WM_DESTROY, 0, 0);
                         }
                         exit(30);
@@ -985,8 +1027,8 @@ extract_files(HWND hwnd)
                     exestring[strlen(pch2) - strlen(tmp)] = 0;
                     strcpy(cmdargs, tmp);
 
-                    log_message("Installer command = \"%s\"\n", exestring);
-                    log_message("Installer arguments = \"%s\"\n", cmdargs);
+                    log_message("Installer command = %s\n", exestring);
+                    log_message("Installer arguments = %s\n", cmdargs);
 
                     return_value = ShellExecute(NULL, "open", exestring, cmdargs, NULL, SW_SHOWNORMAL);
 
@@ -996,6 +1038,8 @@ extract_files(HWND hwnd)
                         fclose(g_logFile);
                         if (g_console_install == FALSE || g_nosplash == FALSE)
                         {
+                            sprintf(msg_box_string, "%s%s%s", "Error extracting files\nCommand failure\n\n", "See the log file at:\n\n", sfx_log_file);
+                            MessageBox(hwnd, msg_box_string, NULL, MB_OK);
                             SendMessage(hwnd, WM_DESTROY, 0, 0);
                         }
                         exit(31);
@@ -1162,42 +1206,60 @@ WinMain(HINSTANCE hInstance,
 
     if (return_value == 0)
     {
+        MessageBox(NULL, "Extraction error: could not obtain user directory", NULL, MB_OK);
         exit(1);
     }
 
     /* Create log file */
-    strcpy(sfx_log_path, home_dir_path);
-    strcat(sfx_log_path, DIRSEPSTR);
-    strcat(sfx_log_path, LOG_DIRECTORY);
-
-    if (!file_exists(sfx_log_path))
+    GetSystemTime(&sys_time);
+    return_value = GetTimeFormat(MAKELCID(LANG_USER_DEFAULT, SORT_DEFAULT), 0, NULL, NULL, time, MAX_PATH);
+    if (return_value == 0) 
     {
-        if (make_path(sfx_log_path, 0777) != 0)
-            exit(2);
+        MessageBox(NULL, "Extraction error: Invalid timestamp information received from the OS\n", NULL, MB_OK);
+        exit(2);
     }
 
-    strcpy(sfx_log_dir, sfx_log_path);
-    strcat(sfx_log_path, DIRSEPSTR);
-    strcat(sfx_log_path, LOG_FILE);
-    g_logFile = fopen(sfx_log_path, "a+");
+    strcpy(base_log_dir, home_dir_path);
+    strcat(base_log_dir, DIRSEPSTR);
+    strcat(base_log_dir, LOG_DIRECTORY);
+
+    strcpy(timestamp_log_dir, base_log_dir);
+
+    sprintf(timestamp, "%04d%02d%02d%02d%02d%02d", sys_time.wYear,sys_time.wMonth,sys_time.wDay,sys_time.wHour,sys_time.wMinute,sys_time.wSecond);
+    strcat(timestamp_log_dir, DIRSEPSTR);
+    strcat(timestamp_log_dir, LOGS_DIR);
+    strcat(timestamp_log_dir, DIRSEPSTR);
+    strcat(timestamp_log_dir, timestamp);
+
+    if (!file_exists(timestamp_log_dir))
+    {
+        if (make_path(timestamp_log_dir, 0777) != 0)
+        {
+            sprintf(msg_box_string, "Extraction error: could not create log directory\n\n%s", timestamp_log_dir);
+            MessageBox(NULL, msg_box_string, NULL, MB_OK);
+            exit(2);
+        }
+    }
+
+    strcpy(sfx_log_file, timestamp_log_dir);
+    strcat(sfx_log_file, DIRSEPSTR);
+
+    strcat(sfx_log_file, LOG_FILE);
+    g_logFile = fopen(sfx_log_file, "a+");
 
     if(g_logFile == NULL || ferror(g_logFile))
     {
+        sprintf(msg_box_string, "Extraction error: could not create log file\n\n%s", sfx_log_file);
+        MessageBox(NULL, msg_box_string, NULL, MB_OK);
         exit(3);
     }
 
     /* Logging is available from this point forward */
 
     /* Log timestamp */
-    GetSystemTime(&sys_time);
-    return_value = GetTimeFormat(MAKELCID(LANG_USER_DEFAULT, SORT_DEFAULT), 0, NULL, NULL, time, MAX_PATH);
-
     log_message("------------------------------------\n");
-    if (return_value == 0)
-        log_message("Invalid timestamp information received from the OS\n");
-    else
-        log_message("Installation timestamp: %d-%d-%d, %s\n",
-                    sys_time.wYear, sys_time.wMonth, sys_time.wDay, time);
+    log_message("Installation timestamp: %d-%d-%d, %s\n",
+                sys_time.wYear, sys_time.wMonth, sys_time.wDay, time);
 
     /* Get command line args */
 
@@ -1223,6 +1285,8 @@ WinMain(HINSTANCE hInstance,
                       NULL);
         log_message("Error getting module information: %s\n", errorString);
         fclose(g_logFile);
+        sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+        MessageBox(NULL, msg_box_string, NULL, MB_OK);
         exit(4);
     }
 
@@ -1239,6 +1303,8 @@ WinMain(HINSTANCE hInstance,
                 log_message("-x option requires a path to be provided\n");
                 log_message("%s -x <path>\n", filename);
                 fclose(g_logFile);
+                sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+                MessageBox(NULL, msg_box_string, NULL, MB_OK);
                 exit(5);
             }
             /* Uncomment this if no splash is desired during -x install */
@@ -1256,6 +1322,8 @@ WinMain(HINSTANCE hInstance,
             {
                 log_message("Could not create directory: %s\n", g_user_path);
                 fclose(g_logFile);
+                sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+                MessageBox(NULL, msg_box_string, NULL, MB_OK);
                 exit(6);
             }
     }
@@ -1265,6 +1333,8 @@ WinMain(HINSTANCE hInstance,
         log_message("Error: path provided with -x option is invalid \"%s\"\n", g_user_path);
         log_message("Note: path cannot exceed %d characters\n", MAX_PATH);
         fclose(g_logFile);
+        sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+        MessageBox(NULL, msg_box_string, NULL, MB_OK);
         exit(7);
     }
     else
@@ -1280,6 +1350,8 @@ WinMain(HINSTANCE hInstance,
             {
                 log_message("Error: Could not find temporary directory to extract files\n");
                 fclose(g_logFile);
+                sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+                MessageBox(NULL, msg_box_string, NULL, MB_OK);
                 exit(8);
             }
         }
@@ -1321,11 +1393,13 @@ WinMain(HINSTANCE hInstance,
         {
             log_message("Error: Couldn't allocate memory for arguments: %d\n", arg_length);
             fclose(g_logFile);
+            sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+            MessageBox(NULL, msg_box_string, NULL, MB_OK);
             exit(9);
         }
 
         /* Add the arguments to the g_args string */
-        for (i = 0; i < argc; i++)
+        for (i = 1; i < argc; i++)
         {
             log_message("argv[%d] = %s\n", i, argv[i]);
 
