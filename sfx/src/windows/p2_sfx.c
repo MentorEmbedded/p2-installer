@@ -995,6 +995,35 @@ extract_files(HWND hwnd)
                     pch2 = tmp;
                 }
 
+                if (setupexe != NULL)
+                {
+                    string_length = strlen(pch2) + strlen(VM_ARGS) + 
+                                    strlen(VM_ARG_FILE) + strlen(timestamp_log_dir) + 3;
+                    tmp = allocate_string_buffer(string_length);
+
+                    if (tmp == NULL)
+                    {
+                        log_message("Error: Failed to allocate memory for vm args");
+                        fclose(g_logFile);
+                        if (g_console_install == FALSE || g_nosplash == FALSE)
+                        {
+                            sprintf(msg_box_string, "%s%s%s", "Error extracting files\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+                            MessageBox(hwnd, msg_box_string, NULL, MB_OK);
+                            SendMessage(hwnd, WM_DESTROY, 0, 0);
+                        }
+                        exit(29);
+                    }
+
+                    strcpy(tmp, pch2);
+                    strcat(tmp, VM_ARGS);
+                    strcat(tmp, "\"");
+                    strcat(tmp, timestamp_log_dir);
+                    strcat(tmp, VM_ARG_FILE);
+                    strcat(tmp, "\"");
+                    free(pch2); 
+                    pch2 = tmp;
+                }
+
                 /* Execute command */
                 log_message("Executing command: %s\n", pch2);
 
