@@ -95,6 +95,7 @@ static char random_chars[] =
         "abcdefghijklmnopqrstuvwxyz"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "0123456789";
+static char helpString[] = "-? | --help | -help | -h\t\tShow this help text\n-location=[path]\t\tUse the specified install location.\n-console\t\t\tPerform a console installation\n-silent\t\t\tPerform a silent installation using defaults.\n-nosplash\t\t\tDo not display splash screen.\n-x [path]\t\t\tExtract installer to [path] but do not start installer.";
 
 static char msg_box_string[5 * sizeof(timestamp_log_dir)];
 static char timestamp[TIMESTAMP_LEN + 1];
@@ -1230,6 +1231,26 @@ WinMain(HINSTANCE hInstance,
     SYSTEMTIME sys_time;
     DWORD return_value;
 
+    /* Get command line args */
+
+    if(*lpCmdLine != 0)
+    {
+        argc = __argc;
+        argv = __argv;
+    }
+
+    for (i = 1; i < argc; i++)
+    {
+        if (strstr(argv[i], "-?") != NULL ||
+            strstr(argv[i], "-help") != NULL ||
+            strstr(argv[i], "--help") != NULL ||
+            strstr(argv[i], "-h") != NULL)
+        {
+            MessageBox(NULL, helpString, "Help", MB_OK);
+            exit(0);
+        }
+    }
+
     /* Get user home directory */
     return_value = GetEnvironmentVariable("userprofile", home_dir_path, MAX_PATH);
 
@@ -1290,15 +1311,9 @@ WinMain(HINSTANCE hInstance,
     log_message("Installation timestamp: %d-%d-%d, %s\n",
                 sys_time.wYear, sys_time.wMonth, sys_time.wDay, time);
 
-    /* Get command line args */
 
-    if(*lpCmdLine != 0)
-    {
-        log_message("Raw command line: %s\n", lpCmdLine);
-        argc = __argc;
-        argv = __argv;
-    }
-
+    log_message("Raw command line: %s\n", lpCmdLine);
+    
     return_value = GetModuleFileName(NULL, filename, MAX_PATH);
 
     if (return_value == 0)
