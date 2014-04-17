@@ -281,9 +281,9 @@ then
 
     if test "$suppress_errors" = "false";
     then
-        ${installer_dir}/setup -vm ${installer_dir}/jre/bin ${args} -install.once -install.data=${base_log_dir} -data ${timestamp_log_dir} -vmargs -XX:ErrorFile=${timestamp_log_dir}/jre_error.log
+        "${installer_dir}"/setup -vm "${installer_dir}"/jre/bin ${args} -install.once -install.data="${base_log_dir}" -data "${timestamp_log_dir}" -vmargs -XX:ErrorFile="${timestamp_log_dir}"/jre_error.log
     else
-        ${installer_dir}/setup -vm ${installer_dir}/jre/bin ${args} -install.once -install.data=${base_log_dir} -data ${timestamp_log_dir} -vmargs -XX:ErrorFile=${timestamp_log_dir}/jre_error.log 2> /dev/null
+        "${installer_dir}"/setup -vm "${installer_dir}"/jre/bin ${args} -install.once -install.data="${base_log_dir}" -data "${timestamp_log_dir}" -vmargs -XX:ErrorFile="${timestamp_log_dir}"/jre_error.log 2> /dev/null
     fi
 else
     printf "Installer extracted to $work_dir\n" >> "${log_output}"
