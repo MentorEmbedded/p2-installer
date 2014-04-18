@@ -80,6 +80,20 @@ public interface IInstallDescription {
 	public String getTitle();
 	
 	/**
+	 * Sets the image to display in the title area.
+	 * 
+	 * @param imagePath Path to image file or <code>null</code>
+	 */
+	public void setTitleImage(IPath imagePath);
+	
+	/**
+	 * Returns the image to display in the title area.
+	 * 
+	 * @return Path to image file or <code>null</code>
+	 */
+	public IPath getTitleImage();
+	
+	/**
 	 * Supplies a set of profile properties to be added when the profile is created.
 	 * 
 	 * @param properties the profile properties to be added

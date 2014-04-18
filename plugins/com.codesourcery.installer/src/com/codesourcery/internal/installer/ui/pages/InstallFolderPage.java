@@ -10,8 +10,6 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer.ui.pages;
 
-import java.util.ArrayList;
-
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
@@ -31,7 +29,6 @@ import org.eclipse.swt.widgets.Label;
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallDescription;
-import com.codesourcery.installer.IInstallVerifier;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.console.ConsoleYesNoPrompter;
 import com.codesourcery.installer.ui.BrowseDefaultEditor;
@@ -121,6 +118,11 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		}
 	}
 
+	public IStatus[] verifyInstallLocation() {
+		getInstallDescription().setRootLocation(new Path(getFolder()));
+		return (ContributorRegistry.getDefault().verifyInstallLocation(getInstallDescription()));
+	}
+	
 	@Override
 	public Control createContents(Composite parent) {
 		Composite area = new Composite(parent, SWT.NONE);
@@ -176,27 +178,6 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		} catch (CoreException e) {
 			Installer.log(e);
 		}
-	}
-
-	/**
-	 * Verifies an installation folder.
-	 * 
-	 * @return Status for the folder
-	 */
-	protected IStatus[] verifyInstallLocation() {
-		getInstallDescription().setRootLocation(new Path(getFolder()));
-
-		ArrayList<IStatus> status = new ArrayList<IStatus>();
-		// Check installation location with verifiers
-		IInstallVerifier[] verifiers = ContributorRegistry.getDefault().getInstallVerifiers();
-		for (IInstallVerifier verifier : verifiers) {
-			IStatus verifyStatus = verifier.verifyInstallLocation(getInstallDescription());
-			if ((verifyStatus != null) && !verifyStatus.isOK()) {
-				status.add(verifyStatus);
-			}
-		}
-		
-		return status.toArray(new IStatus[status.size()]);
 	}
 	
 	/**

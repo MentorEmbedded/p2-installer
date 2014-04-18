@@ -263,8 +263,18 @@ public class InstallManifest {
 									Element actionElement = (Element)actionNode;
 									String id = actionElement.getAttribute(ATTRIBUTE_ID);
 									IInstallAction action = ContributorRegistry.getDefault().createAction(id);
-									action.load(actionElement);
-									actions.add(action);
+									if (action != null) {
+										try {
+											action.load(actionElement);
+											actions.add(action);
+										}
+										catch (Exception e) {
+											Installer.log(e);
+										}
+									}
+									else {
+										Installer.log("Deprecated action not supported: " + id);
+									}
 								}
 							}
 						}

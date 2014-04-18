@@ -62,12 +62,10 @@ public class ShutdownHandler implements Runnable {
 	@Override
 	public void run() {
 		try {
-			if ((directoriesToRemove != null) || (emptyDirectoriesToRemove != null)) {
-				Installer.getDefault().getInstallPlatform().scheduleDirectoriesToBeRemoved(
-						directoriesToRemove.toArray(new String[directoriesToRemove.size()]), 
-						emptyDirectoriesToRemove.toArray(new String[emptyDirectoriesToRemove.size()])
-						);
-			}
+			Installer.getDefault().getInstallPlatform().dispose(
+					directoriesToRemove.toArray(new String[directoriesToRemove.size()]), 
+					emptyDirectoriesToRemove.toArray(new String[emptyDirectoriesToRemove.size()])
+					);
 		} catch (Exception e) {
 			Installer.log(e);
 		}

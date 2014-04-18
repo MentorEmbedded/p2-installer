@@ -11,7 +11,7 @@
 package com.codesourcery.installer;
 
 /**
- * Installer wizard page name.
+ * Installer wizard page title.
  */
 public class InstallPageTitle {
 	/** Page name */

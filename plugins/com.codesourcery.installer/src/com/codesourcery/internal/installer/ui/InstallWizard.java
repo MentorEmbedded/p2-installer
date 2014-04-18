@@ -14,6 +14,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.text.MessageFormat;
 
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
@@ -24,6 +25,9 @@ import org.eclipse.jface.wizard.IWizardPage;
 import org.eclipse.jface.wizard.Wizard;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.ImageData;
+import org.eclipse.swt.graphics.ImageLoader;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 
@@ -81,6 +85,10 @@ public class InstallWizard extends Wizard {
 	 * Status of install operation.
 	 */
 	private IStatus status;
+	/**
+	 * Title image
+	 */
+	private Image titleImage;
 
 	/**
 	 * Constructor
@@ -103,7 +111,36 @@ public class InstallWizard extends Wizard {
 		}
 		setWindowTitle(title);
 		
+		// Load title image if available
+		try {
+			IPath titleImagePath = installContext.getInstallDescription().getTitleImage();
+			if (titleImagePath != null) {
+				if (titleImagePath.toFile().exists()) {
+					ImageLoader imageLoader = new ImageLoader();
+					ImageData[] imageDatas = imageLoader.load(titleImagePath.toOSString());
+					if (imageDatas.length > 0) {
+						titleImage = new Image(Display.getDefault(), imageDatas[0]);
+					}
+				}
+				else {
+					Installer.log("Missing title image file: " + titleImagePath.toOSString());
+				}
+			}
+		}
+		catch (Exception e) {
+			Installer.log(e);
+		}
+		
 		installData = new InstallData();
+	}
+	
+	/**
+	 * Returns the title image specified in the installer properties.
+	 * 
+	 * @return Title image or <code>null</code>
+	 */
+	public Image getTitleImage() {
+		return titleImage;
 	}
 	
 	/**

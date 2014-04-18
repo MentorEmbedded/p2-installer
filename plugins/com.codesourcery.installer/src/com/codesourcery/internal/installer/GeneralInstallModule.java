@@ -75,9 +75,17 @@ public class GeneralInstallModule extends AbstractInstallModule {
 		if (roots == null) {
 			List <IVersionedId> defaultRoots = new ArrayList<IVersionedId>();
 			defaultRoots.addAll(Arrays.asList(installDescription.getRequiredRoots()));
+			IVersionedId[] optionalRoots = installDescription.getOptionalRoots();
 			IVersionedId[] defaultOptionalRoots = installDescription.getDefaultOptionalRoots();
-			if (defaultOptionalRoots != null) {
-				defaultRoots.addAll(Arrays.asList(installDescription.getDefaultOptionalRoots()));
+			if ((optionalRoots != null) && (defaultOptionalRoots != null)) {
+				for (IVersionedId defaultOptionalRoot : defaultOptionalRoots) {
+					for (IVersionedId optionalRoot : optionalRoots) {
+						if (optionalRoot.equals(defaultOptionalRoot)) {
+							defaultRoots.add(optionalRoot);
+							break;
+						}
+					}
+				}
 			}
 			roots = defaultRoots.toArray(new IVersionedId[defaultRoots.size()]);
 		}

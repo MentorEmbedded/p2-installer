@@ -66,7 +66,6 @@ public class InstallPlatform implements IInstallPlatform {
 		// Create temporary response file to avoid command line length
 		// limitations
 		responseFile = File.createTempFile("instmon", null);
-		responseFile.deleteOnExit();
 	}
 	
 	/**
@@ -155,7 +154,7 @@ public class InstallPlatform implements IInstallPlatform {
 			// Monitor executable
 			args.add(getPath());
 			// Use response file to avoid any command line length limitations
-			args.add("-file");
+			args.add("-tempfile");
 			args.add("\"" + responseFile.getAbsolutePath() + "\"");
 			
 			// Create monitor process
@@ -200,14 +199,12 @@ public class InstallPlatform implements IInstallPlatform {
 	}
 	
 	@Override
-	public void scheduleDirectoriesToBeRemoved(String[] directories, String[] emptyDirectories) throws CoreException
+	public void dispose(String[] directories, String[] emptyDirectories) 
+			throws CoreException
 	{
 		try {
-			if ((directories == null) && (emptyDirectories == null))
-				return;
-			if ((directories.length == 0) && (emptyDirectories.length == 0))
-				return;
-
+			boolean removeDirectories = false;
+			
 			ArrayList<String> commands = new ArrayList<String>();
 			StringBuffer arg;
 			
@@ -223,6 +220,7 @@ public class InstallPlatform implements IInstallPlatform {
 				}
 				arg.append('\"');
 				commands.add(arg.toString());
+				removeDirectories = true;
 			}
 			
 			// Add empty directories
@@ -237,11 +235,18 @@ public class InstallPlatform implements IInstallPlatform {
 				}
 				arg.append('\"');
 				commands.add(arg.toString());
+				removeDirectories = true;
 			}
-			// Add PID of installer
-			commands.add("-pid " + getInstallerPid());
-			// Add time to wait
-			commands.add("-wait 10");
+			
+			if (removeDirectories) {
+				// Add PID of installer
+				commands.add("-pid " + getInstallerPid());
+				// Add time to wait
+				commands.add("-wait 10");
+			}
+
+			// Delete platform binary
+			commands.add("-deleteOnExit");
 			
 			run(commands.toArray(new String[commands.size()]), false);
 		}

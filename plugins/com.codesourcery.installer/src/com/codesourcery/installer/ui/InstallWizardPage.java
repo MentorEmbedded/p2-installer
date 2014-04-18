@@ -207,14 +207,21 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	
 	@Override
 	public Image getImage() {
-		Image image = ContributorRegistry.getDefault().getTitleIcon();
+		// Use wizard title image if available
+		Image image = ((InstallWizard)getWizard()).getTitleImage();
+		// Otherwise, use registered title image
+		if (image == null) {
+			image = ContributorRegistry.getDefault().getTitleIcon();
+			
+			if (image != null) {
+				return image;
+			}
+			else {
+				return Installer.getDefault().getImageRegistry().get(IInstallerImages.PAGE_BANNER);
+			}
+		}
 		
-		if (image != null) {
-			return image;
-		}
-		else {
-			return Installer.getDefault().getImageRegistry().get(IInstallerImages.PAGE_BANNER);
-		}
+		return image;
 	}
 	
 	@Override

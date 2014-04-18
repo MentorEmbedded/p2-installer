@@ -108,6 +108,8 @@ public class InstallDescription implements IInstallDescription {
 	public static final String PROP_WINDOW_TITLE = "eclipse.p2.windowTitle";//$NON-NLS-1$
 	/** Installer title property */
 	public static final String PROP_TITLE = "eclipse.p2.title";//$NON-NLS-1$
+	/** Installer title image property */
+	public static final String PROP_TITLE_IMAGE = "eclipse.p2.titleImage";//$NON-NLS-1$
 	/** Installer wizard pages property */
 	public static final String PROP_WIZARD_PAGES = "eclipse.p2.wizardPages";//$NON-NLS-1$
 	/** Progress find regular expression property */
@@ -193,6 +195,8 @@ public class InstallDescription implements IInstallDescription {
 	private String windowTitle;
 	/** Installer title */
 	private String title;
+	/** Path to title image file */
+	private IPath titleImage;
 	/** Install wizard pages */
 	private String[] wizardPages;
 	/** Progress regular expression find patterns */
@@ -660,6 +664,17 @@ public class InstallDescription implements IInstallDescription {
 		if (property != null) {
 			setTitle(property);
 		}
+		
+		// Title image
+		property = properties.get(PROP_TITLE_IMAGE);
+		if (property != null) {
+			URI titleImageLocation = getURI(property, getBase());
+			File imageFile = URIUtil.toFile(titleImageLocation);
+			if (imageFile.exists()) {
+				setTitleImage(new Path(imageFile.getAbsolutePath()));
+			}
+		}
+		
 		// Window title
 		property = properties.get(PROP_WINDOW_TITLE);
 		if (property != null) {
@@ -962,6 +977,16 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public String getTitle() {
 		return title;
+	}
+
+	@Override
+	public void setTitleImage(IPath imagePath) {
+		this.titleImage = imagePath;
+	}
+
+	@Override
+	public IPath getTitleImage() {
+		return titleImage;
 	}
 
 	@Override

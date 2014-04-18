@@ -112,7 +112,10 @@ usage (FILE *stream)
     "  -file <file>                 Loads options from a file.  The file.\n"
     "                               should contain one option and it's\n"
     "                               if required per line.\n"
-    "  -log <file>                  Output errors to a log file.\n");
+    "  -filetemp <file>             Same as -file <file> option, but removes\n"
+    "                               the specified file after reading.\n"
+    "  -log <file>                  Output errors to a log file.\n"
+    "  -deleteOnExit                Deletes the utility on exit.\n");
 }
 
 /**
@@ -386,7 +389,10 @@ delete_directory (const char *directory, int emptyOnly)
 #endif
 
   if (directory == NULL)
-    fail ("[delete_directory] No directory provided");
+  {
+    log_message ("[delete_directory] No directory provided");
+    return -1;
+  }
 
   DIR *dir = opendir (directory);
   if (dir == NULL)
@@ -1118,7 +1124,10 @@ internal_get_option (char* argv[], int argc, int start, const char *name, char**
             {
               index ++;
               if (index >= argc)
-                fail ("%s option requires an argument.", name);
+              {
+                log_message ("%s option requires an argument.", name);
+                return -1;
+              }
               *argument = trim_argument (argv[index]);
             }
           return 0;
@@ -1153,11 +1162,12 @@ get_option (char* argv[], int argc, const char *name, char** argument)
 /**
  * Reads command line options from a file.
  *
+ * @param delete 1 to delete file after reading, 0 to leave file
  * @param path Path to the command file
  * @return 0 on success
  */
 int
-read_file_options (const char *path)
+read_file_options (int delete, const char *path)
 {
   FILE *fp;
   int length;
@@ -1216,6 +1226,9 @@ read_file_options (const char *path)
             }
         }
       fclose (fp);
+      // Remove response file
+      if (delete)
+        remove (path);
     }
   else
   {
@@ -1229,6 +1242,53 @@ read_file_options (const char *path)
   }
 
   return 0;
+}
+
+/**
+ * Deletes this executable binary file.
+ */
+void
+delete_this()
+{
+#ifdef _WIN32
+  char temppath[MAX_PATH];
+  char batchpath[MAX_PATH + 4];
+  char moduleName[MAX_PATH];
+  FILE* batchfile;
+  HMODULE module;
+
+  module = GetModuleHandle(0);
+  GetModuleFileName (module, moduleName, MAX_PATH - 14);
+  // Create temporary batch file to remove the executable file on exit
+  GetTempPath (MAX_PATH, temppath);
+  GetTempFileName (temppath, "instmon", 0, batchpath);
+  strcat (batchpath, ".bat");
+  batchfile = fopen (batchpath, "w");
+  // Try up to five times
+  fprintf (batchfile, "FOR /L %%%%i IN (1,1,5) DO (\n");
+  // Ping local host to introduce a delay
+  // Note, "TIMEOUT" could be used on Vista and greater, but is not available
+  // on XP
+  fprintf (batchfile, "  PING 127.0.0.1 > nul\n");
+  // Delete the executable file
+  fprintf (batchfile, "  DEL \"%s\"\n", moduleName);
+  // If it couldn't be deleted, try again
+  fprintf (batchfile, "  IF NOT EXIST \"%s\" GOTO EXIT\n", moduleName);
+  fprintf (batchfile, ")\n");
+  fprintf (batchfile, ":EXIT\n");
+  // Delete the batch file
+  fprintf (batchfile, "DEL \"%s\"\n", batchpath);
+  fclose (batchfile);
+
+  // Run the batch file
+  ShellExecute (0, 0, batchpath, 0, 0, SW_HIDE);
+#else
+  char arg[20];
+  char exepath[PATH_MAX + 1] = {0};
+  sprintf (arg, "/proc/%d/exe", getpid());
+  readlink (arg, exepath, PATH_MAX);
+  unlink (exepath);
+#endif
 }
 
 /**
@@ -1264,10 +1324,20 @@ main (int argc, char* argv[])
   ****************************************************************************/
   if (get_option (argv, argc, "-file", &option) == 0)
     {
-      result = read_file_options (option);
-      free (option);
+      result = read_file_options (0, option);
       if (result == -1)
         fail ("Failed to read options file: %s.", option);
+      free (option);
+    }
+  /****************************************************************************
+   * Read command line options from temporary file
+  ****************************************************************************/
+  if (get_option (argv, argc, "-tempfile", &option) == 0)
+    {
+      result = read_file_options (1, option);
+      if (result == -1)
+        fail ("Failed to read options file: %s.", option);
+      free (option);
     }
   /****************************************************************************
    * Enable logging
@@ -1292,7 +1362,7 @@ main (int argc, char* argv[])
           iparam1 = atoi (option);
         }
       if (wait_for_pid (lparam1, iparam1) != 0)
-        fail ("Timed out waiting for process to terminate.");
+        log_message ("Timed out waiting for process to terminate.");
       free (option);
     }
   /****************************************************************************
@@ -1302,7 +1372,7 @@ main (int argc, char* argv[])
     {
       result = delete_directories (option, 0);
       if (result != 0)
-        fail ("Failed to delete directories: %s", option);
+        log_message ("Failed to delete directories: %s", option);
       else
         log_message ("-removeDir %s", option);
       free (option);
@@ -1314,7 +1384,7 @@ main (int argc, char* argv[])
     {
       result = delete_directories (option, 1);
       if (result != 0)
-        fail ("Failed to delete empty directories: %s", option);
+        log_message ("Failed to delete empty directories: %s", option);
       else
         log_message ("-removeEmptyDir %s", option);
       free (option);
@@ -1331,13 +1401,13 @@ main (int argc, char* argv[])
       sparam4 = get_argument (NULL);
       result = set_registry_value (sparam1, sparam2, sparam3, sparam4);
       if (result != 0)
-        fail ("Failed to set registry value.");
+        log_message ("Failed to set registry value.");
       else
         log_message ("-regSetValue %s, %s, %s, %s", sparam1, sparam2,
           sparam3, sparam4);
       free (option);
 #else
-      fail ("-regSetValue is only supported on Windows.");
+      log_message ("-regSetValue is only supported on Windows.");
 #endif
     }
   /****************************************************************************
@@ -1352,10 +1422,10 @@ main (int argc, char* argv[])
       if (sparam3)
         puts (sparam3);
       else
-        fail ("Failed to get registry value %s, %s.", sparam1, sparam2);
+        log_message ("Failed to get registry value %s, %s.", sparam1, sparam2);
       free (option);
 #else
-      fail ("-regSetValue is only supported on Windows.");
+      log_message ("-regSetValue is only supported on Windows.");
 #endif
     }
   /****************************************************************************
@@ -1368,12 +1438,12 @@ main (int argc, char* argv[])
       sparam2 = get_argument (NULL);
       result = delete_registry_value (sparam1, sparam2);
       if (result != 0)
-        fail ("Failed to delete registry value.");
+        log_message ("Failed to delete registry value.");
       else
         log_message ("-regDeleteValue %s, %s", sparam1, sparam2);
       free (option);
 #else
-      fail ("-regDeleteValue is only supported on Windows.");
+      log_message ("-regDeleteValue is only supported on Windows.");
 #endif
     }
   /****************************************************************************
@@ -1384,12 +1454,12 @@ main (int argc, char* argv[])
 #ifdef _WIN32
       result = delete_registry_key (option);
       if (result != 0)
-        fail ("Failed to delete registry key.");
+        log_message ("Failed to delete registry key.");
       else
         log_message ("-regDeleteKey %s", option);
       free (option);
 #else
-      fail ("-regDeleteKey is only supported on Windows.");
+      log_message ("-regDeleteKey is only supported on Windows.");
 #endif
     }
   /****************************************************************************
@@ -1408,12 +1478,12 @@ main (int argc, char* argv[])
         result = run_admin (sparam1, sparam2);
       }
       if (result != 0)
-        fail ("Failed to run program.");
+        log_message ("Failed to run program.");
       else
         log_message ("-runAdmin %s,%s", sparam1, sparam2);
       free (option);
 #else
-      fail ("-runAdmin is currently only supported on Windows.");
+      log_message ("-runAdmin is currently only supported on Windows.");
 #endif
     }
   /****************************************************************************
@@ -1441,7 +1511,7 @@ main (int argc, char* argv[])
       result = create_shortcut (sparam1, sparam2, sparam3, sparam4, sparam5,
         iparam1, sparam7, sparam8, iparam2);
       if (result != 0)
-        fail ("Failed to create shortcut.");
+        log_message ("Failed to create shortcut.");
       else
         log_message ("-createShortcut %s, %s, %s, %s, %s, %s, %s, %s %s",
           sparam1, sparam2, sparam3, sparam4, sparam5, sparam6, sparam7,
@@ -1459,11 +1529,11 @@ main (int argc, char* argv[])
       result = get_special_folder (iparam1, path);
       free (option);
       if (result != 0)
-        fail ("Failed to get special folder: %s", sparam1);
+        log_message ("Failed to get special folder: %s", sparam1);
       else
         puts(path);
 #else
-      fail ("-getSpecialFolder is only supported on Windows.");
+      log_message ("-getSpecialFolder is only supported on Windows.");
 #endif
     }
   /****************************************************************************
@@ -1474,6 +1544,12 @@ main (int argc, char* argv[])
       sparam1 = get_argument (option);
       print_os_property (sparam1);
       free (option);
+    }
+
+  // Delete executable on exit
+  if (get_option (argv, argc, "-deleteOnExit", NULL) == 0)
+    {
+	  delete_this();
     }
 
   if (logFile != NULL)

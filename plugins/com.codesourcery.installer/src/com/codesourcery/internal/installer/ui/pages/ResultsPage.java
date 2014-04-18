@@ -12,9 +12,12 @@ package com.codesourcery.internal.installer.ui.pages;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.text.MessageFormat;
 
 import org.apache.commons.io.FileUtils;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.jface.dialogs.Dialog;
 import org.eclipse.jface.dialogs.IDialogConstants;
@@ -35,6 +38,7 @@ import org.eclipse.swt.widgets.Link;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Text;
 
+import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LaunchItem;
 import com.codesourcery.installer.ui.FormattedLabel;
 import com.codesourcery.installer.ui.InstallWizardPage;
@@ -157,6 +161,7 @@ public class ResultsPage extends InstallWizardPage {
 	public void setResult(String message, boolean showOptions) {
 		this.resultMessage = message;
 		this.showOptions = showOptions;
+		copyLog();
 		updateInformation();
 	}
 	
@@ -177,6 +182,7 @@ public class ResultsPage extends InstallWizardPage {
 	 */
 	public void setError(String error) {
 		this.errorMessage = error;
+		copyLog();
 		updateInformation();
 	}
 	
@@ -327,6 +333,34 @@ public class ResultsPage extends InstallWizardPage {
 		updateInformation();
 		
 		return area;
+	}
+	
+	/**
+	 * Copy the log file to a location outside of the default configuration 
+	 * area so that it's accessible after the installer has exited and self-deleted.
+	 */
+	private void copyLog() {
+		
+		if (logFile != null) {
+			// Already copied log.
+			return;
+		}
+		
+		IPath logDirPath = Installer.getDefault().getLogPath();
+		try {
+			// Copy the platform log file
+			if (Installer.getDefault().isCopyLog()) {
+				File originalLogFile = Platform.getLogFileLocation().toFile();
+				logFile = logDirPath.append(originalLogFile.getName()).toFile();
+				Files.copy(originalLogFile.toPath(), logFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			}
+			// Use the platform log file
+			else {
+				logFile = Platform.getLogFileLocation().toFile();
+			}
+		} catch (IOException e) {
+			Installer.log(e);
+		}		
 	}
 	
 	/**

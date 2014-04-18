@@ -46,7 +46,6 @@ import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallProduct;
-import com.codesourcery.installer.IInstallVerifier;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.console.ConsoleYesNoPrompter;
 import com.codesourcery.installer.ui.FormattedLabel;
@@ -422,11 +421,10 @@ public class AddonsPage extends InstallWizardPage implements IInstallConsoleProv
 		IStatus status = Status.OK_STATUS;
 		
 		// Check login with verifiers
-		IInstallVerifier[] verifiers = ContributorRegistry.getDefault().getInstallVerifiers();
-		for (IInstallVerifier verifier : verifiers) {
-			IStatus verifyStatus = verifier.verifyCredentials(username, password);
-			if (!verifyStatus.isOK()) {
-				status = verifyStatus;
+		IStatus[] statusArray = ContributorRegistry.getDefault().verifyCredentials(username, password);
+		for (IStatus s : statusArray) {
+			if (s.getSeverity() == IStatus.ERROR) {
+				status = s;
 				break;
 			}
 		}

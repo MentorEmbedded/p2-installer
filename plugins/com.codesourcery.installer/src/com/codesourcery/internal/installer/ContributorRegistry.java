@@ -11,6 +11,7 @@
 package com.codesourcery.internal.installer;
 
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Vector;
 
@@ -19,6 +20,7 @@ import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.core.runtime.IConfigurationElement;
 import org.eclipse.core.runtime.IExtension;
 import org.eclipse.core.runtime.IExtensionPoint;
+import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.jface.resource.ImageDescriptor;
@@ -26,6 +28,7 @@ import org.eclipse.swt.graphics.Image;
 import org.osgi.framework.Bundle;
 
 import com.codesourcery.installer.IInstallAction;
+import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallModule;
 import com.codesourcery.installer.IInstallVerifier;
 import com.codesourcery.installer.Installer;
@@ -250,5 +253,45 @@ public class ContributorRegistry {
 			}
 		}
 		return null;
+	}
+	
+	/**
+	 * Verifies an installation folder.
+	 * 
+	 * @return Status for the folder
+	 */
+	public IStatus[] verifyInstallLocation(IInstallDescription installDescription) {
+
+		ArrayList<IStatus> status = new ArrayList<IStatus>();
+		// Check installation location with verifiers
+		IInstallVerifier[] verifiers = ContributorRegistry.getDefault().getInstallVerifiers();
+		for (IInstallVerifier verifier : verifiers) {
+			IStatus verifyStatus = verifier.verifyInstallLocation(installDescription);
+			if ((verifyStatus != null) && !verifyStatus.isOK()) {
+				status.add(verifyStatus);
+			}
+		}
+		
+		return status.toArray(new IStatus[status.size()]);
+	}
+	
+	/**
+	 * Verify the user supplied credentials to insure they are valid
+	 * 
+	 * @param username
+	 * @param password
+	 * @return
+	 */
+	public IStatus[] verifyCredentials(String username, String password) {
+		IInstallVerifier[] verifiers = ContributorRegistry.getDefault().getInstallVerifiers();
+		ArrayList<IStatus> status = new ArrayList<IStatus>();
+		
+		for (IInstallVerifier verifier : verifiers) {
+			IStatus verifyStatus = verifier.verifyCredentials(username, password);
+			if ((verifyStatus != null) && !verifyStatus.isOK()) {
+				status.add(verifyStatus);
+			}
+		}
+		return status.toArray(new IStatus[status.size()]);
 	}
 }

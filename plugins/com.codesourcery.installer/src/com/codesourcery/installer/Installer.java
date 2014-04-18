@@ -23,6 +23,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import org.apache.commons.io.FileUtils;
 import org.eclipse.core.runtime.CoreException;
@@ -62,13 +63,17 @@ public class Installer implements BundleActivator {
 	/** Image registry */
 	private ImageRegistry imageRegistry;
 	/** Install platform */
-	private IInstallPlatform installPlatform;
+	private InstallPlatform installPlatform;
 	/** <code>true</code> if running on Windows platform */
 	private static boolean isWindows;
 	/** Data folder */
 	private IPath dataFolder;
 	/** Install description */
 	private IInstallDescription installDescription;
+	/** Log path */
+	private IPath logPath;
+	/** <code>true</code> if using platform log directory should be copied */
+	private boolean copyLog = false;
 
 	/**
 	 * Returns the shared instance
@@ -119,6 +124,8 @@ public class Installer implements BundleActivator {
 			Files.createDirectories(dataFolder.toFile().toPath());
 		}
 
+		// Initialize log path
+		initializeLogPath();
 		// Initialize install platform
 		initializeInstallPlatform();
 	}
@@ -178,32 +185,45 @@ public class Installer implements BundleActivator {
 	private void initializeInstallPlatform() throws CoreException {
 		try {
 			Bundle bundle = Platform.getBundle(Installer.ID);
-			IPath dataFolderPath = getDataFolder();
 			String os = Platform.getOS();
 			String arch = Platform.getOSArch();
 
-			// Install monitor platform specific name
-			String monName = MessageFormat.format("{0}-{1}-{2}{3}", new Object[] {
+			// Temporary directory
+			String tempDirValue = System.getProperty("java.io.tmpdir");
+			if (tempDirValue == null)
+				fail("No temporary directory available, aborting.");
+			IPath tempPath = new Path(tempDirValue);
+			File tempDir = tempPath.toFile();
+			if (!tempDir.exists())
+				fail("Temporary directory does not exist, aborting.");
+			
+			// Install monitor prefix
+			final String monPrefix = MessageFormat.format("{0}-{1}-{2}", new Object[] {
 					IInstallConstants.INSTALL_MONITOR_NAME,
 					os,
-					arch,
-					isWindows() ? "." + IInstallConstants.EXTENSION_EXE : ""
+					arch
 			});
-			
-			URL url = FileLocator.find(bundle, new Path("/exe/" + monName), null); //$NON-NLS-1$
-			url = FileLocator.resolve(url);
-			File monFile = new File(url.getFile());
-			IPath tempMonPath = dataFolderPath.append(monName);
-			File tempMonFile = tempMonPath.toFile();
-			// Copy the install monitor to the temporary directory so its 
-			// execution does not lock removal of the product directory on the
-			// Windows platform.
-			if (tempMonFile.exists()) {
-				tempMonFile.delete();
+			// Install monitor filename
+			String monSrcName = monPrefix;
+			if (isWindows()) {
+				monSrcName += "." + IInstallConstants.EXTENSION_EXE;
 			}
-			FileUtils.copyFile(monFile, tempMonFile);
+
+			// Install monitor included with installer
+			URL url = FileLocator.find(bundle, new Path("/exe/" + monSrcName), null); //$NON-NLS-1$
+			url = FileLocator.resolve(url);
+			File monSrcFile = new File(url.getFile());
+			// Install monitor temporary path
+			IPath monTempPath = tempPath.append(
+					monPrefix + 
+					"-" + UUID.randomUUID().toString() + 
+					(isWindows() ? "." + IInstallConstants.EXTENSION_EXE : ""));
+			File monTempFile = monTempPath.toFile();
+
+			// Copy install monitor
+			FileUtils.copyFile(monSrcFile, monTempFile);
 			// Set execute attribute
-			tempMonFile.setExecutable(true);
+			monTempFile.setExecutable(true);
 			
 			// Get the installer PID (only works for a SUN JVM)
 			String runtimeName = ManagementFactory.getRuntimeMXBean().getName();
@@ -218,22 +238,18 @@ public class Installer implements BundleActivator {
 			
 			IPath monitorLogPath = getLogPath().append(IInstallConstants.INSTALL_MONITOR_NAME + ".log");
 			// Create the install monitor
-			installPlatform = new InstallPlatform(tempMonFile.getAbsolutePath(), redistPath, 
+			installPlatform = new InstallPlatform(monTempFile.getAbsolutePath(), redistPath, 
 					pid, monitorLogPath.toOSString());
 		}
 		catch (Exception e) {
 			fail(InstallMessages.Error_FailedInstallMonitor, e);
 		}
 	}
-	
+
 	/**
-	 * Returns the path to the log directory.
-	 * 
-	 * @return Log directory path
+	 * Initializes the log path.
 	 */
-	public IPath getLogPath() {
-		IPath logDirPath = null;
-		
+	private void initializeLogPath() {
 		try {
 			IPath platformLogPath = Platform.getLogFileLocation().removeLastSegments(1);
 			File installArea = getInstallFile("");
@@ -243,25 +259,52 @@ public class Installer implements BundleActivator {
 			// use a log location in the data directory.  This prevents the
 			// log from blocking removal of the directory during uninstallation.
 			if (installPath.isPrefixOf(platformLogPath)) {
-				logDirPath = Installer.getDefault().getDataFolder().append(IInstallConstants.LOGS_DIRECTORY);
+				setCopyLog(true);
+				logPath = Installer.getDefault().getDataFolder().append(IInstallConstants.LOGS_DIRECTORY);
 				String dateNow = new SimpleDateFormat("yyyyMMddhhmmss").format(new Date());
-				logDirPath = logDirPath.append(dateNow);
+				logPath = logPath.append(dateNow);
 				try {
-					Files.createDirectories(logDirPath.toFile().toPath());
+					Files.createDirectories(logPath.toFile().toPath());
 				} catch (IOException e) {
 					log(e);
 				}
 			}
 			// Otherwise write the log to the platform log directory
 			else {
-				logDirPath = platformLogPath;
+				setCopyLog(false);
+				logPath = platformLogPath;
 			}
 		}
 		catch (Exception e) {
 			log(e);
 		}
-		
-		return logDirPath;
+	}
+
+	/**
+	 * Sets whether the platform log file will be copied.
+	 * 
+	 * @param copyLog <code>true</code> if to copy log.
+	 */
+	public void setCopyLog(boolean copyLog) {
+		this.copyLog = copyLog;
+	}
+	
+	/**
+	 * Returns if the platform log file will be copied to the log directory.
+	 * 
+	 * @return <code>true</code> if platform log file will be copied. 
+	 */
+	public boolean isCopyLog() {
+		return copyLog;
+	}
+	
+	/**
+	 * Returns the path to the log directory.
+	 * 
+	 * @return Log directory path
+	 */
+	public IPath getLogPath() {
+		return logPath;
 	}
 	
 	/**

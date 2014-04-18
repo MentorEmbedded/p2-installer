@@ -29,9 +29,10 @@ public interface IInstallPlatform {
 	};
 	
 	/**
-	 * Schedules directories to removed after the installer has closed.
-	 * This method can be used to remove directories that are normally locked
-	 * by the operating system when the installer is running.
+	 * Disposes of the install platform.  This will delete the binary file.
+	 * Optional directories can be provided that should be removed.  This can
+	 * be used to remove directories that are normally locked by the operating
+	 * system while the installer is running.
 	 * Supported on all platforms.
 	 * 
 	 * @param directories Directories to remove or <code>null</code>.
@@ -39,7 +40,7 @@ public interface IInstallPlatform {
 	 * or <code>null</code>.
 	 * @throws CoreException on failure
 	 */
-	public void scheduleDirectoriesToBeRemoved(String[] directories, 
+	public void dispose(String[] directories, 
 			String[] emptyDirectories) throws CoreException;
 	
 	/**
