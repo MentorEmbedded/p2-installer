@@ -241,8 +241,6 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	public Control createContents(Composite parent) {
 		Composite area = new Composite(parent, SWT.NONE);
 		GridLayout areaLayout = new GridLayout();
-		areaLayout.marginHeight = 0;
-		areaLayout.marginWidth = 0;
 		areaLayout.verticalSpacing = 0;
 		area.setLayout(areaLayout);
 		area.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));

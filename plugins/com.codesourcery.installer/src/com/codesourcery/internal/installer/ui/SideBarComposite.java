@@ -17,6 +17,8 @@ import org.eclipse.swt.custom.CLabel;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.FontData;
+import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Composite;
@@ -109,6 +111,60 @@ public class SideBarComposite extends Composite {
 		}
 		
 		updateLabels();
+	}
+
+	public Point computeSize (int wHint, int hHint, boolean changed) {
+		try {
+			if (wHint == SWT.DEFAULT) {
+				// Compute widest image
+				int maxImageWidth = 0;
+				Image widestImage = null;
+				if (Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ERROR).getImageData().width > maxImageWidth) {
+					maxImageWidth = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ERROR).getImageData().width;
+					widestImage = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ERROR);
+				}
+				if (Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_CHECKED).getImageData().width > maxImageWidth) {
+					maxImageWidth = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_CHECKED).getImageData().width;
+					widestImage = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_CHECKED);
+				}
+				if (Installer.getDefault().getImageRegistry().get(IInstallerImages.ARROW_RIGHT).getImageData().width > maxImageWidth) {
+					maxImageWidth = Installer.getDefault().getImageRegistry().get(IInstallerImages.ARROW_RIGHT).getImageData().width;
+					widestImage = Installer.getDefault().getImageRegistry().get(IInstallerImages.ARROW_RIGHT);
+				}
+				if (Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_SOLID).getImageData().width > maxImageWidth) {
+					maxImageWidth = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_SOLID).getImageData().width;
+					widestImage = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_SOLID);
+				}
+				if (Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY).getImageData().width > maxImageWidth) {
+					maxImageWidth = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY).getImageData().width;
+					widestImage = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY);
+				}
+
+				// Set attributes to produce widest step
+				for (CLabel stepLabel : stepLabels) {
+					stepLabel.setFont(currentFont);
+					stepLabel.setImage(widestImage);
+				}
+			}
+		}
+		catch (Exception e) {
+			Installer.log(e);
+		}
+
+		// Compute size
+		Point preferredSize = super.computeSize(wHint, hHint, changed);
+		
+		// Restore step attributes
+		if (wHint == SWT.DEFAULT) {
+			try {
+				updateLabels();
+			}
+			catch (Exception e) {
+				Installer.log(e);
+			}
+		}
+		
+		return preferredSize;
 	}
 	
 	/**
