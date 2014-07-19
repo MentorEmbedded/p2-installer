@@ -11,9 +11,11 @@
 package com.codesourcery.installer;
 
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.equinox.p2.metadata.IVersionedId;
+import org.eclipse.equinox.p2.metadata.Version;
 
 /**
- * Provides information for an installed product.
+ * Provides information for a manifest installed product.
  */
 public interface IInstallProduct {
 	/**
@@ -33,9 +35,16 @@ public interface IInstallProduct {
 	/**
 	 * Returns the version of the product.
 	 * 
+	 * @return Version string
+	 */
+	public String getVersionString();
+	
+	/**
+	 * Returns the version of the product.
+	 * 
 	 * @return Version
 	 */
-	public String getVersion();
+	public Version getVersion();
 	
 	/**
 	 * Returns the product install location.
@@ -57,4 +66,33 @@ public interface IInstallProduct {
 	 * @return Actions
 	 */
 	public IInstallAction[] getActions();
+	
+	/**
+	 * Adds an install action to perform for this product.
+	 * 
+	 * @param action Action to add
+	 */
+	public void addAction(IInstallAction action);
+	
+	/**
+	 * Adds a new install unit to the product.
+	 * If the unit has already been added, this method does nothing.
+	 * 
+	 * @param unit Unit to add
+	 */
+	public void addInstallUnit(IVersionedId unit);
+
+	/**
+	 * Removes an install unit from the product.
+	 * 
+	 * @param unit Unit to remove
+	 */
+	public void removeInstallUnit(IVersionedId unit);
+	
+	/**
+	 * Returns the units installed for the product.
+	 * 
+	 * @return Install units
+	 */
+	public IVersionedId[] getInstallUnits();
 }

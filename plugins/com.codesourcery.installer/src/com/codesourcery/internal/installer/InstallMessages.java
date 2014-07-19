@@ -24,6 +24,7 @@ public class InstallMessages extends NLS {
 	public static String SummaryPageTitle;
 	public static String InstallingMessage0;
 	public static String UpgradingMessage0;
+	public static String UpdatingMessage0;
 	public static String InstallingPageTitle;
 	public static String ResultsPageTitle;
 	public static String ResultsPage_LogLink;
@@ -73,20 +74,30 @@ public class InstallMessages extends NLS {
 	public static String ComponentsPage_LoadingInstallInformation;
 	public static String ComponentsPage_Description;
 	public static String ComponentsPage_Required0;
-	public static String ComponentsPage_ComponentsLabel;
+	public static String ComponentsPage_ComponentsLabelInstall;
+	public static String ComponentsPage_ComponentsLabelUpdate;
 	public static String ComponentsPage_Required;
 	public static String ComponentsPage_Optional;
 	public static String ComponentsPage_SelectAllOptional;
 	public static String ComponentsPage_DeselectAllOptional;
 	public static String ComponentsPage_ComputingSize;
-	public static String SummaryPage_0;
+	public static String ComponentsPage_Added;
+	public static String ComponentsPage_Installed;
+	public static String ComponentsPage_Removed;
+	public static String ComponentsPage_NotInstalled;
 
+	public static String SummaryPage_0;
 	public static String SummaryPage_ComponentsLabel;
 	public static String SummaryPage_ProceedPrompt;
 	public static String SummaryPage_InstallationCancelled;
+	public static String SetupPage_Title0;
+	public static String SetupPage_Prompt;
+	public static String InstalledProductsPage_OtherLabel;
+	public static String InstalledProductsPage_OtherDescription;
 	public static String Progress_Downloading;
 	public static String Progress_Extracting;
 	public static String UninstallationFailed;
+	public static String Title;
 	public static String Title0;
 	public static String Resume;
 	public static String Quit;
@@ -130,6 +141,7 @@ public class InstallMessages extends NLS {
 	public static String Op_Preparing;
 	public static String Op_Installing0;
 	public static String Op_Updating0;
+	public static String Op_Uninstalling0;
 	public static String CleanupInstallation;
 	public static String InformationPageTitle;
 	public static String LoadingArtifactRepository0;
@@ -156,18 +168,40 @@ public class InstallMessages extends NLS {
 	public static String AddonsPage_Login;
 	public static String AddonsPage_CheckingAddons;
 	public static String AddonsPage_ExistingAddonsRemoved0;
+	public static String AddonsPage_ExistingAddonsUpdate;
 	public static String AddonsPage_ConsoleInstallAddons;
 	public static String AddonsPage_ConsoleUsername;
 	public static String AddonsPage_ConsolePassword;
+	public static String ValidatingInstall;
+	
+	public static String SetupPrompter_Title1;
+	public static String SetupPrompter_Prompt;
+	public static String SetupPrompter_Change;
+	public static String SetupPrompter_ChangeDescription;
+	public static String SetupPrompter_Remove;
+	public static String SetupPrompter_RemoveDescription;
+	public static String SetupPrompter_Upgrade;
+	public static String SetupPrompter_UpgradeDescription0;
+	public static String SetupPrompter_Install;
+	public static String SetupPrompter_InstallDescription;
 	
 	public static String ConsolePressEnter;
 	public static String ConsolePressEnterYesNo2;
 	public static String ConsolePressYesNo1;
 	public static String ConsoleItemsTogglePrompt;
 	public static String ConsolePressEnterOrChange;
+	public static String ConsoleError0;
+	public static String ConsoleWarning0;
 	public static String Continue;
 	public static String Yes;
 	public static String No;
+	public static String Version;
+	public static String GreaterThan;
+	public static String AndLessThan;
+	public static String OrEqualTo;
+	public static String EnvironmentAction_SettingEnvironmentVariables;
+	public static String EnvironmentAction_RemovingEnvironmentVariables;
+	public static String DriverAction_InstallingDriver;
 	
 	public static String Help_Usage;
 	public static String Help_Help;
@@ -207,6 +241,8 @@ public class InstallMessages extends NLS {
 	public static String Error_InvalidInstallDescriptionVersion;
 	public static String Error_AlreadyInstalled1;
 	public static String Error_Upgrade2;
+	public static String Error_ProductsNotFound;
+	public static String Error_VersionNotFound1;
 	public static String Error_NextToContinue;
 	public static String Error_PleaseSpecifyLocation;
 	public static String Error_InvalidSelection;
@@ -215,6 +251,8 @@ public class InstallMessages extends NLS {
 	public static String Error_Login0;
 	public static String Error_Addons;
 	public static String Error_FilesNotRemoved;
+	public static String Error_PathTooLarge;
+	public static String Error_NothingToInstall;
 	
 	static {
 		// initialize resource bundle

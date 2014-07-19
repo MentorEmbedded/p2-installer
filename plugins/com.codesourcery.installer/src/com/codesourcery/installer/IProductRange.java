@@ -8,19 +8,25 @@
  *  Contributors:
  *     Mentor Graphics - initial API and implementation
  *******************************************************************************/
-package com.codesourcery.internal.installer;
+package com.codesourcery.installer;
 
-import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.equinox.p2.metadata.VersionRange;
 
 /**
- * Progress monitor which reports the result from the install 
- * size calculation.
+ * Specifies a product and optional version range.
  */
-public interface ISizeCalculationMonitor extends IProgressMonitor {
+public interface IProductRange {
 	/**
-	 * Called when the size has been computed.
+	 * Returns the product identifier.
 	 * 
-	 * @param installSize Installation size
+	 * @return Identifier
 	 */
-	public void done(long installSize);
+	public String getId();
+	
+	/**
+	 * Returns the product version range.
+	 * 
+	 * @return Version range or <code>null</code> for any version
+	 */
+	public VersionRange getVersionRange();
 }

@@ -15,6 +15,7 @@ import java.util.Map;
 
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.equinox.p2.metadata.IVersionedId;
+import org.eclipse.equinox.p2.metadata.Version;
 
 /**
  * Information about a product installation.
@@ -24,16 +25,6 @@ import org.eclipse.equinox.p2.metadata.IVersionedId;
  * property values.
  */
 public interface IInstallDescription {
-	/** Wizard page navigation */
-	public enum PageNavigation {
-		/** No page navigation */
-		NONE,
-		/** Page navigation on the top */
-		TOP,
-		/** Page navigation on the left */
-		LEFT
-	}
-	
 	/**
 	 * Sets an install property.
 	 * 
@@ -293,17 +284,25 @@ public interface IInstallDescription {
 	public String getProductVendor();
 	
 	/**
-	 * Sets the product version.
-	 * @param value Version
+	 * Sets the product version string.
+	 * 
+	 * @param value Version string
 	 */
-	public void setProductVersion(String value);
+	public void setProductVersionString(String value);
+	
+	/**
+	 * Returns the product version string.
+	 * 
+	 * @return Version string or <code>null</code>.
+	 */
+	public String getProductVersionString();
 	
 	/**
 	 * Returns the product version.
 	 * 
-	 * @return Version or <code>null</code>.
+	 * @return Version
 	 */
-	public String getProductVersion();
+	public Version getProductVersion();
 	
 	/**
 	 * Sets the product help URL.
@@ -518,12 +517,13 @@ public interface IInstallDescription {
 	public String[] getWizardPagesOrder();
 	
 	/**
-	 * Sets the regular expression find patterns to apply to
+	 * Sets the regular expression find and replace regular expressions to apply to
 	 * P2 progress messages.
 	 * 
-	 * @param value Patterns or <code>null</code>
+	 * @param find Find expressions
+	 * @param replace Replace expressions
 	 */
-	public void setProgressFindPatterns(String[] value);
+	public void setProgressPatterns(String[] find, String[] replace);
 
 	/**
 	 * Returns the regular expression find patterns to apply to
@@ -534,14 +534,6 @@ public interface IInstallDescription {
 	 */
 	public String[] getProgressFindPatterns();
 	
-	/**
-	 * Sets the regular expression replacement patterns to apply to
-	 * P2 progress messages.
-	 * 
-	 * @param value Patterns
-	 */
-	public void setProgressReplacePatterns(String[] value);
-
 	/**
 	 * Returns the regular expression replacement patterns to apply to
 	 * P2 progress messages.
@@ -569,34 +561,6 @@ public interface IInstallDescription {
 	public String[] getModuleIDs();
 
 	/**
-	 * Sets required components to be sorted by name.
-	 * 
-	 * @param value <code>true</code> to sort required components
-	 */
-	public void setSortRequiredComponents(boolean value);
-
-	/**
-	 * Returns if required components should be sorted for display.
-	 * 
-	 * @return <code>true</code> to sort required components
-	 */
-	public boolean getSortRequiredComponents();
-	
-	/**
-	 * Sets optional components to be sorted by name.
-	 * 
-	 * @param value <code>true</code> to sort optional components
-	 */
-	public void setSortOptionalComponents(boolean value);
-
-	/**
-	 * Returns if optional components should be sorted for display.
-	 * 
-	 * @return <code>true</code> to sort optional components
-	 */
-	public boolean getSortOptionalComponents();
-	
-	/**
 	 * Sets visibility of components version on components page
 	 * 
 	 * @param hideComponentsVersion <code>true</code> to hide components version
@@ -612,17 +576,22 @@ public interface IInstallDescription {
 	
 	/**
 	 * Sets the install wizard page navigation.
+	 * <ul>
+	 * <li>SWT.NONE</li>
+	 * <li>SWT.TOP</li>
+	 * <li>SWT.LEFT</li>
+	 * </ul>
 	 * 
 	 * @param navigation Page navigation
 	 */
-	public void setPageNavigation(PageNavigation pageNavigation);
+	public void setPageNavigation(int pageNavigation);
 	
 	/**
 	 * Returns the install wizard page navigation.
 	 * 
 	 * @return Page navigation
 	 */
-	public PageNavigation getPageNavigation();
+	public int getPageNavigation();
 	
 	/**
 	 * Sets the install wizard page titles.
@@ -637,4 +606,95 @@ public interface IInstallDescription {
 	 * @return Page title or <code>null</code>
 	 */
 	public InstallPageTitle[] getPageTitles();
+	
+	/**
+	 * Sets the installation to be a patch for existing products.
+	 * 
+	 * @param <code>true</code> if patch
+	 */
+	public void setPatch(boolean patch);
+	
+	/**
+	 * Returns if the installation is a patch for existing products.
+	 * 
+	 * @return <code>true</code> if patch
+	 */
+	public boolean getPatch();
+	
+	/**
+	 * Sets a range of products required for this installation.
+	 * 
+	 * @param range Product range or <code>null</code
+	 */
+	public void setRequires(IProductRange[] range);
+	
+	/**
+	 * Returns a range of products required for this installation.
+	 * 
+	 * @return Product range or <code>null</code>
+	 */
+	public IProductRange[] getRequires();
+	
+	/**
+	 * Sets the text to display on the Welcome page of the installation wizard.
+	 * 
+	 * @param welcomeText Welcome text or <code>null</code> for default text
+	 */
+	public void setWelcomeText(String welcomeText);
+
+	/**
+	 * Returns the text to display on the Welcome page.
+	 * 
+	 * @return Welcome text or <code>null</code> for default text
+	 */
+	public String getWelcomeText();
+	
+	/**
+	 * Sets the find/replace regular expressions to apply to missing requirement
+	 * messages.
+	 * 
+	 * @param find Find expression
+	 * @param replace Replace expressions
+	 */
+	public void setMissingRequirementExpressions(String[] find, String[] replace);
+	
+	/**
+	 * Returns the find/replace regular expressions to apply to missing 
+	 * requirement messages.
+	 * 
+	 * @return Array of find/replace expressions or <code>null</code>.  
+	 * [][0] is the find expression.
+	 * [][1] is the replace expression.
+	 */
+	public String[][] getMissingRequirementExpressions();
+	
+	/**
+	 * Sets the installer to include all repositories during installation.
+	 * 
+	 * @param include <code>true</code> to include all repositories.
+	 */
+	public void setIncludeAllRepositories(boolean include);
+	
+	/**
+	 * Returns if the installer should include all repositories during
+	 * installation.
+	 * 
+	 * @return <code>true</code> to include all repositories, otherwise include
+	 * only local repositories.
+	 */
+	public boolean getIncludeAllRepositories();
+	
+	/**
+	 * Sets the installer to use an install registry for installed products.
+	 * 
+	 * @param useRegistry <code>true</code> to use install registry
+	 */
+	public void setUseInstallRegistry(boolean useRegistry);
+	
+	/**
+	 * Returns if the installer should use an install registry.
+	 * 
+	 * @return <code>true</code> to use install registry
+	 */
+	public boolean getUseInstallRegistry();
 }

@@ -35,6 +35,11 @@ public class IInstallConstants {
 	public static final String INSTALL_MANIFEST_FILENAME = "install.manifest";
 	
 	/**
+	 * Command line option to suppress splash screen on startup.
+	 */
+	public static final String COMMAND_LINE_NO_SPLASH = "-nosplash";
+
+	/**
 	 * Command line option for silent installation
 	 * This should be specified along with the "-nosplash" option to suppress
 	 * the splash screen.
@@ -108,6 +113,13 @@ public class IInstallConstants {
 	public static final String COMMAND_LINE_DATA = "-install.data";
 	
 	/**
+	 * Undocumented command line option to clear the installer data.
+	 * <code>
+	 * -install.clean
+	 */
+	public static final String COMMAND_CLEAN = "-install.clean";
+
+	/**
 	 * Command line option to create a status text file.  The specified file 
 	 * will be created after the installer completes and will contain either 
 	 * "OK", "CANCELED", or "FAIL:" followed with an error message.
@@ -168,8 +180,6 @@ public class IInstallConstants {
 	 */
 	public static final String P2_DIRECTORY = "p2";
 	
-	/** Selected roots for installation (IVersionedId[])*/
-	public static final String PROPERTY_REQUIRED_ROOTS = "com.codesourcery.installer.roots";
 	/** Installation folder (String) */
 	public static final String PROPERTY_INSTALL_FOLDER = "com.codesourcery.installer.folder";
 	/** Modify system PATH (Boolean) */

@@ -12,6 +12,8 @@ package com.codesourcery.internal.installer.ui.pages;
 
 import java.text.MessageFormat;
 
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -24,12 +26,14 @@ import org.eclipse.swt.widgets.Label;
 
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
+import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.console.ConsoleYesNoPrompter;
 import com.codesourcery.installer.ui.FormattedLabel;
 import com.codesourcery.installer.ui.IInstallSummaryProvider;
 import com.codesourcery.installer.ui.InstallWizardPage;
 import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.InstallMessages;
+import com.codesourcery.internal.installer.actions.PathAction;
 
 /**
  * Install wizard page for path options.
@@ -44,20 +48,35 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 	private Button doNotModifyButton;
 	/** <code>true</code> to modify PATH */
 	private boolean modifyPath = true;
+	/** Paths */
+	private String[] paths;
 	
 	/**
 	 * Constructor
 	 * 
 	 * @param pageName Page name
 	 * @param title Page title
+	 * @param productName Product name
+	 * @param modifyDefault <code>true</code> to set paths by default
+	 * @param paths Paths
 	 */
-	public PathPage(String pageName, String title, String productName, boolean modifyDefault) {
+	public PathPage(String pageName, String title, String productName, boolean modifyDefault, String[] paths) {
 		super(pageName, title);
 		this.productName = productName;
 		// Set default
 		setModifyPath(modifyDefault);
+		this.paths = paths;
 	}
 
+	/**
+	 * Returns the paths.
+	 * 
+	 * @return Paths
+	 */
+	public String[] getPaths() {
+		return paths;
+	}
+	
 	/**
 	 * Returns the product name.
 	 * 
@@ -114,6 +133,7 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 			@Override
 			public void widgetSelected(SelectionEvent e) {
 				setModifyPath(false);
+				hideStatus();
 			}
 		});
 		
@@ -132,6 +152,47 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 		});
 
 		return area;
+	}
+
+	@Override
+	public boolean validate() {
+		boolean valid = checkPaths();
+
+		// Paths can be added
+		if (valid) {
+			hideStatus();
+		}
+		// Paths can't be added
+		else {
+			showStatus(new IStatus[] { 
+				new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_PathTooLarge)
+			});
+		}
+		
+		return valid;
+	}
+	
+	/**
+	 * Returns if product paths can be added to the PATH environment.
+	 *  
+	 * @return <code>true</code> if the paths can be added
+	 */
+	private boolean checkPaths() {
+		boolean valid = true;
+		
+		// Check that the required paths can be added to the PATH environment
+		if (getModifyPath()) {
+			if ((getPaths() != null) && (getPaths().length > 0)) {
+				try {
+					valid = PathAction.checkPaths(paths);
+				}
+				catch (Exception e) {
+					Installer.log(e);
+				}
+			}
+		}
+
+		return valid;
 	}
 
 	@Override
@@ -156,6 +217,10 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 		String response = prompt.getConsoleResponse(input);
 		if (response == null) {
 			setModifyPath(prompt.getResult());
+			if (prompt.getResult() && !checkPaths()) {
+				System.out.println(InstallMessages.Error_PathTooLarge);
+				response = prompt.getConsoleResponse(null);
+			}
 		}
 		
 		return response;

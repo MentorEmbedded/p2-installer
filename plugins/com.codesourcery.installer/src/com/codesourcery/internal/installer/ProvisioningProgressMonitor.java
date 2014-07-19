@@ -14,6 +14,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.ProgressMonitorWrapper;
 
 import com.codesourcery.installer.Installer;
 
@@ -21,7 +22,7 @@ import com.codesourcery.installer.Installer;
  * Delegating progress monitor used during installation
  * to filter p2 progress messages.
  */
-public class ProvisioningProgressMonitor implements IProgressMonitor {
+public class ProvisioningProgressMonitor extends ProgressMonitorWrapper {
 	/** Log message prefix */
 	private static final String LOG_PREFIX = "P2: ";
 	
@@ -43,6 +44,7 @@ public class ProvisioningProgressMonitor implements IProgressMonitor {
 	 */
 	public ProvisioningProgressMonitor(IProgressMonitor delegateProgressMonitor, 
 			String[] find, String[] replace) {
+		super(delegateProgressMonitor);
 		this.delegateProgressMonitor = delegateProgressMonitor;
 		try {
 			if (find != null) {
@@ -99,47 +101,22 @@ public class ProvisioningProgressMonitor implements IProgressMonitor {
 	
 	@Override
 	public void beginTask(String name, int totalWork) {
-		getProgressMonitor().beginTask(filterName(name), totalWork);
+		super.beginTask(filterName(name), totalWork);
 		
 		Log.getDefault().log(name);
 	}
 
 	@Override
-	public void done() {
-		getProgressMonitor().done();
-	}
-
-	@Override
-	public void internalWorked(double work) {
-		getProgressMonitor().internalWorked(work);
-	}
-
-	@Override
-	public boolean isCanceled() {
-		return getProgressMonitor().isCanceled();
-	}
-
-	@Override
-	public void setCanceled(boolean value) {
-		getProgressMonitor().setCanceled(value);
-	}
-
-	@Override
 	public void setTaskName(String name) {
-		getProgressMonitor().setTaskName(filterName(name));
+		super.setTaskName(filterName(name));
 		
 		Log.getDefault().log(LOG_PREFIX + name);
 	}
 
 	@Override
 	public void subTask(String name) {
-		getProgressMonitor().subTask(filterName(name));
+		super.subTask(filterName(name));
 		
 		Log.getDefault().log(LOG_PREFIX + name);
-	}
-
-	@Override
-	public void worked(int work) {
-		getProgressMonitor().worked(work);
 	}
 }

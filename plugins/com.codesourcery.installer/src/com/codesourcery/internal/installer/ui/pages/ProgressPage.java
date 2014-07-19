@@ -10,6 +10,8 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer.ui.pages;
 
+import java.text.MessageFormat;
+
 import org.eclipse.jface.wizard.ProgressMonitorPart;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.layout.GridData;
@@ -21,8 +23,11 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Layout;
 import org.eclipse.swt.widgets.Listener;
 
+import com.codesourcery.installer.IInstallMode;
+import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.ui.FormattedLabel;
 import com.codesourcery.installer.ui.InstallWizardPage;
+import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.Log;
 import com.codesourcery.internal.installer.ui.InstallWizard;
 import com.codesourcery.internal.installer.ui.BusyAnimationControl;
@@ -34,23 +39,25 @@ import com.codesourcery.internal.installer.ui.BusyAnimationControl;
 public class ProgressPage extends InstallWizardPage {
 	/** Install progress monitor part */
 	private ProgressMonitorPart progressMonitorPart;
-	/** Installing message */
-	private String installingMessage;
 	/** Animate control */
 	private BusyAnimationControl animateCtrl;
+	/** Progress label */
+	private FormattedLabel progressLabel;
 
 	/**
 	 * Constructor
 	 * 
 	 * @param pageName Page name
-	 * @param title Page title
-	 * @param installingMessage Installing message
 	 */
-	public ProgressPage(String pageName, String title, String installingMessage) {
-		super(pageName, title);
-		this.installingMessage = installingMessage;
-		
-		setInstallPage(true);
+	public ProgressPage(String pageName) {
+		super(pageName, ""); 
+	}
+	
+	@Override
+	public String getPageLabel() {
+		return Installer.getDefault().getInstallManager().getInstallMode().isInstall() ?
+				InstallMessages.InstallingPageTitle :
+					InstallMessages.Uninstalling;
 	}
 
 	/**
@@ -62,15 +69,6 @@ public class ProgressPage extends InstallWizardPage {
 		return progressMonitorPart;
 	}
 	
-	/**
-	 * Returns the installing message.
-	 * 
-	 * @return Installing message
-	 */
-	public String getInstallingMessage() {
-		return installingMessage;
-	}
-
 	@Override
 	public Control createContents(Composite parent) {
 		Composite area = new Composite(parent, SWT.NONE);
@@ -78,10 +76,9 @@ public class ProgressPage extends InstallWizardPage {
 		area.setLayout(new GridLayout(2, false));
 		area.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
 		
-		// Installing label
-		FormattedLabel installingLabel = new FormattedLabel(area, SWT.WRAP);
-		installingLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
-		installingLabel.setText(getInstallingMessage());
+		// Progress label
+		progressLabel = new FormattedLabel(area, SWT.WRAP);
+		progressLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
 		
 		// Spacing
 		Label spacer = new Label(area, SWT.NONE);
@@ -100,6 +97,40 @@ public class ProgressPage extends InstallWizardPage {
 		return area;
 	}
 	
+	@Override
+	public void setVisible(boolean visible) {
+		try {
+			// Progress message
+			IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();		
+			String message;
+			if (mode.isInstall()) {
+				String productName = Installer.getDefault().getInstallManager().getInstallDescription().getProductName();
+				// Upgrading
+				if (mode.isUpgrade()) {
+					message = MessageFormat.format(InstallMessages.UpgradingMessage0, new Object[] { productName });
+				}
+				// Updating
+				else if (mode.isUpdate()) {
+					message = MessageFormat.format(InstallMessages.UpdatingMessage0, new Object[] { productName });
+				}
+				// Installing
+				else {
+					message = MessageFormat.format(InstallMessages.InstallingMessage0, new Object[] { productName });
+				}
+			}
+			else {
+				message = InstallMessages.UninstallingMessage;
+			}
+			
+			progressLabel.setText(message);
+		}
+		catch (Exception e) {
+			Installer.log(e);
+		}
+
+		super.setVisible(visible);
+	}
+
 	/**
 	 * Called to confirm installation cancel.
 	 * 
@@ -168,5 +199,10 @@ public class ProgressPage extends InstallWizardPage {
 			animateCtrl.animate(false);
 			super.done();
 		}
+	}
+
+	@Override
+	public boolean isSupported() {
+		return true;
 	}
 }

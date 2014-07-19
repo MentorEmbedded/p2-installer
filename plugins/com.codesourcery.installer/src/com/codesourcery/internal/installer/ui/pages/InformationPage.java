@@ -11,6 +11,7 @@
 package com.codesourcery.internal.installer.ui.pages;
 
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Composite;
@@ -132,10 +133,34 @@ public class InformationPage extends InstallWizardPage {
 			informationTitleLabel.setText(getInformationTitle());
 		}
 		
-		return createLicenseArea(area);
+		return createInformationArea(area);
 	}
 	
-	protected Control createLicenseArea(Composite area) {
+	/**
+	 * Sets the background color.
+	 * 
+	 * @param background Background color
+	 */
+	public void setBackground(Color background) {
+		informationLabel.setBackground(background);
+	}
+	
+	/**
+	 * Sets the foreground color.
+	 * 
+	 * @param foreground Foreground color
+	 */
+	public void setForeground(Color foreground) {
+		informationLabel.setForeground(foreground);
+	}
+	
+	/**
+	 * Creates the information area.
+	 * 
+	 * @param area Parent
+	 * @return Information area
+	 */
+	protected Control createInformationArea(Composite area) {
 		int flags = SWT.WRAP;
 		// Enable scrolling
 		if (isScrollable())

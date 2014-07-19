@@ -13,6 +13,7 @@ package com.codesourcery.installer.ui;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.StyleRange;
 import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Composite;
 
@@ -63,7 +64,25 @@ public class FormattedLabel extends Composite {
 	public String getText() {
 		return labelText.getText();
 	}
+	
+	/**
+	 * Sets the background color.
+	 * 
+	 * @param background Background color
+	 */
+	public void setBackground(Color background) {
+		labelText.setBackground(background);
+	}
 
+	/**
+	 * Sets the foreground color.
+	 * 
+	 * @param foreground Foreground color
+	 */
+	public void setForeground(Color foreground) {
+		labelText.setForeground(foreground);
+	}
+	
 	/**
 	 * Applies HTML styles from text to a StyledText widget.
 	 *  

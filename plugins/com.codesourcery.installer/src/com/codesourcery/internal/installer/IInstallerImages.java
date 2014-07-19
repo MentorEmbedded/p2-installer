@@ -80,4 +80,13 @@ public interface IInstallerImages {
 	public static final String WAIT13 = "WAIT13"; //$NON-NLS-1$
 	/** Fifteenth 'waiting' animation image */
 	public static final String WAIT14 = "WAIT14"; //$NON-NLS-1$
+
+	/** Update add feature image */
+	public static final String UPDATE_ADD = "UPDATE_ADD"; //$NON-NLS-1$
+	/** Update folder image */
+	public static final String UPDATE_FOLDER = "UPDATE_FOLDER"; //$NON-NLS-1$
+	/** Update install image */
+	public static final String UPDATE_INSTALL = "UPDATE_INSTALL"; //$NON-NLS-1$
+	/** Update uninstall image */
+	public static final String UPDATE_REMOVE = "UPDATE_REMOVE"; //$NON-NLS-1$
 }

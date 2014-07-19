@@ -14,10 +14,14 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 
+import com.codesourcery.installer.IInstallManager;
+import com.codesourcery.installer.IInstalledProduct;
 import com.codesourcery.installer.Installer;
 
 /**
@@ -29,10 +33,17 @@ public abstract class InstallOperation {
 	
 	/**
 	 * Runs the install operation.
-	 * 
-	 * @param context Install context
 	 */
-	public abstract void run(IInstallContext context);
+	public abstract void run();
+	
+	/**
+	 * Returns the install manager.
+	 * 
+	 * @return Install manager
+	 */
+	protected IInstallManager getInstallManager() {
+		return Installer.getDefault().getInstallManager();
+	}
 	
 	/**
 	 * Sets the path to the status text file to create.  The status file will
@@ -106,6 +117,39 @@ public abstract class InstallOperation {
 					}
 				}
 			}
+		}
+	}
+	
+	/**
+	 * Runs a product's uninstaller.
+	 * If the installer was started in console mode, the uninstaller is run in
+	 * console mode.  If the installer was started in GUI mode, the uninstaller
+	 * is run in GUI mode.
+	 * 
+	 * @param product Product
+	 * @throws CoreException on failure
+	 */
+	protected void runProductUninstaller(IInstalledProduct product, boolean wait) throws CoreException {
+		try {
+			ArrayList<String> args = new ArrayList<String>();
+			args.add(product.getUninstaller().toOSString());
+			if (Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_CONSOLE)) {
+				args.add(IInstallConstants.COMMAND_LINE_INSTALL_CONSOLE);
+			}
+			if (Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_DATA)) {
+				args.add(IInstallConstants.COMMAND_LINE_DATA);
+			}
+			// No splash screen
+			args.add(IInstallConstants.COMMAND_LINE_NO_SPLASH);
+	
+			ProcessBuilder processBuilder = new ProcessBuilder(args);
+			Process process = processBuilder.start();
+			// Wait for uninstaller
+			if ((process != null)  && wait)
+				process.waitFor();
+		}
+		catch (Exception e) {
+			Installer.fail("Failed to launch uninstaller.", e);
 		}
 	}
 }

@@ -13,19 +13,20 @@ package com.codesourcery.internal.installer.ui.pages;
 import java.io.File;
 import java.text.MessageFormat;
 
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
-import org.eclipse.jface.wizard.IWizard;
 import org.eclipse.jface.wizard.IWizardPage;
 
 import com.codesourcery.installer.IInstallConsoleProvider;
-import com.codesourcery.installer.IInstallData;
+import com.codesourcery.installer.IInstallMode;
+import com.codesourcery.installer.IInstallWizardPage;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.console.ConsoleYesNoPrompter;
 import com.codesourcery.installer.ui.IInstallSummaryProvider;
-import com.codesourcery.internal.installer.IInstallConstants;
+import com.codesourcery.internal.installer.IInstallPlan;
 import com.codesourcery.internal.installer.InstallMessages;
-import com.codesourcery.internal.installer.ui.InstallWizard;
+import com.codesourcery.internal.installer.RepositoryManager;
 import com.codesourcery.internal.installer.ui.UIUtils;
 
 /**
@@ -34,25 +35,19 @@ import com.codesourcery.internal.installer.ui.UIUtils;
  * This page supports console.
  */
 public class SummaryPage extends InformationPage implements IInstallConsoleProvider {
-	/** Wizard pages */
-	private IWizardPage[] pages;
-	
 	/**
 	 * Constructor
 	 * 
 	 * @param pageName Page name
 	 * @param title Page title
-	 * @param pages Wizard pages
 	 */
-	public SummaryPage(String pageName, String title, IWizardPage[] pages) {
+	public SummaryPage(String pageName, String title) {
 		super(pageName, title);
 		
 		// Set information title
 		setInformationTitle(InstallMessages.SummaryMessage);
 		// Enable scrolling
 		setScrollable(true);
-		
-		this.pages = pages;
 	}
 
 	/**
@@ -62,7 +57,8 @@ public class SummaryPage extends InformationPage implements IInstallConsoleProvi
 	 */
 	private String getInstallSummary() {
 		StringBuffer buffer = new StringBuffer();
-		
+
+		IInstallWizardPage[] pages = Installer.getDefault().getInstallManager().getSupportedWizardPages();
 		// Get the wizard pages
 		for (IWizardPage page : pages) {
 			// If the page provides summary information
@@ -79,39 +75,14 @@ public class SummaryPage extends InformationPage implements IInstallConsoleProvi
 	 * Updates the summary.
 	 */
 	private void updateSummary() {
-		checkDiskSpace();
-		setInformation(getInstallSummary());
-	}
-
-	/**
-	 * Warn the user if the free disk space appears to be insufficient 
-	 * for the install.
-	 */
-	private void checkDiskSpace() {
-		IWizard wizard = getWizard();
-		if (!(wizard instanceof InstallWizard)) {
-			return;
+		// Install summary
+		if (RepositoryManager.getDefault().hasInstallUnits()) {
+			setInformationTitle(InstallMessages.SummaryMessage);
+			setInformation(getInstallSummary());
 		}
-		IInstallData data = ((InstallWizard) wizard).getInstallData();
-		String installFolder = (String)data.getProperty(IInstallConstants.PROPERTY_INSTALL_FOLDER);
-		if (installFolder != null) {
-			File installDirectory = new File(installFolder);
-			while (!installDirectory.exists()) {
-				installDirectory = installDirectory.getParentFile();
-			}
-			long bytesFree = installDirectory.getUsableSpace();
-			
-			long bytesRequired = (Long)data.getProperty(IInstallConstants.PROPERTY_INSTALL_SIZE);
-			if (bytesRequired >= bytesFree) {
-				String msg = MessageFormat.format(
-						InstallMessages.SummaryPage_0,
-						new Object[] { UIUtils.formatBytes(bytesRequired),
-								UIUtils.formatBytes(bytesFree) });
-
-				showStatus(new IStatus[] {
-						new Status(IStatus.WARNING, Installer.ID, msg)
-				});
-			}
+		// Nothing to install
+		else {
+			setInformationTitle(InstallMessages.Error_NothingToInstall);
 		}
 	}
 	
@@ -119,12 +90,58 @@ public class SummaryPage extends InformationPage implements IInstallConsoleProvi
 	public void setVisible(boolean visible) {
 		super.setVisible(visible);
 		
-		// Update summary with information from pages
+		// Set the page complete.  This will enable install if a previous page
+		// is moved to even if there is an install problem.  Install will move
+		// back to this page if there is an error.
+		setPageComplete(true);
+
 		if (visible) {
+			// Update status.  This will set the page incomplete on an install
+			// error.
+			updateInstallStatus();
+			// Update summary
 			updateSummary();
 		}
 	}
 
+	/**
+	 * Returns the install plan status.
+	 * 
+	 * @return Status
+	 */
+	private IStatus getInstallPlanStatus() {
+		IStatus status = Status.OK_STATUS;
+		
+		// Compute install plan
+		IInstallPlan plan = RepositoryManager.getDefault().computeInstallPlan(null);
+		if (plan != null) {
+			// Plan has errors
+			if (!plan.getStatus().isOK()) {
+				status = new Status(IStatus.ERROR, Installer.ID, plan.getErrorMessage());
+			}
+			// Plan successful, check required space
+			else {
+				IPath installLocation = Installer.getDefault().getInstallManager().getInstallLocation();
+				if (installLocation != null) {
+					File installDirectory = installLocation.toFile();
+					while (!installDirectory.exists()) {
+						installDirectory = installDirectory.getParentFile();
+					}
+					long bytesFree = installDirectory.getUsableSpace();
+					if (plan.getSize() > bytesFree) {
+						String message = MessageFormat.format(
+								InstallMessages.SummaryPage_0,
+								new Object[] { UIUtils.formatBytes(plan.getSize()),
+										UIUtils.formatBytes(bytesFree) });
+						status = new Status(IStatus.WARNING, Installer.ID, message);
+					}
+				}
+			}						
+		}
+		
+		return status;
+	}
+	
 	@Override
 	public String getConsoleResponse(String input)
 			throws IllegalArgumentException {
@@ -136,6 +153,11 @@ public class SummaryPage extends InformationPage implements IInstallConsoleProvi
 		summary = summary.replace("<i>", "");
 		summary = summary.replace("</i>", "");
 		
+		IStatus status = getInstallPlanStatus();
+		if (!status.isOK()) {
+			summary += getStatusMessage(new IStatus[] { status });
+		}
+
 		ConsoleYesNoPrompter prompter = new ConsoleYesNoPrompter(summary, InstallMessages.SummaryPage_ProceedPrompt, true);
 		String response = prompter.getConsoleResponse(input);
 		if (response == null) {
@@ -146,5 +168,46 @@ public class SummaryPage extends InformationPage implements IInstallConsoleProvi
 		}
 		
 		return response;
+	}
+
+	/**
+	 * Updates the install status.  Any errors or warnings for the install
+	 * plan will be displayed.
+	 */
+	public void updateInstallStatus() {
+		// If not running in console mode
+		if (!isConsoleMode()) {
+			final IStatus[] status = new IStatus[] { Status.OK_STATUS };
+			
+			// Run validation busy operation
+			runOperation(InstallMessages.ValidatingInstall, new Runnable() {
+				@Override
+				public void run() {
+					status[0] = getInstallPlanStatus();
+				}
+			});
+			
+			// Show plan error/warning status
+			if (!status[0].isOK()) {
+				setPageComplete(status[0].getSeverity() != IStatus.ERROR);
+				showStatus(status);
+			}
+			else {
+				setPageComplete(true);
+				hideStatus();
+			}
+		}
+	}
+	
+	@Override
+	public boolean validate() {
+		return !hasStatusError();
+	}
+
+	@Override
+	public boolean isSupported() {
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		
+		return mode.isInstall();
 	}
 }

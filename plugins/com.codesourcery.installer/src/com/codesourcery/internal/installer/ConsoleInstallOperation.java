@@ -23,6 +23,7 @@ import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.IInstallWizardPage;
 import com.codesourcery.installer.Installer;
+import com.codesourcery.internal.installer.ui.pages.ProductsPage;
 import com.codesourcery.internal.installer.ui.pages.SummaryPage;
 
 /**
@@ -115,60 +116,68 @@ public class ConsoleInstallOperation extends InstallOperation {
 	}
 	
 	@Override
-	public void run(IInstallContext context) {
+	public void run() {
 		IStatus status = Status.OK_STATUS;
 		try {
-			if (context.isInstall()) {
-				// Installation data
-				InstallData installData = new InstallData();
-	
-				// Loop through the install pages
-				IInstallWizardPage[] wizardPages = context.getWizardPages();
-				
-				// Add summary page
-				IInstallWizardPage[] pages = new IInstallWizardPage[wizardPages.length + 1];
-				System.arraycopy(wizardPages, 0, pages, 0, wizardPages.length);
-				pages[pages.length - 1] = new SummaryPage("summaryPage", InstallMessages.SummaryPageTitle, wizardPages);
-				
-				for (IInstallWizardPage page : pages) {
-					// Page supports console presentation
-					if (page instanceof IInstallConsoleProvider) {
-						// Set active
-						page.setActive(installData);
-						
-						IInstallConsoleProvider consolePage = (IInstallConsoleProvider)page;
-						// Get initial page text
-						String response = consolePage.getConsoleResponse(null);
-						
-						while (response != null) {
-							printConsole(EOL);
-							// Print response
-							printConsole(response);
+			// Installation data
+			InstallData installData = new InstallData();
 
-							// Console input reader
-							BufferedReader consoleReader = new BufferedReader(new InputStreamReader(System.in));
-							// Get input
-							String input = consoleReader.readLine();
-							if (input == null)
-								break;
-							// Get page next response
-							response = consolePage.getConsoleResponse(input);
-						}
-						// Save page data
-						page.saveInstallData(installData);
+			// Loop through the install pages
+			IInstallWizardPage[] wizardPages = Installer.getDefault().getInstallManager().getWizardPages();
+			
+			// Add summary page
+			IInstallWizardPage[] pages = new IInstallWizardPage[wizardPages.length + 2];
+			System.arraycopy(wizardPages, 0, pages, 0, wizardPages.length);
+			pages[pages.length - 2] = new SummaryPage("summaryPage", InstallMessages.SummaryPageTitle);
+			
+			// Add uninstall products page
+			ProductsPage productsPage = new ProductsPage("productsPage", InstallMessages.ProductsPageTitle, InstallMessages.ProductsMessage);
+			productsPage.setMessage(InstallMessages.SelectProductsToUninstall);
+			pages[pages.length - 1] = productsPage;
+			
+			// Show wizard pages
+			for (IInstallWizardPage page : pages) {
+				if (!page.isSupported())
+					continue;
+				
+				// Page supports console presentation
+				if (page instanceof IInstallConsoleProvider) {
+					// Set active
+					page.setActive(installData);
+					
+					IInstallConsoleProvider consolePage = (IInstallConsoleProvider)page;
+					// Get initial page text
+					String response = consolePage.getConsoleResponse(null);
+					
+					while (response != null) {
+						printConsole(EOL);
+						// Print response
+						printConsole(response);
+
+						// Console input reader
+						BufferedReader consoleReader = new BufferedReader(new InputStreamReader(System.in));
+						// Get input
+						String input = consoleReader.readLine();
+						if (input == null)
+							break;
+						// Get page next response
+						response = consolePage.getConsoleResponse(input);
 					}
+					// Save page data
+					page.saveInstallData(installData);
 				}
-				
-				// Perform installation.
-				context.install(installData, getProgressMonitor(true));
 			}
+			
+			// Install
+			if (Installer.getDefault().getInstallManager().getInstallMode().isInstall()) {
+				Installer.getDefault().getInstallManager().install(installData, getProgressMonitor(true));
+			}
+			// Uninstall
 			else {
-				InstallManifest manifest = context.getInstallManifest();
-				
-				// Get the installed products
-				IInstallProduct[] products = manifest.getProducts();
-				// Uninstall all products
-				context.uninstall(products, getProgressMonitor(false));
+				IInstallProduct[] products = productsPage.getSelectedProducts();
+				if (products.length > 0) {
+					Installer.getDefault().getInstallManager().uninstall(products, getProgressMonitor(false));
+				}
 			}
 		}
 		// Install aborted

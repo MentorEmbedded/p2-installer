@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -31,6 +32,7 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.ListenerList;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.core.runtime.jobs.Job;
@@ -53,6 +55,7 @@ import org.eclipse.equinox.p2.planner.IProfileChangeRequest;
 import org.eclipse.equinox.p2.query.IQuery;
 import org.eclipse.equinox.p2.query.IQueryResult;
 import org.eclipse.equinox.p2.query.QueryUtil;
+import org.eclipse.equinox.p2.repository.IRepositoryManager;
 import org.eclipse.equinox.p2.repository.artifact.IArtifactRepositoryManager;
 import org.eclipse.equinox.p2.repository.metadata.IMetadataRepository;
 import org.eclipse.equinox.p2.repository.metadata.IMetadataRepositoryManager;
@@ -62,6 +65,7 @@ import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceReference;
 
 import com.codesourcery.installer.IInstallDescription;
+import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.ui.IInstallComponent;
 
@@ -73,14 +77,8 @@ import com.codesourcery.installer.ui.IInstallComponent;
 public final class RepositoryManager {
 	/** Repository job family */
 	private static final String REPOSITORY_JOB_FAMILY = "RepositoryJobFamily";
-	/** ID to reference the temporary profile used for size calculation*/
-	private static final String SIZING_PROFILE_ID = "sizing_profile";
 	/** Default instance */
 	private static RepositoryManager instance = new RepositoryManager();
-	/** Roots to install */
-	private IVersionedId[] roots;
-	/** Optional roots */
-	private IVersionedId[] optionalRoots;
 	/** Install components */
 	private ArrayList<IInstallComponent> components = new ArrayList<IInstallComponent>();
 	/** Provisioning agent */
@@ -89,18 +87,18 @@ public final class RepositoryManager {
 	private IMetadataRepositoryManager metadataRepoMan;
 	/** Artifact repository manager */
 	private IArtifactRepositoryManager artifactRepoMan;
-	/** Listeners to component changes */
-	private ListenerList componentsChangedListeners = new ListenerList();
+	/** Listeners to repository changes */
+	private ListenerList repositoryListeners = new ListenerList();
 	/** Number of loads in progress */
 	private int loads = 0;
 	/** Repositories */
 	private ArrayList<URI> repositoryLocations = new ArrayList<URI>();
-	/** Current thread for size calculation */
-	protected SizeCalculationThread calculationThread;
-	/** Cache to store computed sizes */
-	protected Map<String, Long> sizesCache;
-	/** Size of uninstall files */
-	protected long uninstallBytes = -1;
+	/** Cache to store computed installation plans */
+	protected Map<String, IInstallPlan> planCache;
+	/** Installer size thread */
+	Thread uninstallerSizeThread;
+	/** Size of uninstaller files */
+	protected long uninstallerSize = 0;
 	/** Install location */
 	private IPath installLocation;
 
@@ -109,7 +107,7 @@ public final class RepositoryManager {
 	 */
 	private RepositoryManager() {
 		// Synchronize size cache
-		sizesCache = Collections.synchronizedMap(new HashMap<String, Long>());
+		planCache = Collections.synchronizedMap(new HashMap<String, IInstallPlan>());
 	}
 	
 	/**
@@ -132,14 +130,10 @@ public final class RepositoryManager {
 				// Artifact repository manager
 				artifactRepoMan = (IArtifactRepositoryManager)agent.getService(IArtifactRepositoryManager.SERVICE_NAME);
 
-				IInstallDescription installDescription = Installer.getDefault().getInstallDescription();
+				IInstallDescription installDescription = Installer.getDefault().getInstallManager().getInstallDescription();
 				// Load repositories
 				if (installDescription != null) {
-					loadRepositories(
-							installDescription.getMetadataRepositories(), 
-							installDescription.getRequiredRoots(),
-							installDescription.getOptionalRoots()
-							);
+					loadRepositories(installDescription.getMetadataRepositories());
 				}
 			}
 		}
@@ -153,7 +147,20 @@ public final class RepositoryManager {
 	 */
 	public void stopAgent() {
 		if (agent != null) {
+			
+			try {
+				// Remove repositories
+				for (URI repositoryLocation : repositoryLocations) {
+					getMetadataRepositoryManager().removeRepository(repositoryLocation);
+					getArtifactRepositoryManager().removeRepository(repositoryLocation);
+				}
+			}
+			catch (Exception e) {
+				Installer.log(e);
+			}
+			
 			agent.stop();
+			agent = null;
 		}
 	}
 	
@@ -183,23 +190,61 @@ public final class RepositoryManager {
 	 * @throws ProvisionException on failure
 	 */
 	public IProfile createProfile(String profileId) throws ProvisionException {
-		IProfileRegistry profileRegistry = (IProfileRegistry)agent.getService(IProfileRegistry.SERVICE_NAME);
+		IProfileRegistry profileRegistry = (IProfileRegistry)getAgent().getService(IProfileRegistry.SERVICE_NAME);
 		IProfile profile = profileRegistry.getProfile(profileId);
 		// Note: On uninstall, the profile will always be available
 		if (profile == null) {
 			Map<String, String> properties = new HashMap<String, String>();
+			// Install location - this is where the p2 directory will be located
 			properties.put(IProfile.PROP_INSTALL_FOLDER, getInstallLocation().toString());
+			// Environment
 			EnvironmentInfo info = (EnvironmentInfo) ServiceHelper.getService(Installer.getDefault().getContext(), EnvironmentInfo.class.getName());
 			String env = "osgi.os=" + info.getOS() + ",osgi.ws=" + info.getWS() + ",osgi.arch=" + info.getOSArch(); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			properties.put(IProfile.PROP_ENVIRONMENTS, env);
+			// Profile identifier
 			properties.put(IProfile.PROP_NAME, profileId);
-			if (Installer.getDefault().getInstallDescription().getProfileProperties() != null)
-				properties.putAll(Installer.getDefault().getInstallDescription().getProfileProperties());
+			// Cache location - this is where features and plugins will be deployed
 			properties.put(IProfile.PROP_CACHE, getInstallLocation().toOSString());
+			// Set roaming.  This will put a path relative to the OSGi configuration area in the config.ini
+			// so that the installation can be moved.  Without roaming, absolute paths will be written
+			// to the config.ini and Software Update will not work correctly for a moved installation.
+			properties.put(IProfile.PROP_ROAMING, Boolean.TRUE.toString());
+			// Profile properties specified in install description
+			if (Installer.getDefault().getInstallManager().getInstallDescription().getProfileProperties() != null)
+				properties.putAll(Installer.getDefault().getInstallManager().getInstallDescription().getProfileProperties());
+			
 			profile = profileRegistry.addProfile(profileId, properties);
 		}
 		
 		return profile;
+	}
+	
+	/**
+	 * Returns the profile for this installation.  The profile is created if
+	 * necessary.
+	 * 
+	 * @return Profile Profile
+	 * @throws ProvisionException on failure to create the profile
+	 */
+	public IProfile getInstallProfile() throws ProvisionException {
+		String profileId = Installer.getDefault().getInstallManager().getInstallDescription().getProfileName();
+		IProfile profile = getProfile(profileId);
+		if (profile == null) {
+			profile = createProfile(profileId);
+		}
+		
+		return profile;
+	}
+	
+	/**
+	 * Returns a profile.
+	 * 
+	 * @param profileId Profile identifier
+	 * @return Profile or <code>null</code> if the profile does not exist.
+	 */
+	public IProfile getProfile(String profileId) {
+		IProfileRegistry profileRegistry = (IProfileRegistry)getAgent().getService(IProfileRegistry.SERVICE_NAME);
+		return profileRegistry.getProfile(profileId);
 	}
 	
 	/**
@@ -245,15 +290,8 @@ public final class RepositoryManager {
 		// Cancel and wait for any running repository load jobs
 		waitForLoadJobs(true);
 
-		// Cancel and wait for sizing thread to complete
-		if (calculationThread != null) {
-			calculationThread.cancel();
-			try {
-				calculationThread.join();
-			} catch (InterruptedException e) {
-				// Ignore
-			}
-		}
+		// Stop the P2 agent
+		stopAgent();
 	}
 
 	/**
@@ -301,16 +339,14 @@ public final class RepositoryManager {
 	 * optional roots.  
 	 * 
 	 * @param repositoryLocations Locations of repositories to load
-	 * @param roots Install roots
-	 * @param optionalRoots Roots that are optional
 	 */
-	public void loadRepositories(URI[] repositoryLocations, IVersionedId[] roots, IVersionedId[] optionalRoots) {
+	public void loadRepositories(URI[] repositoryLocations) {
 		// Fire loading status
 		if (++loads == 1)
 			fireRepositoryStatus(IInstallRepositoryListener.RepositoryStatus.loadingStarted);
 
 		// Start load job
-		LoadComponentsJob job = new LoadComponentsJob(repositoryLocations, roots, optionalRoots);
+		LoadComponentsJob job = new LoadComponentsJob(repositoryLocations);
 		job.schedule();
 	}
 
@@ -344,30 +380,12 @@ public final class RepositoryManager {
 	}
 	
 	/**
-	 * Returns all roots to install.
-	 * 
-	 * @return Install roots
-	 */
-	public IVersionedId[] getRoots() {
-		return roots;
-	}
-	
-	/**
-	 * Returns optional roots.
-	 * 
-	 * @return Optional roots
-	 */
-	public IVersionedId[] getOptionalRoots() {
-		return optionalRoots;
-	}
-	
-	/**
 	 * Adds a listener to component changes.
 	 * 
 	 * @param listener Listener to add
 	 */
 	public void addRepositoryListener(IInstallRepositoryListener listener) {
-		componentsChangedListeners.add(listener);
+		repositoryListeners.add(listener);
 	}
 	
 	/**
@@ -376,7 +394,7 @@ public final class RepositoryManager {
 	 * @param listener Listener to remove
 	 */
 	public void removeRepositoryListener(IInstallRepositoryListener listener) {
-		componentsChangedListeners.remove(listener);
+		repositoryListeners.remove(listener);
 	}
 	
 	/**
@@ -388,6 +406,215 @@ public final class RepositoryManager {
 	 */
 	public IInstallComponent[] getInstallComponents() {
 		return components.toArray(new IInstallComponent[components.size()]);
+	}
+	
+	/**
+	 * Returns if there are components to add or remove in installation.
+	 * 
+	 * @return <code>true</code> if there is an install plan
+	 */
+	public boolean hasInstallUnits() {
+		ArrayList<IInstallableUnit> toAdd = new ArrayList<IInstallableUnit>();
+		ArrayList<IInstallableUnit> toRemove = new ArrayList<IInstallableUnit>();
+		getInstallUnits(toAdd, toRemove);
+		
+		return ((toAdd.size() != 0) || (toRemove.size() != 0));
+	}
+	
+	/**
+	 * Get the installation units.
+	 * 
+	 * @param toAdd Filled with installable units to add
+	 * @param toRemove Filled with installable units to remove
+	 */
+	public void getInstallUnits(List<IInstallableUnit> toAdd, List<IInstallableUnit> toRemove) {
+		toAdd.clear();
+		toRemove.clear();
+
+		// Installation mode
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		
+		for (IInstallComponent component : components) {
+			if (component.isIncluded()) {
+				IInstallableUnit installUnit = component.getInstallUnit();
+				IInstallableUnit installedUnit = component.getInstalledUnit();
+	
+				// If upgrade, only add new units as all units in profile will be
+				// removed
+				if (mode.isUpgrade()) {
+					if (component.getInstall()) {
+						toAdd.add(installUnit);
+					}
+				}
+				// Component marked for install
+				else if (component.getInstall()) {
+					// If no existing unit, add new unit
+					if (installedUnit == null) {
+						toAdd.add(installUnit);
+					}
+					// Else replace existing unit
+					else if (!installedUnit.getVersion().equals(installUnit.getVersion())) {
+						toAdd.add(installUnit);
+						toRemove.add(installedUnit);
+					}
+				}
+				// Component marked for uninstall, remove older unit if present
+				else if (installedUnit != null) {
+					toRemove.add(installedUnit);
+				}
+			}
+		}
+		
+		// Remove all units in profile for upgrade
+		if (mode.isUpgrade()) {
+			String profileId = Installer.getDefault().getInstallManager().getInstallDescription().getProfileName();
+			IProfile profile = getProfile(profileId);
+			if (profile != null) {
+				IQueryResult<IInstallableUnit> query = profile.query(QueryUtil.createIUAnyQuery(), null);
+				Iterator<IInstallableUnit> i = query.iterator();
+				while (i.hasNext()) {
+					toRemove.add(i.next());
+				}
+			}
+		}
+	}
+	
+	/**
+	 * Returns the context for provisioning.
+	 * 
+	 * @return Provisioning context
+	 */
+	public ProvisioningContext getProvisioningContext() {
+		ProvisioningContext context = new ProvisioningContext(getAgent());
+		
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		// If initial installation or upgrade, include only installer repositories.
+		if (!mode.isUpdate()) {
+			context.setArtifactRepositories(getRepositoryLocations());
+			context.setMetadataRepositories(getRepositoryLocations());
+		}
+		// If update then include installed repositories in addition to installer repositories.
+		// Include only local installed repositories (much improved performance).
+		else {
+			URI[] installerLocations = getRepositoryLocations();
+
+			// Include all repositories or only local
+			int flags = Installer.getDefault().getInstallManager().getInstallDescription().getIncludeAllRepositories() ?
+					IRepositoryManager.REPOSITORIES_ALL : IRepositoryManager.REPOSITORIES_LOCAL;
+			
+			// Installer and installed meta-data repositories
+			IMetadataRepositoryManager metadataManager = (IMetadataRepositoryManager)getAgent().getService(IMetadataRepositoryManager.SERVICE_NAME);
+			URI[] installedMetadataLocations = metadataManager.getKnownRepositories(flags);
+			URI[] metadataLocations = new URI[installerLocations.length + installedMetadataLocations.length];
+			System.arraycopy(installerLocations, 0, metadataLocations, 0, installerLocations.length);
+			System.arraycopy(installedMetadataLocations, 0, metadataLocations, installerLocations.length, installedMetadataLocations.length);
+			context.setMetadataRepositories(metadataLocations);
+
+			// Installer and installed artifact repositories
+			IArtifactRepositoryManager artifactManager = (IArtifactRepositoryManager)agent.getService(IArtifactRepositoryManager.SERVICE_NAME);
+			URI[] installedArtifactLocations = artifactManager.getKnownRepositories(flags);
+			URI[] artifactLocations = new URI[installerLocations.length + installedArtifactLocations.length];
+			System.arraycopy(installerLocations, 0, artifactLocations, 0, installerLocations.length);
+			System.arraycopy(installedArtifactLocations, 0, artifactLocations, installerLocations.length, installedArtifactLocations.length);
+			context.setArtifactRepositories(artifactLocations);
+		}
+		
+		return context;
+	}
+	
+	/**
+	 * Computes the install plan.
+	 * 
+	 * @param monitor Progress monitor or <code>null</code>
+	 * @return Install plan or <code>null</code> if canceled.
+	 */
+	public IInstallPlan computeInstallPlan(IProgressMonitor monitor) {
+		IInstallPlan installPlan = null;
+		
+		try {
+			if (monitor == null)
+				monitor = new NullProgressMonitor();
+			
+			SubMonitor mon = SubMonitor.convert(monitor, 600);
+			
+			// Get the install units to add or remove
+			ArrayList<IInstallableUnit> unitsToAdd = new ArrayList<IInstallableUnit>();
+			ArrayList<IInstallableUnit> unitsToRemove = new ArrayList<IInstallableUnit>();
+			getInstallUnits(unitsToAdd, unitsToRemove);
+			// Nothing to do
+			if (unitsToAdd.isEmpty() && unitsToRemove.isEmpty()) {
+				return new InstallPlan(Status.OK_STATUS, 0);
+			}
+
+			// Return cached install plan if available.
+			IInstallableUnit[] toAdd = unitsToAdd.toArray(new IInstallableUnit[unitsToAdd.size()]);
+			IInstallableUnit[] toRemove = unitsToRemove.toArray(new IInstallableUnit[unitsToRemove.size()]);
+			final String hash = rootsHash(toAdd, toRemove);
+			installPlan = planCache.get(hash);
+			if (installPlan != null) {
+				return installPlan;
+			}
+
+			mon.worked(100);
+			if (mon.isCanceled())
+				return null;
+			
+			if (getAgent() == null)
+				return null;
+			IProfile profile = getInstallProfile();
+
+			IPlanner planner = (IPlanner)agent.getService(IPlanner.SERVICE_NAME);
+			IEngine engine = (IEngine)agent.getService(IEngine.SERVICE_NAME);
+			IProfileChangeRequest request = planner.createChangeRequest(profile);
+			
+			request.addAll(unitsToAdd);
+			request.removeAll(unitsToRemove);
+
+			IProvisioningPlan plan = planner.getProvisioningPlan(request, getProvisioningContext(), mon.newChild(300));
+
+			IStatus status = plan.getStatus();
+			// Problem computing plan
+			if (!status.isOK()) {
+				StringBuilder buffer = new StringBuilder();
+				buffer.append(status.getMessage());
+				buffer.append('\n');
+				IStatus[] children = status.getChildren();
+				for (IStatus child : children) {
+					buffer.append(child.getMessage());
+					buffer.append('\n');
+				}
+				Installer.log(buffer.toString());
+			}
+
+			if (mon.isCanceled())
+				return null;
+
+			long installPlanSize = 0;
+			if (plan.getInstallerPlan() != null) {
+				ISizingPhaseSet sizingPhaseSet = PhaseSetFactory.createSizingPhaseSet();
+				engine.perform(plan.getInstallerPlan(), sizingPhaseSet, mon.newChild(100));
+				installPlanSize = sizingPhaseSet.getDiskSize();
+			} else {
+				mon.worked(100);
+			}
+
+			if (mon.isCanceled())
+				return null;
+
+			ISizingPhaseSet sizingPhaseSet = PhaseSetFactory.createSizingPhaseSet();
+			engine.perform(plan, sizingPhaseSet, mon.newChild(100));
+			long installSize = installPlanSize + sizingPhaseSet.getDiskSize();
+
+			// Construct the install plan.  This code will wait for the uninstaller
+			// size if it is still being computed.
+			installPlan = new InstallPlan(status, installSize + getUninstallerSize());
+			planCache.put(hash, installPlan);
+		} catch (Exception e) {
+			monitor.setCanceled(true);
+			Installer.log(e);
+		}
+		
+		return installPlan;
 	}
 	
 	/**
@@ -452,45 +679,12 @@ public final class RepositoryManager {
 	}
 	
 	/**
-	 * Returns whether a component should be installed by default.
-	 * 
-	 * @param component Component
-	 * @return <code>true</code> if component should be installed by default.
-	 */
-	public boolean isDefaultComponent(IInstallComponent component) {
-		boolean isDefault = false;
-
-		// Optional component that is in the list of default optional
-		// roots to be installed will be selected for install
-		if (component.isOptional()) {
-			IInstallDescription description = Installer.getDefault().getInstallDescription();
-			if (description != null) {
-				IVersionedId[] optionalRootsDefault = description.getDefaultOptionalRoots();
-				if (optionalRootsDefault != null) {
-					for (IVersionedId optionalRoot : optionalRootsDefault) {
-						if (optionalRoot.getId().equals(component.getInstallUnit().getId())) {
-							isDefault = true;
-							break;
-						}
-					}
-				}
-			}
-		}
-		// Required component is always installed
-		else {
-			isDefault = true;
-		}
-		
-		return isDefault;
-	}
-
-	/**
 	 * Fires a repository status notification.
 	 * 
 	 * @param status Status
 	 */
 	private void fireRepositoryStatus(IInstallRepositoryListener.RepositoryStatus status) {
-		Object[] listeners = componentsChangedListeners.getListeners();
+		Object[] listeners = repositoryListeners.getListeners();
 		for (Object listener : listeners) {
 			try {
 				((IInstallRepositoryListener)listener).repositoryStatus(status);
@@ -508,7 +702,7 @@ public final class RepositoryManager {
 	 * @param components Install components
 	 */
 	private void fireRepositoryLoaded(URI location, IInstallComponent[] components) {
-		Object[] listeners = componentsChangedListeners.getListeners();
+		Object[] listeners = repositoryListeners.getListeners();
 		for (Object listener : listeners) {
 			try {
 				((IInstallRepositoryListener)listener).repositoryLoaded(location, components);
@@ -526,7 +720,7 @@ public final class RepositoryManager {
 	 * @param errorMessage Error information
 	 */
 	private void fireRepositoryError(URI location, String errorMessage) {
-		Object[] listeners = componentsChangedListeners.getListeners();
+		Object[] listeners = repositoryListeners.getListeners();
 		for (Object listener : listeners) {
 			try {
 				((IInstallRepositoryListener)listener).repositoryError(location, errorMessage);
@@ -538,103 +732,91 @@ public final class RepositoryManager {
 	}
 
 	/**
-	 * Calculate size for all components.
-	 * @param monitor
+	 * Returns the size of the uninstaller.  If the uninstaller size computation
+	 * is still in progress, this method waits.
+	 * 
+	 * @return Uninstaller size in bytes
 	 */
-	public void startSizeCalculation(ISizeCalculationMonitor monitor) {
-		startSizeCalculation(getInstallComponents(), monitor);
+	private long getUninstallerSize() {
+		// Wait for uninstaller thread if running
+		if (uninstallerSizeThread != null) {
+			try {
+				uninstallerSizeThread.join();
+			} catch (InterruptedException e) {
+				// Ignore
+			}
+		}
+		
+		return uninstallerSize;
 	}
 	
 	/**
-	 * Calculate install size for the specified list of roots. Result is passed via the 
-	 * ISizeCalculationMonitor.done(long size) call. 
-	 * @param roots
-	 * @param monitor
+	 * Computes the size of the uninstaller.
 	 */
-	// Synchronize for thread-safe access to calculationThread.
-	synchronized public void startSizeCalculation(IInstallComponent[] roots, ISizeCalculationMonitor monitor) {
+	protected void initializeUninstallerSize() {
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
 		
-		// Return cached value if present.
-		final String hash = rootsHash(roots);
-		Long size = sizesCache.get(hash);
-		if (size != null) {
-			monitor.done(size + uninstallBytes);
-			return;
-		}
-		
-		if (calculationThread != null) {
-			calculationThread.cancel();
-			calculationThread = null;
-		}
-		
-		calculationThread = new SizeCalculationThread(roots, new SizeCalculationMonitorWrapper(monitor) {
-			@Override
-			public void done(long installSize) {
-				// Cache size value for future calls.
-				sizesCache.put(hash, installSize);
-				// Uninstall size calculation may not be finished so don't cache result. 
-				super.done(installSize + uninstallBytes);
-			}
-		});
-		calculationThread.start();
-	}
-	
-	/** Begin calculating size for uninstall area. Should be 
-	 * called as early as possible and only once. */
-	private void initializeSizeCalculation() {
-		startUninstallSizeThread();
-	}
-	
-	/* Spawn a thread to calculate the number of bytes required
-	 * in the uninstall area. */
-	protected void startUninstallSizeThread() {
-		new Thread() {
-			@Override
-			public void run() {
-				String [] uninstallFiles = Installer.getDefault().getInstallDescription().getUninstallFiles();
-				long totalSize = 0;
-				if (uninstallFiles != null) {
-					for (String uninstallFilePath : uninstallFiles) {
-						class SizeCalculationVisitor extends SimpleFileVisitor<Path> {
-							private long size = 0;	
-							@Override
-							public FileVisitResult visitFile(Path file,
-									BasicFileAttributes attrs) throws IOException {
-								size += file.toFile().length();
-								return FileVisitResult.CONTINUE;
-							}
-							
-							public long getSize() {
-								return size;
+		// If installing and not an update
+		if (mode.isInstall() && !mode.isUpdate()) {
+			if (uninstallerSizeThread == null) {
+				uninstallerSizeThread = new Thread() {
+					@Override
+					public void run() {
+						String [] uninstallFiles = Installer.getDefault().getInstallManager().getInstallDescription().getUninstallFiles();
+						long totalSize = 0;
+						if (uninstallFiles != null) {
+							for (String uninstallFilePath : uninstallFiles) {
+								class SizeCalculationVisitor extends SimpleFileVisitor<Path> {
+									private long size = 0;	
+									@Override
+									public FileVisitResult visitFile(Path file,
+											BasicFileAttributes attrs) throws IOException {
+										size += file.toFile().length();
+										return FileVisitResult.CONTINUE;
+									}
+									
+									public long getSize() {
+										return size;
+									}
+								}
+								
+								try {
+									File srcFile = Installer.getDefault().getInstallFile(uninstallFilePath);
+									if (srcFile != null && srcFile.exists()) {
+										SizeCalculationVisitor visitor = new SizeCalculationVisitor();
+										Files.walkFileTree(srcFile.toPath(), visitor);
+										totalSize += visitor.getSize();
+									}
+								} catch (Exception e) {
+									Installer.log(e);
+								}
 							}
 						}
-						
-						try {
-							File srcFile = Installer.getDefault().getInstallFile(uninstallFilePath);
-							if (srcFile != null && srcFile.exists()) {
-								SizeCalculationVisitor visitor = new SizeCalculationVisitor();
-								Files.walkFileTree(srcFile.toPath(), visitor);
-								totalSize += visitor.getSize();
-							}
-						} catch (Exception e) {
-							Installer.log(e);
-						}
+						uninstallerSize = totalSize;
 					}
-				}
-				uninstallBytes = totalSize;
+				};
+				uninstallerSizeThread.start();
 			}
-		}.start();
+		}
+		// Else not uninstaller
+		else {
+			uninstallerSize = 0;
+		}
 	}
 	
 	/**
 	 * Generate a string hash from the specified list of roots.
-	 * @param roots
+	 * @param rootsToAdd Roots to add
+	 * @param rootsToRemove Roots to remove
 	 * @return hash of root list
 	 */
-	private String rootsHash(IInstallComponent[] roots) {
+	private String rootsHash(IInstallableUnit[] rootsToAdd, IInstallableUnit[] rootsToRemove) {
 		List<String> rootIds = new ArrayList<>();
-		for (int i = 0; i < roots.length; i++) {
-			rootIds.add(roots[i].getInstallUnit().getId());
+		for (int i = 0; i < rootsToAdd.length; i++) {
+			rootIds.add("+" + rootsToAdd[i].getId());
+		}
+		for (int i = 0; i < rootsToRemove.length; i++) {
+			rootIds.add("-" + rootsToRemove[i].getId());
 		}
 		
 		Collections.sort(rootIds);
@@ -688,25 +870,179 @@ public final class RepositoryManager {
 		protected abstract IInstallComponent[] getComponents(IMetadataRepository repository) throws CoreException;
 
 		/**
-		 * Sorts any added components from repositories according to the order
-		 * specified in the install description.
+		 * Sorts components according to the order they appear in the install
+		 * description eclipse.p2.requiredRoots or eclipse.p2.optionalRoots 
+		 * properties.  If the component does not appear in either list, it is
+		 * sorted according to its name.
 		 */
 		private void sortComponents() {
+			// Build one list containing the required and optional roots
+			IVersionedId[] requiredRoots = Installer.getDefault().getInstallManager().getInstallDescription().getRequiredRoots();
+			IVersionedId[] optionalRoots = Installer.getDefault().getInstallManager().getInstallDescription().getOptionalRoots();
+			final ArrayList<IVersionedId> roots = new ArrayList<IVersionedId>();
+			if (requiredRoots != null) {
+				roots.addAll(Arrays.asList(requiredRoots));
+			}
+			if (optionalRoots != null) {
+				roots.addAll(Arrays.asList(optionalRoots));
+			}
+			
 			Comparator<IInstallComponent> componentOrderComparator = new Comparator<IInstallComponent>() {
 				@Override
 				public int compare(IInstallComponent arg0, IInstallComponent arg1) {
-					IVersionedId[] roots = Installer.getDefault().getInstallDescription().getRequiredRoots();
-					for (IVersionedId root : roots) {
-						if (root.getId().equals(arg0.getInstallUnit().getId()))
-							return -1;
-						if (root.getId().equals(arg1.getInstallUnit().getId()))
-							return 1;
+					int i0 = -1;
+					int i1 = -1;
+					
+					// Find the index of both arguments in the 
+					// required/optional list
+					for (int index = 0; index < roots.size(); index ++) {
+						IVersionedId root = roots.get(index);
+						if (arg0.getInstallUnit().getId().equals(root.getId())) {
+							i0 = index;
+						}
+						if (arg1.getInstallUnit().getId().equals(root.getId())) {
+							i1 = index;
+						}
+							
 					}
-					return 0;
+					
+					// If both arguments are not in list then sort by name
+					if ((i0 == -1) && (i1 == -1)) {
+						return arg0.getName().compareTo(arg1.getName());
+					}
+					// Push first argument to end if not in list
+					else if (i0 == -1) {
+						return 1;
+					}
+					// Push second argument to end if not in list
+					else if (i1 == -1) {
+						return -1;
+					}
+					// Else sort by order in required/optional list
+					else {
+						return Integer.compare(i0, i1);
+					}
 				}
-				
 			};
 			Collections.sort(components, componentOrderComparator);
+		}
+		
+		/**
+		 * Sets up attributes for all loaded components.
+		 * Required components will be set to install.
+		 * If at least one component has been installed (update) then optional
+		 * components will be set to install only if they are already installed.
+		 * If no components have been installed (new install) then optional 
+		 * components will be set to install if they are default.
+		 */
+		private void setupComponents() {
+			// Optional roots
+			IVersionedId[] requiredRoots = Installer.getDefault().getInstallManager().getInstallDescription().getRequiredRoots();
+			// Default roots
+			IVersionedId[] defaultRoots = Installer.getDefault().getInstallManager().getInstallDescription().getDefaultOptionalRoots();
+
+			// This flag will be set if no component have been installed
+			boolean newInstall = true;
+			
+			// Profile query if updating an existing installation
+			IQueryResult<IInstallableUnit> installedResult = null;
+			if (Installer.getDefault().getInstallManager().getInstallMode().isUpdate()) {
+				IQuery<IInstallableUnit> query = QueryUtil.createIUGroupQuery();
+				String profileId = Installer.getDefault().getInstallManager().getInstallDescription().getProfileName();
+				IProfile profile = getProfile(profileId);
+				if (profile != null) {
+					installedResult = profile.query(query, null);
+				}
+			}
+			
+			// Loop through loaded components
+			for (IInstallComponent component : getInstallComponents()) {
+				InstallComponent comp = (InstallComponent)component;
+				
+				// Set required components
+				boolean isOptional = true;
+				if (requiredRoots != null) {
+					for (IVersionedId requiredRoot : requiredRoots) {
+						if (component.getInstallUnit().getId().equals(requiredRoot.getId())) {
+							isOptional = false;
+							break;
+						}
+					}
+				}
+				comp.setOptional(isOptional);
+				
+				// Set default components
+				if (isOptional) {
+					boolean isDefault = false;
+					if (defaultRoots != null) {
+						for (IVersionedId defaultRoot : defaultRoots) {
+							if (component.getInstallUnit().getId().equals(defaultRoot.getId())) {
+								isDefault = true;
+								break;
+							}
+						}
+					}
+					comp.setDefault(isDefault);
+				}
+				// Required component
+				else {
+					comp.setDefault(true);
+				}
+				
+				// Set installed state
+				if (installedResult != null) {
+					Iterator<IInstallableUnit> iter = installedResult.iterator();
+					while (iter.hasNext()) {
+						IInstallableUnit existingUnit = iter.next();
+						if (existingUnit.getId().equals(comp.getInstallUnit().getId())) {
+							comp.setInstalledUnit(existingUnit);
+							newInstall = false;
+							break;
+						}
+					}
+				}
+				
+				// Initialize install state
+				if (installedResult != null) {
+					// For optional components, we default its install state
+					// to false and only set it true if the IU is found installed.
+					// For required components we default its install state to
+					// true.  It will not be reinstalled if the same version is
+					// already installed.
+					comp.setInstall(comp.isOptional() ? false : true);
+					Iterator<IInstallableUnit> iter = installedResult.iterator();
+					while (iter.hasNext()) {
+						IInstallableUnit existingUnit = iter.next();
+						if (existingUnit.getId().equals(comp.getInstallUnit().getId())) {
+							comp.setInstalledUnit(existingUnit);
+							comp.setInstall(true);
+							break;
+						}
+					}
+				}
+				// Otherwise set install state to default
+				else {
+					comp.setInstall(comp.isDefault());
+				}
+			}
+			
+			// Set install state for all components
+			for (IInstallComponent component : components) {
+				// Optional component 
+				if (component.isOptional()) {
+					// If new install, set it to install if default
+					// If update, set it to install if already installed
+					component.setInstall(newInstall ? component.isDefault() : (component.getInstalledUnit() != null));
+				}
+				// Required component
+				else {
+					// Always set it to install
+					component.setInstall(true);
+				}
+			}
+			
+			// Sort components
+			sortComponents();
 		}
 		
 		@Override
@@ -735,20 +1071,16 @@ public final class RepositoryManager {
 						for (IInstallComponent repositoryComponent : repositoryComponents) {
 							// If a component for the IU has not already been added
 							if (getInstallComponent(repositoryComponent.getInstallUnit().getId()) == null) {
-								// If the component is not already marked for installation,
-								// check if it is a default component that should be installed
-								if (!repositoryComponent.getInstall()) {
-									repositoryComponent.setInstall(isDefaultComponent(repositoryComponent));
-								}
 								// Add component
 								components.add(repositoryComponent);
-								sortComponents();
 							}
 						}
+						setupComponents();
 						// Fire repository loaded notification
 						fireRepositoryLoaded(repositoryLocation, repositoryComponents);
 					}
 					catch (Exception e) {
+						Installer.log(e);
 						getMetadataRepositoryManager().removeRepository(repositoryLocation);
 						getArtifactRepositoryManager().removeRepository(repositoryLocation);
 						fireRepositoryError(repositoryLocation, e.getLocalizedMessage());
@@ -759,7 +1091,9 @@ public final class RepositoryManager {
 				if (--loads <= 0) {
 					// Pre-calculate the install size for complete set of
 					// of repository components.
-					initializeSizeCalculation();
+					IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+					if (!mode.isUpdate() && !mode.isUpdate())
+						initializeUninstallerSize();
 
 					loads = 0;
 					fireRepositoryStatus(IInstallRepositoryListener.RepositoryStatus.loadingCompleted);
@@ -777,11 +1111,6 @@ public final class RepositoryManager {
 	 * Job to load components for a repository.
 	 */
 	private class LoadComponentsJob extends RepositoryLoadJob {
-		/** Required roots */
-		private IVersionedId[] requiredRoots;
-		/** Optional roots */
-		private IVersionedId[] optionalRoots;
-		
 		/**
 		 * Constructor
 		 * 
@@ -789,29 +1118,8 @@ public final class RepositoryManager {
 		 * @param requiredRoots Required roots
 		 * @param optionalRoots Optional roots
 		 */
-		public LoadComponentsJob(URI[] repositories, IVersionedId[] requiredRoots, 
-				IVersionedId[] optionalRoots) {
+		public LoadComponentsJob(URI[] repositories) {
 			super(repositories);
-			this.requiredRoots = requiredRoots;
-			this.optionalRoots = optionalRoots;
-		}
-
-		/**
-		 * Returns the required roots.
-		 * 
-		 * @return Required roots
-		 */
-		public IVersionedId[] getRequiredRoots() {
-			return requiredRoots;
-		}
-		
-		/**
-		 * Returns the optional roots.
-		 * 
-		 * @return Optional roots
-		 */
-		public IVersionedId[] getOptionalRoots() {
-			return optionalRoots;
 		}
 
 		@Override
@@ -820,28 +1128,28 @@ public final class RepositoryManager {
 			ArrayList<InstallComponent> comps = new ArrayList<InstallComponent>();
 
 			// Add required roots
-			if (getRequiredRoots() != null) {
-				for (IVersionedId id : getRequiredRoots()) {
+			IVersionedId[] requiredRoots = Installer.getDefault().getInstallManager().getInstallDescription().getRequiredRoots();
+			if (requiredRoots != null) {
+				for (IVersionedId id : requiredRoots) {
 					// Find install unit
 					IInstallableUnit unit = InstallUtils.findUnit(repository, id);
 					if (unit != null) {
 						// Add component
 						InstallComponent component = new InstallComponent(unit);
-						component.setOptional(false);
 						comps.add(component);
 					}
 				}
 			}
 			
 			// Add optional roots
-			if (getOptionalRoots() != null) {
-				for (IVersionedId id : getOptionalRoots()) {
+			IVersionedId[] optionalRoots = Installer.getDefault().getInstallManager().getInstallDescription().getOptionalRoots();
+			if (optionalRoots != null) {
+				for (IVersionedId id : optionalRoots) {
 					// Find install unit
 					IInstallableUnit unit = InstallUtils.findUnit(repository, id);
 					if (unit != null) {
 						// Add component
 						InstallComponent component = new InstallComponent(unit);
-						component.setOptional(true);
 						comps.add(component);
 					}
 				}
@@ -902,113 +1210,6 @@ public final class RepositoryManager {
 			}
 			
 			return comps.toArray(new IInstallComponent[comps.size()]);
-		}
-	}
-	
-	class SizeCalculationThread extends Thread {
-		private IInstallComponent[] roots;
-		private ISizeCalculationMonitor monitor;
-		
-		public SizeCalculationThread(IInstallComponent[] roots, ISizeCalculationMonitor monitor) {
-			this.roots = roots;
-			this.monitor = monitor;
-		}
-		
-		public void cancel() {
-			monitor.setCanceled(true);
-		}
-		
-		public boolean isCancelled() {
-			return monitor.isCanceled();
-		}
-		
-		@Override
-		public void run() {
-			try {
-				
-				SubMonitor mon = SubMonitor.convert(monitor, 600);
-				
-				long installSize;
-				
-				IProvisioningPlan plan = null;
-				IEngine engine = null;
-				
-				// We need to synchronize on the repositories load check, plus all 
-				// operations which modify the profile, so let's put everything in
-				// one block.
-				IProfile profile=null;
-				synchronized (instance) {
-					mon.worked(100);
-					if (isCancelled())
-						return;
-					
-					IProfileRegistry profileRegistry = (IProfileRegistry)agent.getService(IProfileRegistry.SERVICE_NAME);
-					profile = profileRegistry.getProfile(SIZING_PROFILE_ID);
-					if (profile == null) {
-						profile = createProfile(SIZING_PROFILE_ID);
-					}
-
-					ProvisioningContext context = new ProvisioningContext(agent);
-					context.setArtifactRepositories(getRepositoryLocations());
-					context.setMetadataRepositories(getRepositoryLocations());
-					IPlanner planner = (IPlanner)agent.getService(IPlanner.SERVICE_NAME);
-					engine = (IEngine)agent.getService(IEngine.SERVICE_NAME);
-					IProfileChangeRequest request = planner.createChangeRequest(profile);
-					List<IInstallableUnit> toInstall = new ArrayList<IInstallableUnit>();
-					for (IInstallComponent root : roots) {
-						toInstall.add(root.getInstallUnit());
-					}
-					request.addAll(toInstall);
-
-					plan = planner.getProvisioningPlan(request, context, mon.newChild(300));
-				}
-
-				// Problem computing plan
-				IStatus status = plan.getStatus();
-				if (!status.isOK()) {
-					StringBuilder buffer = new StringBuilder();
-					buffer.append(status.getMessage());
-					buffer.append('\n');
-					IStatus[] children = status.getChildren();
-					for (IStatus child : children) {
-						buffer.append(child.getMessage());
-						buffer.append('\n');
-					}
-					Installer.log(buffer.toString());
-				}
-
-				if (isCancelled())
-					return;
-
-				long installPlanSize = 0;
-				if (plan.getInstallerPlan() != null) {
-					ISizingPhaseSet sizingPhaseSet = PhaseSetFactory.createSizingPhaseSet();
-					engine.perform(plan.getInstallerPlan(), sizingPhaseSet, mon.newChild(100));
-					installPlanSize = sizingPhaseSet.getDiskSize();
-				} else {
-					mon.worked(100);
-				}
-
-				if (isCancelled())
-					return;
-
-				ISizingPhaseSet sizingPhaseSet = PhaseSetFactory.createSizingPhaseSet();
-				engine.perform(plan, sizingPhaseSet, mon.newChild(100));
-				installSize = installPlanSize + sizingPhaseSet.getDiskSize();
-				//System.err.println("size = " + installSize );
-
-				monitor.done(installSize);
-			} catch (Exception e) {
-				monitor.setCanceled(true);
-				Installer.log(e);
-			}
-			finally {
-				try {
-					deleteProfile(SIZING_PROFILE_ID);
-				} catch (ProvisionException e) {
-					Installer.log(e);
-				}
-			}
 		}
 	}
 }

@@ -14,6 +14,16 @@ package com.codesourcery.installer;
  * Installation mode
  */
 public interface IInstallMode {
+	/** Installer run mode */
+	public enum InstallerRunMode {
+		/** Running GUI wizard */
+		GUI,
+		/** Running in console */
+		CONSOLE,
+		/** Running silently */
+		SILENT
+	}
+	
 	/**
 	 * Returns if installing.
 	 * 
@@ -29,12 +39,22 @@ public interface IInstallMode {
 	public boolean isUninstall();
 	
 	/**
-	 * Returns if upgrading.  This is only valid if installing.
+	 * Returns whether product is being upgraded.  This is only valid if 
+	 * installing.
 	 * 
-	 * @return <code>true</code> if upgrading
+	 * @return <code>true</code> if earlier version of the product was found.
 	 * @see #isInstall()
 	 */
 	public boolean isUpgrade();
+	
+	/**
+	 * Returns whether product is being updated.  This is only valid if 
+	 * installing.
+	 * 
+	 * @return <code>true</code> if same version of the product was found.
+	 * @see #isInstall()
+	 */
+	public boolean isUpdate();
 	
 	/**
 	 * Returns if the entire installation is being removed.  This is only valid
@@ -43,6 +63,23 @@ public interface IInstallMode {
 	 * 
 	 * @return <code>true</code> if the entire installation is being removed,
 	 * <code>false</code> if only a single product is being removed.
+	 * @see #isUninstall()
 	 */
 	public boolean isRootUninstall();
+	
+	/**
+	 * Returns if the installation is a patch to an existing product.
+	 * This is only valid if installing.
+	 * 
+	 * @return <code>true</code> if patch
+	 * @see #isInstall()
+	 */
+	public boolean isPatch();
+	
+	/**
+	 * Returns if the installer run mode.
+	 * 
+	 * @return Run mode
+	 */
+	public InstallerRunMode getRunMode();
 }

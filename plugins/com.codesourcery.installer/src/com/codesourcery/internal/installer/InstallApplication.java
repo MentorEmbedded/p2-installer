@@ -30,6 +30,7 @@ import org.eclipse.equinox.app.IApplicationContext;
 import org.eclipse.swt.widgets.Display;
 
 import com.codesourcery.installer.Installer;
+import com.codesourcery.installer.IInstallMode.InstallerRunMode;
 import com.codesourcery.internal.installer.ui.GUIInstallOperation;
 
 /**
@@ -46,16 +47,21 @@ public class InstallApplication implements IApplication {
 	private InstallOperation createInstallOperation() {
 		InstallOperation operation = null;
 
+		InstallMode mode = (InstallMode)Installer.getDefault().getInstallManager().getInstallMode();
+		
 		// Silent installation
 		if (Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_SILENT)) {
+			mode.setRunMode(InstallerRunMode.SILENT);
 			operation = createSilentInstallOperation();
 		}
 		// Console installation
 		else if (Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_CONSOLE)) {
+			mode.setRunMode(InstallerRunMode.CONSOLE);
 			operation = createConsoleInstallOperation();
 		}
 		// Wizard based UI installation
 		else {
+			mode.setRunMode(InstallerRunMode.GUI);
 			operation = createGuiInstallOperation();
 			// If no display is available, use console install
 			if (operation == null) {
@@ -220,14 +226,13 @@ public class InstallApplication implements IApplication {
 				description = new InstallDescription();
 				// Properties specified on command line
 				Map<String, String> properties = Installer.getDefault().getCommandLineProperties();
+				// Load description
+				description.load(siteUri, properties, monitor);
 				// Override the install location if specified
 				String installLocation = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_LOCATION);
 				if (installLocation != null) {
-					properties.put(InstallDescription.PROP_ROOT_LOCATION, installLocation);
+					description.setInstallLocation(new Path(installLocation));
 				}
-
-				// Load description
-				description.load(siteUri, properties, monitor);
 			}
 		} catch (Exception e) {
 			Installer.fail(InstallMessages.Error_InvalidSite, e);
@@ -266,43 +271,43 @@ public class InstallApplication implements IApplication {
 
 		initializeProxySupport();
 
-		// Load install locations
-		LocationsManager.getDefault().load();
-		
-		// Create install operation
-		InstallOperation installOperation = createInstallOperation();
-		if (installOperation == null) {
-			Installer.logError(InstallMessages.Error_InstallOperation);
-		}
-		
 		try {
-			InstallContext context;
-			
-			// Attempt to load installation manifest
+			InstallManager manager = (InstallManager)Installer.getDefault().getInstallManager();
+					
+			// Attempt to load installation manifest (uninstall)
 			InstallManifest manifest = loadInstallManifest();
 			if (manifest != null) {
-				context = new InstallContext(manifest);
+				manager.setInstallManifest(manifest);
+				manager.setInstallMode(new InstallMode(false));
 			}
-			// If no manifest, attempt to load install description
+			// If no manifest, attempt to load install description (install)
 			else {
 				InstallDescription description = loadInstallDescription(SubMonitor.convert(null));
-				
-				context = new InstallContext(description);
-				Installer.getDefault().setInstallDescripton(description);
+				if (description == null)
+					Installer.fail("No install description found.");
+
+				// Set install description
+				manager.setInstallDescription(description);
+				// Set install mode
+				InstallMode mode = new InstallMode(true);
+				// Patch installation
+				if (description.getPatch())
+					mode.setPatch();
+				manager.setInstallMode(mode);
+			}
+
+			// Create install operation
+			InstallOperation installOperation = createInstallOperation();
+			if (installOperation == null) {
+				Installer.logError(InstallMessages.Error_InstallOperation);
 			}
 
 			// Run install operation
-			installOperation.run(context);
+			installOperation.run();
 		} catch (CoreException e) {
 			Installer.log(e);
 		}
 		
-		// Save install locations
-		LocationsManager.getDefault().save();
-		
-		// Shutdown the repository manager
-		RepositoryManager.getDefault().shutdown();
-
 		return IApplication.EXIT_OK;
 	}
 	

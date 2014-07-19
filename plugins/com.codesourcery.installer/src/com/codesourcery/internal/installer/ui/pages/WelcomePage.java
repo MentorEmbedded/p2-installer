@@ -13,6 +13,8 @@ package com.codesourcery.internal.installer.ui.pages;
 import org.eclipse.osgi.util.NLS;
 
 import com.codesourcery.installer.IInstallConsoleProvider;
+import com.codesourcery.installer.IInstallMode;
+import com.codesourcery.installer.Installer;
 import com.codesourcery.internal.installer.InstallMessages;
 
 /**
@@ -28,12 +30,14 @@ public class WelcomePage extends InformationPage implements IInstallConsoleProvi
 	 * 
 	 * @param pageName Page name
 	 * @param productName Product name
+	 * @param welcomeText Welcome text or <code>null</code> for default welcome
+	 * text
 	 */
-	public WelcomePage(String pageName, String productName) {
+	public WelcomePage(String pageName, String productName, String welcomeText) {
 		super(pageName, InstallMessages.WelcomePageTitle);
 		
 		// Set welcome information
-		String welcomeMessage = NLS.bind(InstallMessages.welcomeMessage0, productName );
+		String welcomeMessage = (welcomeText != null) ? welcomeText : NLS.bind(InstallMessages.welcomeMessage0, productName );
 		setInformation(welcomeMessage);
 		// Console message
 		consoleMessage = NLS.bind(InstallMessages.welcomeMessageConsole0, productName);
@@ -47,5 +51,12 @@ public class WelcomePage extends InformationPage implements IInstallConsoleProvi
 		else {
 			return null;
 		}
+	}
+
+	@Override
+	public boolean isSupported() {
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		
+		return (super.isSupported() || mode.isPatch());
 	}
 }

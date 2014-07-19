@@ -16,12 +16,26 @@ import com.codesourcery.installer.IInstallMode;
  * Installation mode
  */
 public class InstallMode implements IInstallMode {
+	/** Update modes */
+	private enum UpdateMode {
+		/** No update */
+		NONE,
+		/** Updating installation */
+		UPDATE,
+		/** Upgrading installation */
+		UPGRADE,
+	}
+	
 	/** <code>true</code> if install, <code>false</code> if uninstall */
 	private boolean install;
-	/** <code>true</code> if product upgrade */
-	private boolean upgrade;
+	/** Update mode */
+	private UpdateMode updateMode = UpdateMode.NONE; 
 	/** <code>true</code> if root uninstall </code> */
 	private boolean rootUninstall;
+	/** <code>true</code> if patch */
+	private boolean patch = false;
+	/** Run mode */
+	private InstallerRunMode runMode = InstallerRunMode.GUI;
 
 	/**
 	 * Constructor
@@ -35,26 +49,49 @@ public class InstallMode implements IInstallMode {
 
 	/**
 	 * Sets upgrade.
-	 * 
-	 * @param upgrade <code>true</code> if upgrade
 	 */
-	public void setUpgrade(boolean upgrade) {
+	public void setUpgrade() {
 		if (isInstall()) {
-			this.upgrade = upgrade;
+			this.updateMode = UpdateMode.UPGRADE;
 		}
+	}
+	
+	/**
+	 * Sets update.
+	 */
+	public void setUpdate() {
+		if (isInstall()) {
+			this.updateMode = UpdateMode.UPDATE;
+		}
+	}
+	
+	/**
+	 * Sets patch install.
+	 */
+	public void setPatch() {
+		this.patch = true;
+	}
+
+	/**
+	 * Sets the run mode.
+	 * 
+	 * @param runMode Run mode
+	 */
+	public void setRunMode(InstallerRunMode runMode) {
+		this.runMode = runMode;
 	}
 	
 	/**
 	 * Sets root uninstall.
 	 * 
-	 * @param rootUninstall <code>true</code> if roo uninstall
+	 * @param rootUninstall <code>true</code> if root uninstall
 	 */
 	public void setRootUninstall(boolean rootUninstall) {
 		if (isUninstall()) {
 			this.rootUninstall = rootUninstall;
 		}
 	}
-
+	
 	@Override
 	public boolean isInstall() {
 		return install;
@@ -67,11 +104,26 @@ public class InstallMode implements IInstallMode {
 
 	@Override
 	public boolean isUpgrade() {
-		return upgrade;
+		return (updateMode == UpdateMode.UPGRADE);
+	}
+
+	@Override
+	public boolean isUpdate() {
+		return (updateMode == UpdateMode.UPDATE);
 	}
 
 	@Override
 	public boolean isRootUninstall() {
 		return rootUninstall;
+	}
+
+	@Override
+	public boolean isPatch() {
+		return patch;
+	}
+
+	@Override
+	public InstallerRunMode getRunMode() {
+		return runMode;
 	}
 }

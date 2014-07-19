@@ -18,6 +18,7 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
+import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.actions.EnvironmentAction;
 
 /**
@@ -30,6 +31,8 @@ import com.codesourcery.installer.actions.EnvironmentAction;
 public class PathAction extends EnvironmentAction {
 	/** Path environment variable name */
 	private final static String PATH_VARIABLE_NAME = "PATH";
+	/** Maximum length of PATH environment variable on Windows platform */
+	private final static int PATH_MAX_LENGTH_WINDOWS = 2048;
 	/** Paths */
 	private String[] paths;
 
@@ -49,6 +52,30 @@ public class PathAction extends EnvironmentAction {
 		super();
 
 		setPaths(paths);
+	}
+
+	/**
+	 * Checks if paths can be added to the PATH environment variable.
+	 * 
+	 * @param path Path to add
+	 * @return <code>true</code> if there is sufficient space to add the
+	 * paths to the PATH environment variable.
+	 * @throws UnsupportedOperationException if not supported
+	 * @throws CoreException on failure
+	 */
+	public static boolean checkPaths(String[] paths) throws UnsupportedOperationException, CoreException {
+		if (Installer.isWindows()) {
+			StringBuffer totalPath = new StringBuffer(readWindowsEnvironmentVariable(PATH_VARIABLE_NAME));
+			for (String path : paths) {
+				totalPath.append(File.pathSeparator);
+				totalPath.append(path);
+			}
+			
+			return (totalPath.toString().length() < PATH_MAX_LENGTH_WINDOWS);
+		}
+		else {
+			return true;
+		}
 	}
 	
 	/**

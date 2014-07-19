@@ -31,17 +31,22 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.URIUtil;
 import org.eclipse.equinox.internal.p2.core.helpers.CollectionUtils;
 import org.eclipse.equinox.internal.p2.core.helpers.LogHelper;
 import org.eclipse.equinox.internal.p2.transport.ecf.RepositoryTransport;
 import org.eclipse.equinox.p2.metadata.IVersionedId;
+import org.eclipse.equinox.p2.metadata.Version;
+import org.eclipse.equinox.p2.metadata.VersionRange;
 import org.eclipse.equinox.p2.metadata.VersionedId;
 import org.eclipse.osgi.util.NLS;
+import org.eclipse.swt.SWT;
 
 import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallPlatform.ShortcutFolder;
+import com.codesourcery.installer.IProductRange;
 import com.codesourcery.installer.InstallPageTitle;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LaunchItem;
@@ -91,7 +96,7 @@ public class InstallDescription implements IInstallDescription {
 	/** Product help link property */
 	public static final String PROP_PRODUCT_HELP = "eclipse.p2.productHelp";//$NON-NLS-1$
 	/** Root install location property */
-	public static final String PROP_ROOT_LOCATION = "eclipse.p2.rootLocation";//$NON-NLS-1$
+	public static final String PROP_ROOT_LOCATION_PREFIX = "eclipse.p2.rootLocation";//$NON-NLS-1$
 	/** Uninstall files property */
 	public static final String PROP_UNINSTALL_FILES = "eclipse.p2.uninstallFiles";//$NON-NLS-1$
 	/** Links property */
@@ -112,16 +117,10 @@ public class InstallDescription implements IInstallDescription {
 	public static final String PROP_TITLE_IMAGE = "eclipse.p2.titleImage";//$NON-NLS-1$
 	/** Installer wizard pages property */
 	public static final String PROP_WIZARD_PAGES = "eclipse.p2.wizardPages";//$NON-NLS-1$
-	/** Progress find regular expression property */
-	public static final String PROP_PROGRESS_FIND = "eclipse.p2.progressFind";//$NON-NLS-1$
-	/** Progress replace regular expression property */
-	public static final String PROP_PROGRESS_REPLACE = "eclipse.p2.progressReplace";//$NON-NLS-1$
+	/** Progress regular expression prefix */
+	public static final String PROP_PROGRESS_PREFIX = "eclipse.p2.progress";//$NON-NLS-1$
 	/** Installer modules property */
 	public static final String PROP_MODULES = "eclipse.p2.modules";//$NON-NLS-1$
-	/** Sort roots property */
-	public static final String PROP_SORT_ROOTS = "eclipse.p2.sortRoots";//$NON-NLS-1$
-	/** Sort optional roots property */
-	public static final String PROP_SORT_OPTIONAL_ROOTS = "eclipse.p2.sortOptionalRoots";//$NON-NLS-1$
 	/** Update sites property */
 	private static final String PROP_UPDATE = "eclipse.p2.update";//$NON-NLS-1$
 	/** Hide Components version property */
@@ -132,6 +131,22 @@ public class InstallDescription implements IInstallDescription {
 	public static final String PROP_WIZARD_NAVIGATION = "org.eclipse.p2.wizardNavigation";//$NON-NLS-1$
 	/** Install wizard page titles property */
 	public static final String PROP_WIZARD_PAGE_TITLES = "eclipse.p2.wizardPageTitles";//$NON-NLS-1$
+	/** Welcome text property */
+	public static final String PROP_WELCOME_TEXT = "eclipse.p2.welcomeText";//$NON-NLS-1$
+	/** Patch property */
+	public static final String PROP_PATCH = "eclipse.p2.patch";//$NON-NLS-1$
+	/** Requires property */
+	public static final String PROP_REQUIRES = "eclipse.p2.requires";//$NON-NLS-1$
+	/** Missing requirement expression property prefix */
+	public static final String PROP_MISSING_REQUIREMENT_PREFIX = "eclipse.p2.missingRequirement";//$NON-NLS-1$
+	/** Expression property find suffix */
+	public static final String PROP_FIND_SUFFIX = ".find";//$NON-NLS-1$
+	/** Expression property replace suffix */
+	public static final String PROP_REPLACE_SUFFIX = ".replace";//$NON-NLS-1$
+	/** Include all repositories property */
+	public static final String PROP_INCLUDE_ALL_REPOSITORIES = "eclipse.p2.includeAllRepositories";//$NON-NLS-1$
+	/** Use install registry property */
+	public static final String PROP_USE_INSTALL_REGISTRY = "eclipse.p2.useInstallRegistry";//$NON-NLS-1$
 		
 	/** Base location for installer */
 	private URI base;
@@ -161,8 +176,10 @@ public class InstallDescription implements IInstallDescription {
 	private String productName;
 	/** Product vendor */
 	private String productVendor;
+	/** Product original version text */
+	private String productVersionText;
 	/** Product version */
-	private String productVersion;
+	private Version productVersion;
 	/** Product help URL */
 	private String productHelp;
 	/** Required root installable units */
@@ -205,18 +222,26 @@ public class InstallDescription implements IInstallDescription {
 	private String[] progressReplacePatterns;
 	/** Active module identifiers */
 	private String[] moduleIDs;
-	/** <code>true</code> to sort required roots */
-	private boolean sortRoots;
-	/** <code>true</code> to sort optional roots */
-	private boolean sortOptionalRoots;
 	/** <code>true</code> to hide components version */
 	private boolean hideComponentsVersion = false;
 	/** <code>true</code> if add-ons require login */
 	private boolean addonsRequiresLogin;
 	/** Install wizard page navigation */
-	private PageNavigation pageNavigation;
+	private int pageNavigation;
 	/** Wizard page titles */
 	private InstallPageTitle[] pageTitles;
+	/** Text for wizard welcome page */
+	private String welcomeText;
+	/** Missing requirement find/replace regular expressions */
+	private String[][] missingRequirementExpressions;
+	/** <code>true</code> to include remote repositories during installation */
+	private boolean includeRemoteRepositories = false;
+	/** <code>true</code> if install is a patch */
+	private boolean patch;
+	/** Product ranges */
+	private IProductRange[] productRanges;
+	/** <code>true</code> to use install registry */
+	private boolean useInstallRegistry = true;
 
 	/**
 	 * Loads an install description.
@@ -284,23 +309,29 @@ public class InstallDescription implements IInstallDescription {
 			while (iter.hasNext()) {
 				Entry<String, String> entry = iter.next();
 				String value = entry.getValue();
+				int start = 0;
 				int index, index2;
 				// Start of variable
-				while ((index = value.indexOf('$')) != -1) {
-					if ((index + 1 < value.length()) && (value.charAt(index + 1) == '{')) {
-						index2 = value.indexOf('}', index);
-						if (index2 != -1) {
-							// Property to replace
-							String property = value.substring(index + 2, index2);
-							// Property value
-							String sub = properties.get(property);
-							// Replace variable
-							value = value.substring(0, index) + sub + value.substring(index2 + 1);
-							entry.setValue(value);
+				while ((index = value.indexOf('$', start)) != -1) {
+					if (index + 1 < value.length()) {
+						if (value.charAt(index + 1) == '{') {
+							index2 = value.indexOf('}', index);
+							if (index2 != -1) {
+								// Property to replace
+								String property = value.substring(index + 2, index2);
+								// Property value
+								String sub = properties.get(property);
+								// Replace variable
+								value = value.substring(0, index) + sub + value.substring(index2 + 1);
+								entry.setValue(value);
+							}
+							else {
+								Installer.log("Error in resolving macros: No matching \"}\" for \"${\".");
+								break;
+							}
 						}
-						else {
-							Installer.log("Error in resolving macros: No matching \"}\" for \"${\".");
-							break;
+						else if (index + 1 < value.length()){
+							start = index + 1;
 						}
 					}
 					else {
@@ -412,16 +443,6 @@ public class InstallDescription implements IInstallDescription {
 		if (property != null)
 			setRemoveProfile(property.trim().toLowerCase().equals("true"));
 
-		// Sort roots
-		property = properties.get(PROP_SORT_ROOTS);
-		if (property != null)
-			setSortRequiredComponents(property.trim().toLowerCase().equals("true"));
-
-		// Sort optional roots
-		property = properties.get(PROP_SORT_OPTIONAL_ROOTS);
-		if (property != null)
-			setSortOptionalComponents(property.trim().toLowerCase().equals("true"));
-
 		// Product identifier
 		property = properties.get(PROP_PRODUCT_ID);
 		if (property != null)
@@ -440,7 +461,7 @@ public class InstallDescription implements IInstallDescription {
 		// Product version
 		property = properties.get(PROP_PRODUCT_VERSION);
 		if (property != null)
-			setProductVersion(property);
+			setProductVersionString(property);
 		
 		// Product help
 		property = properties.get(PROP_PRODUCT_HELP);
@@ -578,8 +599,9 @@ public class InstallDescription implements IInstallDescription {
 			setUninstallFiles(uninstallFiles);
 			setUninstallerName(uninstallerFileName);
 		}
+
 		// Root location
-		property = properties.get(PROP_ROOT_LOCATION);
+		property = readPlatformProperty(PROP_ROOT_LOCATION_PREFIX);
 		if (property != null) {
 			setRootLocation(getPath(property));
 		}
@@ -666,13 +688,18 @@ public class InstallDescription implements IInstallDescription {
 		}
 		
 		// Title image
-		property = properties.get(PROP_TITLE_IMAGE);
-		if (property != null) {
-			URI titleImageLocation = getURI(property, getBase());
-			File imageFile = URIUtil.toFile(titleImageLocation);
-			if (imageFile.exists()) {
-				setTitleImage(new Path(imageFile.getAbsolutePath()));
+		try {
+			property = properties.get(PROP_TITLE_IMAGE);
+			if (property != null) {
+				URI titleImageLocation = getURI(property, getBase());
+				File imageFile = URIUtil.toFile(titleImageLocation);
+				if ((imageFile != null) && imageFile.exists()) {
+					setTitleImage(new Path(imageFile.getAbsolutePath()));
+				}
 			}
+		}
+		catch (Exception e) {
+			Installer.log(e);
 		}
 		
 		// Window title
@@ -707,26 +734,21 @@ public class InstallDescription implements IInstallDescription {
 		}
 
 		// P2 progress find/replace
-		if (properties.get(PROP_PROGRESS_FIND + "0") != null) {
-			int index = 0;
-			ArrayList<String> findPatterns = new ArrayList<String>();
-			ArrayList<String> replacePatterns = new ArrayList<String>();
-			for (;;) {
-				String indexPostfix = Integer.toString(index);
-				// Find regular expression
-				String find = properties.get(PROP_PROGRESS_FIND + indexPostfix);
-				if (find == null)
-					break;
-				// Corresponding replace expression
-				String replace = properties.get(PROP_PROGRESS_REPLACE + indexPostfix);
-				if (replace == null)
-					break;
-				findPatterns.add(find);
-				replacePatterns.add(replace);
-				index ++;
+		String[] find = readIndexedProperties(PROP_PROGRESS_PREFIX + PROP_FIND_SUFFIX);
+		if (find != null) {
+			String[] replace = readIndexedProperties(PROP_PROGRESS_PREFIX + PROP_REPLACE_SUFFIX);
+			if ((replace != null) && (replace.length == find.length)) {
+				setProgressPatterns(find, replace);
 			}
-			setProgressFindPatterns(findPatterns.toArray(new String[findPatterns.size()]));
-			setProgressReplacePatterns(replacePatterns.toArray(new String[findPatterns.size()]));
+		}
+		
+		// P2 missing requirement message find/replace expressions
+		find = readIndexedProperties(PROP_MISSING_REQUIREMENT_PREFIX + PROP_FIND_SUFFIX);
+		if (find != null) {
+			String[] replace = readIndexedProperties(PROP_MISSING_REQUIREMENT_PREFIX + PROP_REPLACE_SUFFIX);
+			if ((replace != null) && (replace.length == find.length)) {
+				setMissingRequirementExpressions(find, replace);
+			}
 		}
 		
 		property = properties.get(PROP_MODULES);
@@ -750,14 +772,129 @@ public class InstallDescription implements IInstallDescription {
 		// Wizard page navigation
 		property = properties.get(PROP_WIZARD_NAVIGATION);
 		if (property != null) {
-			PageNavigation navigation = PageNavigation.NONE;
+			int navigation = SWT.NONE;
 			property = property.trim().toLowerCase();
 			if (property.equals("top"))
-				navigation = PageNavigation.TOP;
+				navigation = SWT.TOP;
 			else if (property.equals("left"))
-				navigation = PageNavigation.LEFT;
+				navigation = SWT.LEFT;
 			setPageNavigation(navigation);
 		}
+		
+		// Welcome text
+		property = properties.get(PROP_WELCOME_TEXT);
+		if (property != null) {
+			setWelcomeText(property);
+		}
+
+		// Patch
+		property = properties.get(PROP_PATCH);
+		if (property != null) {
+			setPatch(property.trim().equals(Boolean.TRUE.toString()));
+		}
+		
+		// Requires
+		property = properties.get(PROP_REQUIRES);
+		if (property != null) {
+			try {
+				ArrayList<IProductRange> productRanges = new ArrayList<IProductRange>();
+				String[] products = InstallUtils.getArrayFromString(property, ";");
+				for (String product : products) {
+					String[] parts = InstallUtils.getArrayFromString(product, ":");
+					if (parts.length > 0) {
+						String productId = parts[0];
+						VersionRange productRange = null;
+						if (parts.length > 1) {
+							productRange = InstallUtils.createVersionRange(parts[1]);
+						}
+						productRanges.add(new ProductRange(productId, productRange));
+					}
+				}
+				setRequires(productRanges.toArray(new IProductRange[productRanges.size()]));
+			}
+			catch (Exception e) {
+				Installer.log(e);
+			}
+		}
+
+		// Include remote repositories
+		property = properties.get(PROP_INCLUDE_ALL_REPOSITORIES);
+		if (property != null)
+			setIncludeAllRepositories(property.trim().toLowerCase().equals(Boolean.TRUE.toString()));
+
+		// Use install registry
+		property = properties.get(PROP_USE_INSTALL_REGISTRY);
+		if (property != null)
+			setUseInstallRegistry(property.trim().toLowerCase().equals(Boolean.TRUE.toString()));
+	}
+	
+	/**
+	 * Reads indexed property values.  The format of the property names should
+	 * be:
+	 *   <prefix>.0=
+	 *   <prefix>.1=
+	 *   ...
+	 * 
+	 * @param prefix Property name prefix
+	 * @return Property value or <code>null</code> if property is not found
+	 */
+	private String[] readIndexedProperties(String prefix) {
+		String[] values = null;
+		
+		if (properties.get(prefix + ".0") != null) {
+			int index = 0;
+			ArrayList<String> patterns = new ArrayList<String>();
+			for (;;) {
+				String indexPostfix = Integer.toString(index);
+				String value = properties.get(prefix + "." + indexPostfix);
+				if (value == null)
+					break;
+				patterns.add(value);
+				index ++;
+			}
+			values = patterns.toArray(new String[patterns.size()]);
+		}
+		return values;
+	}
+
+	/**
+	 * Reads an operating specific and/or architecture specific property value.
+	 * This method returns a value for a property that can optionally include
+	 * the operating system and/or architecture in the name.  It will attempt
+	 * to read properties with names in the following order:
+	 * 
+	 * <ul>
+	 * <li>prefix.os.arch</li>
+	 * <li>prefix.os</li>
+	 * <li>prefix<li>
+	 * </ul>
+	 * 
+	 * @param prefix Prefix for the property name
+	 * @return Property value or <code>null</code>
+	 */
+	private String readPlatformProperty(String prefix) {
+		String value = null;
+		
+		String os = Platform.getOS();
+		if (!os.equals(Platform.OS_UNKNOWN)) {
+			String osProperty = prefix + "." + os;
+			String archProperty = osProperty + "." + Platform.getOSArch();
+			// Attempt to get value for property that includes operating system 
+			// and architecture in the name
+			value = properties.get(archProperty);
+			// If no property is defined, attempt to get value for property with 
+			// only operating system in the name
+			if (value == null) {
+				value = properties.get(osProperty);
+			}
+		}
+		// If OS or OS & ARCH property was not found, get the default property
+		// value
+		if (value == null) {
+			value = properties.get(prefix);
+		}
+		
+		return value;
 	}
 
 	/**
@@ -1110,12 +1247,18 @@ public class InstallDescription implements IInstallDescription {
 	}
 
 	@Override
-	public void setProductVersion(String value) {
-		productVersion = value;
+	public void setProductVersionString(String value) {
+		productVersionText = value;
+		productVersion = InstallUtils.createVersion(value);
 	}
 	
 	@Override
-	public String getProductVersion() {
+	public String getProductVersionString() {
+		return productVersionText;
+	}
+
+	@Override
+	public Version getProductVersion() {
 		return productVersion;
 	}
 
@@ -1137,26 +1280,6 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public String getProfileName() {
 		return profileName;
-	}
-
-	@Override
-	public void setSortRequiredComponents(boolean value) {
-		this.sortRoots = value;
-	}
-
-	@Override
-	public void setSortOptionalComponents(boolean value) {
-		this.sortOptionalRoots = value;
-	}
-	
-	@Override
-	public boolean getSortRequiredComponents() {
-		return sortRoots;
-	}
-	
-	@Override
-	public boolean getSortOptionalComponents() {
-		return sortOptionalRoots;
 	}
 
 	@Override
@@ -1290,18 +1413,14 @@ public class InstallDescription implements IInstallDescription {
 	}
 	
 	@Override
-	public void setProgressFindPatterns(String[] value) {
-		this.progressFindPatterns = value;
+	public void setProgressPatterns(String[] find, String[] replace) {
+		this.progressFindPatterns = find;
+		this.progressReplacePatterns = replace;
 	}
 	
 	@Override
 	public String[] getProgressFindPatterns() {
 		return progressFindPatterns;
-	}
-
-	@Override
-	public void setProgressReplacePatterns(String[] value) {
-		this.progressReplacePatterns = value;
 	}
 
 	@Override
@@ -1330,12 +1449,12 @@ public class InstallDescription implements IInstallDescription {
 	}
 
 	@Override
-	public void setPageNavigation(PageNavigation pageNavigation) {
+	public void setPageNavigation(int pageNavigation) {
 		this.pageNavigation = pageNavigation;
 	}
 
 	@Override
-	public PageNavigation getPageNavigation() {
+	public int getPageNavigation() {
 		return pageNavigation;
 	}
 
@@ -1357,5 +1476,69 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public InstallPageTitle[] getPageTitles() {
 		return pageTitles;
+	}
+
+	@Override
+	public void setWelcomeText(String welcomeText) {
+		this.welcomeText = welcomeText;
+	}
+
+	@Override
+	public String getWelcomeText() {
+		return welcomeText;
+	}
+
+	@Override
+	public void setMissingRequirementExpressions(String[] find, String[] replace) {
+		missingRequirementExpressions = new String[find.length][2];
+		for (int index = 0; index < find.length; index ++) {
+			missingRequirementExpressions[index][0] = find[index];
+			missingRequirementExpressions[index][1] = replace[index];
+		}
+	}
+
+	@Override
+	public String[][] getMissingRequirementExpressions() {
+		return missingRequirementExpressions;
+	}
+
+	@Override
+	public void setIncludeAllRepositories(boolean include) {
+		this.includeRemoteRepositories = include;
+	}
+
+	@Override
+	public boolean getIncludeAllRepositories() {
+		return includeRemoteRepositories;
+	}
+
+	@Override
+	public void setPatch(boolean patch) {
+		this.patch = patch;
+	}
+
+	@Override
+	public boolean getPatch() {
+		return patch;
+	}
+
+	@Override
+	public void setRequires(IProductRange[] range) {
+		this.productRanges = range;
+	}
+
+	@Override
+	public IProductRange[] getRequires() {
+		return productRanges;
+	}
+
+	@Override
+	public void setUseInstallRegistry(boolean useRegistry) {
+		this.useInstallRegistry = useRegistry;
+	}
+
+	@Override
+	public boolean getUseInstallRegistry() {
+		return useInstallRegistry;
 	}
 }

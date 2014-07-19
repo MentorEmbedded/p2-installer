@@ -11,7 +11,6 @@
 package com.codesourcery.internal.installer.ui;
 
 import com.codesourcery.installer.Installer;
-import com.codesourcery.internal.installer.IInstallContext;
 import com.codesourcery.internal.installer.InstallOperation;
 
 /**
@@ -23,7 +22,7 @@ public class GUIInstallOperation extends InstallOperation {
 	private boolean stopped = false;
 	
 	@Override
-	public synchronized void run(IInstallContext context) {
+	public synchronized void run() {
 		if (stopped || started)
 			return;
 		started = true;
@@ -32,7 +31,7 @@ public class GUIInstallOperation extends InstallOperation {
 		Installer.getDefault().initializeImages();
 
 		// Open wizard dialog
-		InstallWizard wizard = new InstallWizard(context);
+		InstallWizard wizard = new InstallWizard();
 		InstallWizardDialog dialog = new InstallWizardDialog(wizard);
 		dialog.open();
 		

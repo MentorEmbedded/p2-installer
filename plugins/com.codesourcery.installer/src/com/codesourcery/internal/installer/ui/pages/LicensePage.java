@@ -13,13 +13,10 @@ package com.codesourcery.internal.installer.ui.pages;
 import java.util.ArrayList;
 import java.util.Collection;
 
-import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.equinox.p2.metadata.ILicense;
-import org.eclipse.equinox.p2.metadata.IVersionedId;
-import org.eclipse.equinox.p2.repository.metadata.IMetadataRepositoryManager;
 import org.eclipse.jface.viewers.ArrayContentProvider;
 import org.eclipse.jface.viewers.ISelectionChangedListener;
 import org.eclipse.jface.viewers.IStructuredSelection;
@@ -39,13 +36,12 @@ import org.eclipse.swt.widgets.Control;
 
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
+import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LicenseDescriptor;
 import com.codesourcery.installer.console.ConsoleYesNoPrompter;
 import com.codesourcery.installer.ui.IInstallPageConstants;
-import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.InstallMessages;
-import com.codesourcery.internal.installer.InstallUtils;
 import com.codesourcery.internal.installer.RepositoryManager;
 
 /**
@@ -117,7 +113,7 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 	}
 	
 	@Override
-	public Control createLicenseArea(Composite parent) {
+	public Control createInformationArea(Composite parent) {
 		// Main area
 		mainArea = new Composite(parent, SWT.NONE);
 		mainArea.setLayoutData(new GridData(GridData.FILL_BOTH));
@@ -139,7 +135,7 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 		left.setLayoutData(gd);
 
 		// Create license information area
-		super.createLicenseArea(area);
+		super.createInformationArea(area);
 
 		// License list viewer
 		list = new ListViewer(left, SWT.READ_ONLY | SWT.BORDER | SWT.V_SCROLL | SWT.H_SCROLL);
@@ -235,26 +231,23 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 			}
 		}
 		
-		// Add IU licenses
-		if (data != null) {
-			IVersionedId[] versions = (IVersionedId[])data.getProperty(IInstallConstants.PROPERTY_REQUIRED_ROOTS);
-			if (versions != null) {
-				IMetadataRepositoryManager manager = (IMetadataRepositoryManager)RepositoryManager.getDefault().getAgent().getService(IMetadataRepositoryManager.SERVICE_NAME);
-				for (IVersionedId version : versions) {
-					try {
-						IInstallableUnit unit = InstallUtils.findUnit(manager, version);
-						if (unit != null) {
-							Collection<ILicense> iuLicenses = unit.getLicenses(null);
-							for (ILicense iuLicense : iuLicenses) {
-								LicenseDescriptor license = new LicenseDescriptor(iuLicense.getBody(), 
-										unit.getProperty(IInstallableUnit.PROP_NAME, null));
-								
-								licenses.add(license);
-							}
-						}
-					} catch (CoreException e) {
-						Installer.log(e);
+		// Add IU licenses if enabled
+		if (Installer.getDefault().getInstallManager().getInstallDescription().getLicenseIU() && (data != null)) {
+			ArrayList<IInstallableUnit> toAdd = new ArrayList<IInstallableUnit>();
+			ArrayList<IInstallableUnit> toRemove = new ArrayList<IInstallableUnit>();
+			RepositoryManager.getDefault().getInstallUnits(toAdd, toRemove);
+			for (IInstallableUnit unit : toAdd) {
+				try {
+					Collection<ILicense> iuLicenses = unit.getLicenses(null);
+					for (ILicense iuLicense : iuLicenses) {
+						LicenseDescriptor license = new LicenseDescriptor(iuLicense.getBody(), 
+								unit.getProperty(IInstallableUnit.PROP_NAME, null));
+						
+						licenses.add(license);
 					}
+				}
+				catch (Exception e) {
+					Installer.log(e);
 				}
 			}
 		}
@@ -262,7 +255,7 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 		// Set all licenses
 		setAllLicenses(licenses.toArray(new LicenseDescriptor[licenses.size()]));
 		
-		if (getShell() != null) {
+		if (!isConsoleMode()) {
 			if (!licenses.isEmpty())
 				firstLicense = licenses.get(0);
 			list.setInput(getAllLicenses());
@@ -277,7 +270,7 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 		updateLicenses(data);
 
 		// Not running in console mode
-		if (getShell() != null) {
+		if (!isConsoleMode()) {
 			// No licenses
 			if (getAllLicenses().length == 0) {
 				setInformationTitle(InstallMessages.LicensePageNoComponents);
@@ -346,5 +339,11 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 			licenseInfo.append(licenseText);
 		}
 		return licenseInfo.toString();
+	}
+
+	@Override
+	public boolean isSupported() {
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		return (mode.isInstall() && (!mode.isUpdate() || mode.isPatch()));
 	}
 }

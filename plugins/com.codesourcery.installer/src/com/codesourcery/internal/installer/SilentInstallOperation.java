@@ -15,6 +15,7 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Status;
 
+import com.codesourcery.installer.IInstallManifest;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.Installer;
 
@@ -29,32 +30,33 @@ public class SilentInstallOperation extends InstallOperation {
 	}
 
 	@Override
-	public void run(IInstallContext context) {
+	public void run() {
 		IStatus status = Status.OK_STATUS;
+		
 		try {
 			// Install
-			if (context.isInstall()) {
+			if (getInstallManager().getInstallMode().isInstall()) {
 				// Installation data
 				InstallData installData = new InstallData();
 	
-				checkStatus(ContributorRegistry.getDefault().verifyInstallLocation(context.getInstallDescription()));
+				checkStatus(ContributorRegistry.getDefault().verifyInstallLocation(getInstallManager().getInstallDescription()));
 				
 				// Set default install location
-				LocationsManager.getDefault().setInstallLocation(context.getInstallDescription().getRootLocation());
+				getInstallManager().setInstallLocation(getInstallManager().getInstallDescription().getRootLocation());
 				// Wait for repository load
 				RepositoryManager.getDefault().waitForLoad();
 				
 				// Perform installation.
-				context.install(installData, new NullProgressMonitor());
+				getInstallManager().install(installData, new NullProgressMonitor());
 			}
 			// Uninstall
 			else {
-				InstallManifest manifest = context.getInstallManifest();
+				IInstallManifest manifest = getInstallManager().getInstallManifest();
 				
 				// Get the installed products
 				IInstallProduct[] products = manifest.getProducts();
 				// Uninstall all products
-				context.uninstall(products, new NullProgressMonitor());
+				getInstallManager().uninstall(products, new NullProgressMonitor());
 			}
 		}
 		// Install aborted

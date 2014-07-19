@@ -10,7 +10,6 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer.actions;
 
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -21,32 +20,24 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.equinox.internal.p2.touchpoint.eclipse.actions.ActionConstants;
 import org.eclipse.equinox.internal.p2.touchpoint.eclipse.actions.AddRepositoryAction;
 import org.eclipse.equinox.internal.provisional.p2.director.IDirector;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 import org.eclipse.equinox.p2.engine.IProfile;
-import org.eclipse.equinox.p2.engine.IProfileRegistry;
 import org.eclipse.equinox.p2.engine.ProvisioningContext;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.equinox.p2.metadata.IVersionedId;
-import org.eclipse.equinox.p2.metadata.Version;
-import org.eclipse.equinox.p2.metadata.VersionedId;
 import org.eclipse.equinox.p2.planner.IPlanner;
 import org.eclipse.equinox.p2.planner.IProfileChangeRequest;
 import org.eclipse.equinox.p2.query.IQuery;
 import org.eclipse.equinox.p2.query.IQueryResult;
 import org.eclipse.equinox.p2.query.QueryUtil;
 import org.eclipse.equinox.p2.repository.IRepository;
-import org.eclipse.equinox.p2.repository.metadata.IMetadataRepositoryManager;
-import org.eclipse.osgi.util.NLS;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceReference;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
 
 import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.IInstallProduct;
@@ -54,7 +45,6 @@ import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.UpdateSite;
 import com.codesourcery.installer.actions.AbstractInstallAction;
 import com.codesourcery.internal.installer.InstallMessages;
-import com.codesourcery.internal.installer.InstallUtils;
 import com.codesourcery.internal.installer.ProvisioningProgressMonitor;
 import com.codesourcery.internal.installer.RepositoryManager;
 
@@ -63,25 +53,17 @@ import com.codesourcery.internal.installer.RepositoryManager;
  */
 @SuppressWarnings("restriction") // Accesses internal p2 API's
 public class InstallIUAction extends AbstractInstallAction {
+	/** Action identifier */
 	private static final String ID = "com.codesourcery.installer.installIUAction";
-	private static final String ELEMENT_ROOTS = "roots";
-	private static final String ELEMENT_ROOT = "root";
+	/** Profile attribute */
 	private static final String ATTRIBUTE_PROFILE = "profile";
-	private static final String ATTRIBUTE_ID = "id";
-	private static final String ATTRIBUTE_VERSION = "version";
 	
-	/** Roots to install */
-	private IVersionedId[] rootsToInstall;
-	/** Roots to uninstall */
-	private IVersionedId[] rootsToUninstall;
-	/** <code>true</code> if first install */
-	private boolean isFirstInstall = false;
+	/** Units to install */
+	private IInstallableUnit[] unitsToInstall;
+	/** Units to uninstall */
+	private IInstallableUnit[] unitsToUninstall;
 	/** p2 director */
 	private IDirector director;
-	/** Metadata repository manager */
-	private IMetadataRepositoryManager metadataRepoMan;
-	/** Profile registry */
-	private IProfileRegistry profileRegistry;
 	/** Profile for operation */
 	private String profileName;
 	/** Update sites */
@@ -107,21 +89,20 @@ public class InstallIUAction extends AbstractInstallAction {
 	 * @param profileProperties Profile properties
 	 * @param productName Product name
 	 * @param updateSites Update sites or <code>null</code>
-	 * @param rootsToInstall Roots to install or <code>null</code> to remove
-	 * the entire profile (and all roots).
-	 * @param rootsToUninstall Roots to uninstall or <code>null</code>
+	 * @param unitsToInstall Roots to install or <code>null</code>
+	 * @param unitsToUninstall Roots to uninstall or <code>null</code>
 	 * @param progressFindPatterns P2 progress regular expression find patterns
 	 * @param progressReplacePatterns P2 progress regular expression replacement patterns
 	 */
 	public InstallIUAction(String profileName, Map<String, String> profileProperties,
-			UpdateSite[] updateSites, IVersionedId[] rootsToInstall, IVersionedId[] rootsToUninstall, 
+			UpdateSite[] updateSites, IInstallableUnit[] unitsToInstall, IInstallableUnit[] unitsToUninstall, 
 			String[] progressFindPatterns, String[] progressReplacePatterns) {
 		super(ID);
 		
 		this.profileName = profileName;
 		this.updateSites = updateSites;
-		this.rootsToInstall = rootsToInstall;
-		this.rootsToUninstall = rootsToUninstall;
+		this.unitsToInstall = unitsToInstall;
+		this.unitsToUninstall = unitsToUninstall;
 		this.profileProperties = profileProperties;
 		this.progressFindPatterns = progressFindPatterns;
 		this.progressReplacePatterns = progressReplacePatterns;
@@ -141,8 +122,8 @@ public class InstallIUAction extends AbstractInstallAction {
 	 * 
 	 * @return Roots or <code>null</code>
 	 */
-	public IVersionedId[] getRootsToInstall() {
-		return rootsToInstall;
+	public IInstallableUnit[] getRootsToInstall() {
+		return unitsToInstall;
 	}
 	
 	/**
@@ -150,8 +131,8 @@ public class InstallIUAction extends AbstractInstallAction {
 	 * 
 	 * @return Roots or <code>null</code>
 	 */
-	public IVersionedId[] getRootsToUninstall() {
-		return rootsToUninstall;
+	public IInstallableUnit[] getRootsToUninstall() {
+		return unitsToUninstall;
 	}
 	
 	/**
@@ -173,24 +154,12 @@ public class InstallIUAction extends AbstractInstallAction {
 	}
 	
 	/**
-	 * Returns if this is the first
-	 * installation.
-	 * 
-	 * @return <code>true</code> if first install
-	 */
-	public boolean isFirstInstall() {
-		return isFirstInstall;
-	}
-
-	/**
 	 * Initializes agent services.
 	 * 
 	 * @param agent Agent
 	 */
 	private void initServices(IProvisioningAgent agent) {
 		director = (IDirector)agent.getService(IDirector.SERVICE_NAME);
-		metadataRepoMan = (IMetadataRepositoryManager)agent.getService(IMetadataRepositoryManager.SERVICE_NAME);
-		profileRegistry = (IProfileRegistry)agent.getService(IProfileRegistry.SERVICE_NAME);
 	}
 	
 	@Override
@@ -199,138 +168,117 @@ public class InstallIUAction extends AbstractInstallAction {
 	}
 	
 	@Override
-	public void run(IProvisioningAgent agent, IInstallProduct product, IInstallMode mode, IProgressMonitor pm) throws CoreException {
+	public void run(IProvisioningAgent agent, IInstallProduct product, IInstallMode mode, IProgressMonitor monitor) throws CoreException {
 		try {
-			SubMonitor monitor = SubMonitor.convert(pm, InstallMessages.Op_Preparing, 100);
-
 			// Initialize services
 			initServices(agent);
 			
-			// Create or get the profile
-			IProfile profile = profileRegistry.getProfile(getProfileName());
-			isFirstInstall = (profile == null);
-			profile = RepositoryManager.getDefault().createProfile(getProfileName());
 			// Get the planner
 			IPlanner planner = (IPlanner)agent.getService(IPlanner.SERVICE_NAME);
 
 			IStatus status = null;
 			
-			// Install action
+			// Set task name
+			/*
+			String taskName;
 			if (mode.isInstall()) {
-				// Get the installable units to install
-				ArrayList<IInstallableUnit> toInstall = new ArrayList<IInstallableUnit>();
-				for (IVersionedId id : getRootsToInstall()) {
-					IInstallableUnit iu = InstallUtils.findUnitAll(metadataRepoMan, id);
-					if (iu != null) {
-						monitor.setTaskName(NLS.bind(InstallMessages.AddingInstallUnit0, iu.getId() + " " + iu.getVersion().toString()));
-						toInstall.add(iu);
-					}
-				}
-	
-				// Set up provisioning context for local repositories
-				// Without a provisioning context, online repositories will
-				// be included in the operation.
-				ProvisioningContext context = new ProvisioningContext(agent);
-				URI[] repositories = RepositoryManager.getDefault().getRepositoryLocations();
-				context.setArtifactRepositories(repositories);
-				context.setMetadataRepositories(repositories);
+				if (mode.isUpdate() | mode.isUpgrade())
+					taskName = NLS.bind(InstallMessages.Op_Updating0, product.getName());
+				else
+					taskName = NLS.bind(InstallMessages.Op_Installing0, product.getName());
+			}
+			else {
+				taskName = NLS.bind(InstallMessages.Op_Uninstalling0, product.getName());
+			}
+			monitor.setTaskName(taskName);
+			*/
+			
+			// Units to add
+			ArrayList<IInstallableUnit> toAdd = new ArrayList<IInstallableUnit>();
+			if (getRootsToInstall() != null) {
+				toAdd.addAll(Arrays.asList(getRootsToInstall()));
+			}
 
+			// Units to remove
+			ArrayList<IInstallableUnit> toRemove = new ArrayList<IInstallableUnit>();
+			if (getRootsToUninstall() != null) {
+				toRemove.addAll(Arrays.asList(getRootsToUninstall()));
+			}
+			
+			// Install
+			if (mode.isInstall()) {
+				// Create or get the profile
+				IProfile profile = RepositoryManager.getDefault().getInstallProfile();
+				// Provisioning context
+				ProvisioningContext context = RepositoryManager.getDefault().getProvisioningContext();
+				// Provision the request
 				IProfileChangeRequest request = planner.createChangeRequest(profile);
-				// First install
-				if (isFirstInstall) {
-					monitor.setTaskName(NLS.bind(InstallMessages.Op_Installing0, getProfileName()));
-					
-					// Install
-					request.addAll(toInstall);
-					status = director.provision(request, context, new ProvisioningProgressMonitor(monitor.newChild(90), 
-							progressFindPatterns, progressReplacePatterns));
-
-					// Add update sites
-					UpdateSite[] updateSites = getUpdateSites();
-					if (updateSites != null) {
-						for (UpdateSite updateSite : updateSites) {
-							AddRepositoryAction action = new AddRepositoryAction();
-							HashMap<String, Object> params = new HashMap<String, Object>();
-							params.put("agent", agent);
-							params.put(ActionConstants.PARM_PROFILE, profile);
-							params.put(ActionConstants.PARM_REPOSITORY_LOCATION, updateSite.getLocation());
-							params.put(ActionConstants.PARM_REPOSITORY_TYPE, Integer.toString(IRepository.TYPE_METADATA));
-							if (updateSite.getName() != null)
-								params.put(ActionConstants.PARM_REPOSITORY_NICKNAME, updateSite.getName());
-							action.execute(params);
-							params.put(ActionConstants.PARM_REPOSITORY_TYPE, Integer.toString(IRepository.TYPE_ARTIFACT));
-							action.execute(params);
-						}
+				if (!toAdd.isEmpty())
+					request.addAll(toAdd);
+				if (!toRemove.isEmpty())
+					request.removeAll(toRemove);
+				ProvisioningProgressMonitor provisioningMonitor = new ProvisioningProgressMonitor(monitor, 
+						progressFindPatterns, progressReplacePatterns);
+				status = director.provision(request, context, provisioningMonitor);
+	
+				if (status.isOK()) {
+					// Add units to product
+					for (IInstallableUnit unit : toAdd) {
+						product.addInstallUnit(unit);
 					}
-				}
-				// Upgrade
-				else {
-					monitor.setTaskName(NLS.bind(InstallMessages.Op_Updating0, product.getName()));
-
-					// If upgrading an existing product, remove existing roots
-					if (mode.isUpgrade()) {
-						IVersionedId[] rootsToUninstall = getRootsToUninstall();
-						// Remove selected roots
-						if (rootsToUninstall != null)
-						{
-							if (rootsToUninstall != null) {
-								for (IVersionedId rootToUninstall : rootsToUninstall) {
-									monitor.setTaskName(NLS.bind(InstallMessages.RemovingInstallUnit0, rootToUninstall.getId() + " " + rootToUninstall.getVersion().toString()));
-								}
-								
-								IInstallableUnit[] unitsToRemove = InstallUtils.getUnitsFromProfile(profile, rootsToUninstall);
-								request.removeAll(Arrays.asList(unitsToRemove));
-							}
-						}
-						// Remove entire profile
-						else {
-							IQueryResult<IInstallableUnit> query = profile.query(QueryUtil.createIUAnyQuery(), null);
-							Iterator<IInstallableUnit> i = query.iterator();
-							ArrayList<IInstallableUnit> removes = new ArrayList<IInstallableUnit>();
-							while (i.hasNext()) {
-								removes.add(i.next());
-							}
-							request.removeAll(removes);
-						}
+					// Remove units from product
+					for (IInstallableUnit unit : toRemove) {
+						product.removeInstallUnit(unit);
 					}
 					
-					// Add new install units
-					request.addAll(toInstall);
-					
-					
-					// Provision
-					status = director.provision(request, context, new ProvisioningProgressMonitor(monitor.newChild(90), 
-							progressFindPatterns, progressReplacePatterns));
+					// Add any update sites
+					if (!mode.isUpdate() && !mode.isUpgrade()) {
+						UpdateSite[] updateSites = getUpdateSites();
+						if (updateSites != null) {
+							for (UpdateSite updateSite : updateSites) {
+								AddRepositoryAction action = new AddRepositoryAction();
+								HashMap<String, Object> params = new HashMap<String, Object>();
+								params.put("agent", agent);
+								params.put(ActionConstants.PARM_PROFILE, profile);
+								params.put(ActionConstants.PARM_REPOSITORY_LOCATION, updateSite.getLocation());
+								params.put(ActionConstants.PARM_REPOSITORY_TYPE, Integer.toString(IRepository.TYPE_METADATA));
+								if (updateSite.getName() != null)
+									params.put(ActionConstants.PARM_REPOSITORY_NICKNAME, updateSite.getName());
+								action.execute(params);
+								params.put(ActionConstants.PARM_REPOSITORY_TYPE, Integer.toString(IRepository.TYPE_ARTIFACT));
+								action.execute(params);
+							}
+						}
+					}
 				}
 			}
-			// Uninstall action
+			// Uninstall
 			else {
+				// Get profile
+				IProfile profile = RepositoryManager.getDefault().getProfile(getProfileName());
+				
 				// This action does not need to run for a root uninstallation
 				// because the entire product directory is being removed.
 				if (!mode.isRootUninstall()) {
+					IVersionedId[] productUnits = product.getInstallUnits();
+					
 					// Get installable units to uninstall
-					ArrayList<IInstallableUnit> toUninstall = new ArrayList<IInstallableUnit>();
-					for (IVersionedId id : getRootsToInstall()) {
-						IQuery<IInstallableUnit> query = QueryUtil.createIUQuery(id);
+					for (IVersionedId unit : productUnits) {
+						IQuery<IInstallableUnit> query = QueryUtil.createIUQuery(unit);
 						IQueryResult<IInstallableUnit> roots = profile.query(query, new NullProgressMonitor());
 						Iterator<IInstallableUnit> iter = roots.iterator();
 						while (iter.hasNext()) {
 							IInstallableUnit iu = iter.next();
 	
-							monitor.setTaskName(NLS.bind(InstallMessages.RemovingInstallUnit0, iu.getId() + " " + iu.getVersion().toString()));
-							toUninstall.add(iu);
+							//monitor.setTaskName(NLS.bind(InstallMessages.RemovingInstallUnit0, iu.getId() + " " + iu.getVersion().toString()));
+							toRemove.add(iu);
 						}
 					}
 	
 					IProfileChangeRequest request = planner.createChangeRequest(profile);
-					request.removeAll(toUninstall);
-					status = director.provision(request, null, new ProvisioningProgressMonitor(monitor.newChild(100), 
+					request.removeAll(toRemove);
+					status = director.provision(request, null, new ProvisioningProgressMonitor(monitor, 
 							progressFindPatterns, progressReplacePatterns));
-					
-					// Remove the profile
-					if (status.isOK() && (rootsToUninstall == null)) {
-						removeProfile(profile.getProfileId());
-					}
 				}
 			}
 			
@@ -343,55 +291,20 @@ public class InstallIUAction extends AbstractInstallAction {
 			else
 				Installer.fail(InstallMessages.Error_FailedToInstall, e);
 		}
+		finally {
+			monitor.done();
+		}
 	}
 
 	@Override
 	public void save(Document document, Element node) throws CoreException {
-		Element element = document.createElement(ELEMENT_ROOTS);
-		node.appendChild(element);
-		element.setAttribute(ATTRIBUTE_PROFILE, getProfileName());
-		for (IVersionedId root : rootsToInstall) {
-			Element rootElement = document.createElement(ELEMENT_ROOT);
-			element.appendChild(rootElement);
-			rootElement.setAttribute(ATTRIBUTE_ID, root.getId());
-			String version = root.getVersion().getOriginal();
-			if (version != null) {
-				rootElement.setAttribute(ATTRIBUTE_VERSION, version);
-			}
-		}
+		node.setAttribute(ATTRIBUTE_PROFILE, getProfileName());
 	}
 
 	@Override
 	public void load(Element element) throws CoreException {
-		ArrayList<IVersionedId> docRoots = new ArrayList<IVersionedId>();
+		profileName = element.getAttribute(ATTRIBUTE_PROFILE);
 		
-		NodeList rootsNodes = element.getElementsByTagName(ELEMENT_ROOTS);
-		for (int rootsIndex = 0; rootsIndex < rootsNodes.getLength(); rootsIndex++) {
-			Node rootsNode = rootsNodes.item(rootsIndex);
-			if (rootsNode.getNodeType() == Node.ELEMENT_NODE) {
-				Element rootsElement = (Element)rootsNode;
-				profileName = rootsElement.getAttribute(ATTRIBUTE_PROFILE);
-				NodeList rootNodes = rootsElement.getElementsByTagName(ELEMENT_ROOT);
-				for (int rootIndex = 0; rootIndex < rootNodes.getLength(); rootIndex ++) {
-					Node rootNode = rootNodes.item(rootIndex);
-					if (rootNode.getNodeType() == Node.ELEMENT_NODE) {
-						Element rootElement = (Element)rootNode;
-						String id = rootElement.getAttribute(ATTRIBUTE_ID);
-						String version = rootElement.getAttribute(ATTRIBUTE_VERSION);
-						VersionedId root;
-						if ((version != null) && !version.trim().isEmpty()) {
-							root = new VersionedId(id, version);
-						}
-						else {
-							root = new VersionedId(id, Version.emptyVersion);
-						}
-						docRoots.add(root);
-					}
-				}
-			}
-		}
-		
-		rootsToInstall = docRoots.toArray(new IVersionedId[docRoots.size()]);
 	}
 	
 	/**
@@ -407,15 +320,6 @@ public class InstallIUAction extends AbstractInstallAction {
 		Object result = context.getService(reference);
 		context.ungetService(reference);
 		return result;
-	}
-
-	/**
-	 * Removes a profile.
-	 * 
-	 * @param profileId Profile identifier
-	 */
-	private void removeProfile(String profileId) {
-		profileRegistry.removeProfile(profileId);
 	}
 
 	@Override

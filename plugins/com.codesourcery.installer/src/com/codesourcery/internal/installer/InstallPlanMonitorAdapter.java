@@ -11,9 +11,9 @@
 package com.codesourcery.internal.installer;
 
 /**
- * Adapter for the ISizeCalculationMonitor.
+ * Adapter for {@link com.codesourcery.internal.installer.IInstallPlanMonitor}.
  */
-public class SizeCalculationMonitorAdapter implements ISizeCalculationMonitor {
+public class InstallPlanMonitorAdapter implements IInstallPlanMonitor {
 
 	@Override
 	public void beginTask(String name, int totalWork) {
@@ -49,6 +49,6 @@ public class SizeCalculationMonitorAdapter implements ISizeCalculationMonitor {
 	}
 
 	@Override
-	public void done(long installSize) {
+	public void done(IInstallPlan installSize) {
 	}
 }

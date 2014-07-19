@@ -29,6 +29,7 @@ import org.eclipse.swt.widgets.Label;
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallDescription;
+import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.console.ConsoleYesNoPrompter;
 import com.codesourcery.installer.ui.BrowseDefaultEditor;
@@ -38,7 +39,6 @@ import com.codesourcery.installer.ui.InstallWizardPage;
 import com.codesourcery.internal.installer.ContributorRegistry;
 import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.InstallMessages;
-import com.codesourcery.internal.installer.LocationsManager;
 
 /**
  * Page that prompts for the installation folder
@@ -174,7 +174,7 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 	public void saveInstallData(IInstallData data) {
 		data.setProperty(IInstallConstants.PROPERTY_INSTALL_FOLDER, getFolder());
 		try {
-			LocationsManager.getDefault().setInstallLocation(new Path(getFolder()));
+			Installer.getDefault().getInstallManager().setInstallLocation(new Path(getFolder()));
 		} catch (CoreException e) {
 			Installer.log(e);
 		}
@@ -310,5 +310,19 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		}
 		
 		return response;
+	}
+
+	@Override
+	public boolean isSupported() {
+		// If an installed product has been set, don't prompt for install location
+		if (Installer.getDefault().getInstallManager().getInstalledProduct() != null) {
+			return false;
+		}
+		// Otherwise, show page for an installation that is not already set up 
+		// for an update or upgrade to an existing product.
+		else {
+			IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+			return (mode.isInstall() && !mode.isUpdate() && !mode.isUpgrade());
+		}
 	}
 }

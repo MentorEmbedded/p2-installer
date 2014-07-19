@@ -45,13 +45,21 @@ import com.codesourcery.internal.installer.InstallMessages;
  *     
  *     return response;
  *   }
+ *
+ * The list can also be set to select a single option.
+ * 1. Item 1
+ * 2. Item 2
  * 
+ * In this case use {@link #addItem(String, Object)} and get the selected
+ * item using ...
  */
 public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 	/** Items */
 	private ArrayList<Item<T>> items = new ArrayList<Item<T>>();
 	/** Console message */
 	private String message;
+	/** <code>true</code> if only a single option can be selected */
+	private boolean single = false;
 
 	/**
 	 * Constructor
@@ -60,6 +68,26 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 	 */
 	public ConsoleListPrompter(String message) {
 		this.message = message;
+	}
+
+	/**
+	 * Constructor
+	 * 
+	 * @param message Message to display
+	 * @param single <code>true</code> if only a single option can be selected
+	 */
+	public ConsoleListPrompter(String message, boolean single) {
+		this(message);
+		this.single = single;
+	}
+
+	/**
+	 * Returns if only a single selection can be made.
+	 * 
+	 * @return <code>true</code> if single selection
+	 */
+	public boolean isSingleSelection() {
+		return single;
 	}
 	
 	/**
@@ -84,6 +112,17 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 		Item<T> item = new Item<T>(name, data, selected, optional);
 		items.add(item);
 		return items.size() - 1;
+	}
+	
+	/**
+	 * Adds an item to the list.
+	 * 
+	 * @param name Name to display for the item
+	 * @param data Data associated with the item
+	 * @return Index of item
+	 */
+	public int addItem(String name, T data) {
+		return addItem(name, data, false, true);
 	}
 
 	/**
@@ -116,13 +155,21 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 				}
 				else {
 					Item<T> item = items.get(index);
-					// Item can be changed
-					if (item.isOptional()) {
-						item.setSelected(!item.isSelected());
-						response = toString();
+					// Single selection
+					if (isSingleSelection()) {
+						item.setSelected(true);
+						response = null;
 					}
+					// Multiple selection
 					else {
-						response = InstallMessages.Error_ItemCantChange;
+						// Item can be changed
+						if (item.isOptional()) {
+							item.setSelected(!item.isSelected());
+							response = toString();
+						}
+						else {
+							response = InstallMessages.Error_ItemCantChange;
+						}
 					}
 				}
 			}
@@ -293,11 +340,18 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 		
 		@Override
 		public String toString() {
-			// [<'x' if selected>] name
-			return "[" +
-					(isSelected() ? "*" : " ") +
-					"]" + 
-					getName();
+			// Single selection
+			if (isSingleSelection()) {
+				return getName();
+			}
+			// Multiple selection
+			else {
+				// [<'x' if selected>] name
+				return "[" +
+						(isSelected() ? "*" : " ") +
+						"]" + 
+						getName();
+			}
 		}
 	}
 }

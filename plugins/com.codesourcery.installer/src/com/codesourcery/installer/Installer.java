@@ -44,9 +44,11 @@ import org.osgi.framework.ServiceReference;
 
 import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.IInstallerImages;
+import com.codesourcery.internal.installer.InstallManager;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.InstallPlatform;
 import com.codesourcery.internal.installer.Log;
+import com.codesourcery.internal.installer.RepositoryManager;
 import com.codesourcery.internal.installer.ShutdownHandler;
 
 /**
@@ -68,12 +70,12 @@ public class Installer implements BundleActivator {
 	private static boolean isWindows;
 	/** Data folder */
 	private IPath dataFolder;
-	/** Install description */
-	private IInstallDescription installDescription;
 	/** Log path */
 	private IPath logPath;
 	/** <code>true</code> if using platform log directory should be copied */
 	private boolean copyLog = false;
+	/** Install manager */
+	private InstallManager installManager;
 
 	/**
 	 * Returns the shared instance
@@ -119,15 +121,24 @@ public class Installer implements BundleActivator {
 			String home = System.getProperty("user.home");
 			dataFolder = new Path(home).append(IInstallConstants.DEFAULT_INSTALL_DATA_FOLDER);
 		}
+		File dataDirectoryFile = dataFolder.toFile();
+		// Clean data folder
+		if (hasCommandLineOption(IInstallConstants.COMMAND_CLEAN)) {
+			if (dataDirectoryFile.exists()) {
+				FileUtils.deleteDirectory(dataDirectoryFile);
+			}
+		}
 		// Installer data folder
-		if (!dataFolder.toFile().exists()) {
-			Files.createDirectories(dataFolder.toFile().toPath());
+		if (!dataDirectoryFile.exists()) {
+			Files.createDirectories(dataDirectoryFile.toPath());
 		}
 
 		// Initialize log path
 		initializeLogPath();
 		// Initialize install platform
 		initializeInstallPlatform();
+		// Initialize install manager
+		installManager = new InstallManager();
 	}
 
 	/*
@@ -138,12 +149,26 @@ public class Installer implements BundleActivator {
 		// Run shutdown operations
 		ShutdownHandler.getDefault().run();
 		
-		plugin = null;
-		
 		// Dispose of images
 		if (imageRegistry != null) {
 			imageRegistry.dispose();
 		}
+
+		// Dispose of install manager
+		installManager.dispose();
+		// Shutdown the repository manager
+		RepositoryManager.getDefault().shutdown();
+
+		plugin = null;
+	}
+	
+	/**
+	 * Returns the install manager.
+	 * 
+	 * @return Install manager
+	 */
+	public IInstallManager getInstallManager() {
+		return installManager;
 	}
 	
 	/**
@@ -453,6 +478,14 @@ public class Installer implements BundleActivator {
 				imageRegistry.put(IInstallerImages.COMP_OPTIONAL_OVERLAY, ImageDescriptor.createFromURL(imagePathUrl));
 				imagePathUrl = FileLocator.find(bundle, new Path("icons/comp-addon.png"), null); //$NON-NLS-1$
 				imageRegistry.put(IInstallerImages.COMP_ADDON_OVERLAY, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/update-add.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.UPDATE_ADD, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/update-folder.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.UPDATE_FOLDER, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/update-install.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.UPDATE_INSTALL, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/update-remove.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.UPDATE_REMOVE, ImageDescriptor.createFromURL(imagePathUrl));
 			}
 			catch (Exception e) {
 				log(e);
@@ -589,23 +622,5 @@ public class Installer implements BundleActivator {
 		}
 
 		return defines;
-	}
-	
-	/**
-	 * Sets the install description.
-	 * 
-	 * @param installDescription Install description
-	 */
-	public void setInstallDescripton(IInstallDescription installDescription) {
-		this.installDescription = installDescription;
-	}
-	
-	/**
-	 * Returns the install description.
-	 * 
-	 * @return Install description for install, or <code>null</code> if uninstall
-	 */
-	public IInstallDescription getInstallDescription() {
-		return installDescription;
 	}
 }

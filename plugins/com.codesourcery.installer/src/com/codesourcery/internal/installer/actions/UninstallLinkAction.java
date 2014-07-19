@@ -16,7 +16,6 @@ import java.util.Date;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 
 import com.codesourcery.installer.IInstallMode;
@@ -105,12 +104,10 @@ public class UninstallLinkAction extends AbstractInstallAction {
 	}
 
 	@Override
-	public void run(IProvisioningAgent agent, IInstallProduct product, IInstallMode mode, IProgressMonitor progressMonitor) throws CoreException {
+	public void run(IProvisioningAgent agent, IInstallProduct product, IInstallMode mode, IProgressMonitor monitor) throws CoreException {
 		// Only supported on Windows
 		if (!Installer.isWindows())
 			return;
-		
-		SubMonitor pm = SubMonitor.convert(progressMonitor, "", 100);
 		
 		try {
 			// No uninstall location
@@ -123,7 +120,8 @@ public class UninstallLinkAction extends AbstractInstallAction {
 
 			// Install
 			if (mode.isInstall()) {
-				pm.setTaskName(InstallMessages.CreatingAddRemove);
+				monitor.beginTask(InstallMessages.CreatingAddRemove, 10);
+				monitor.setTaskName(InstallMessages.CreatingAddRemove);
 				IPath installerPath = getUninstallLocation().append(uninstallerName);
 				if (Installer.isWindows()) {
 					installerPath = installerPath.addFileExtension(IInstallConstants.EXTENSION_EXE);
@@ -133,45 +131,57 @@ public class UninstallLinkAction extends AbstractInstallAction {
 				// Create add/remove entry
 				// Display name
 				platform.setWindowsRegistryValue(uninstallKey, "DisplayName", product.getName());
+				monitor.worked(1);
 				// Display icon
 				platform.setWindowsRegistryValue(uninstallKey, "DisplayIcon", installerLocation);
+				monitor.worked(1);
 				// Installed date
 				SimpleDateFormat dateFormat = new SimpleDateFormat("EEEEEEEE MMMMMMMM dd HH:mm:ss zzzzzzzzzz yyyy");
 				platform.setWindowsRegistryValue(uninstallKey, "InstallDate", dateFormat.format(new Date()));
+				monitor.worked(1);
 				// Install location
 				platform.setWindowsRegistryValue(uninstallKey,  "InstallLocation", getUninstallLocation().toOSString());
+				monitor.worked(1);
 				// Uninstall command
 				// Note: Do not add quotes to the installer location or Windows will report
 				// insufficient rights to run uninstaller.
 				platform.setWindowsRegistryValue(uninstallKey,  "UninstallString", installerLocation);
+				monitor.worked(1);
 				// Modify is not supported
 				platform.setWindowsRegistryValue(uninstallKey,  "NoModify", 1);
+				monitor.worked(1);
 				// Repair is not supported
 				platform.setWindowsRegistryValue(uninstallKey,  "NoRepair", 1);
+				monitor.worked(1);
 				// Producer
 				if (getVendor() != null) {
 					platform.setWindowsRegistryValue(uninstallKey,  "Publisher", getVendor());
 				}
+				monitor.worked(1);
 				// Version
 				if (getVersion() != null) {
 					platform.setWindowsRegistryValue(uninstallKey,  "DisplayVersion", getVersion());
 				}
+				monitor.worked(1);
 				// Help
 				if (getHelpLink() != null) {
 					platform.setWindowsRegistryValue(uninstallKey,  "HelpLink", getHelpLink());
 				}
+				monitor.worked(1);
 			}
 			// Uninstall
 			else {
-				pm.setTaskName(InstallMessages.RemovingAddRemove);
+				monitor.beginTask(InstallMessages.RemovingAddRemove, 1);
+				monitor.setTaskName(InstallMessages.RemovingAddRemove);
 				platform.deleteWindowsRegistryKey(uninstallKey);
+				monitor.worked(1);
 			}
 		}
 		catch (Exception e) {
 			Installer.fail(InstallMessages.Error_AddUninstallLinks, e);
 		}
 		finally {
-			pm.done();
+			monitor.done();
 		}
 	}
 

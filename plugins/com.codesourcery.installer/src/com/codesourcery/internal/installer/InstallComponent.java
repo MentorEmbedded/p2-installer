@@ -10,6 +10,8 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer;
 
+import java.util.HashMap;
+
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 
 import com.codesourcery.installer.ui.IInstallComponent;
@@ -18,16 +20,22 @@ import com.codesourcery.installer.ui.IInstallComponent;
  * A component that can be installed.
  */
 public class InstallComponent implements IInstallComponent {
-	/** Install component */
+	/** Install unit */
 	private IInstallableUnit installUnit;
+	/** Existing install unit */
+	private IInstallableUnit installedUnit;
 	/** <code>true</code> if component is optional */
 	private boolean optional;
 	/** Other required components */
 	private IInstallComponent[] requiredComponents;
 	/** <code>true</code> if component should be installed */
 	private boolean install = false;
-	/** <code>true</code> if component is an add-on */
-	private boolean addon = false;
+	/** <code>true</code> if component should be installed by default */
+	private boolean defaultInstall = false;
+	/** <code>true</code> if the component is included */
+	private boolean included = true;
+	/** Component properties */
+	private HashMap<String, Object> properties;
 
 	/**
 	 * Constructor
@@ -96,13 +104,60 @@ public class InstallComponent implements IInstallComponent {
 		return install;
 	}
 
+	/**
+	 * Sets the component to be installed by default.
+	 * 
+	 * @param defaultInstall <code>true</code> if component should be installed
+	 * by default
+	 */
+	public void setDefault(boolean defaultInstall) {
+		this.defaultInstall = defaultInstall;
+	}
+	
 	@Override
-	public void setAddon(boolean addon) {
-		this.addon = addon;
+	public boolean isDefault() {
+		return defaultInstall;
+	}
+
+	/**
+	 * Sets the installed unit.
+	 * 
+	 * @param installedUnit Installed unit or <code>null</code>
+	 */
+	public void setInstalledUnit(IInstallableUnit installedUnit) {
+		this.installedUnit = installedUnit;
+	}
+	
+	@Override
+	public IInstallableUnit getInstalledUnit() {
+		return installedUnit;
 	}
 
 	@Override
-	public boolean isAddon() {
-		return addon;
+	public void setProperty(String name, String value) {
+		if (properties == null) {
+			properties = new HashMap<String, Object>();
+		}
+		properties.put(name, value);
+	}
+
+	@Override
+	public Object getProperty(String name) {
+		if (properties == null) {
+			return null;
+		}
+		else {
+			return properties.get(name);
+		}
+	}
+
+	@Override
+	public void setIncluded(boolean included) {
+		this.included = included;
+	}
+
+	@Override
+	public boolean isIncluded() {
+		return included;
 	}
 }

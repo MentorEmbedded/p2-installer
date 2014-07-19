@@ -14,7 +14,6 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 import org.eclipse.osgi.util.NLS;
 import org.w3c.dom.Document;
@@ -157,39 +156,48 @@ public class ShortcutAction extends AbstractInstallAction {
 	public void run(IProvisioningAgent agent, IInstallProduct product, IInstallMode mode, IProgressMonitor pm) throws CoreException {
 		IInstallPlatform platform = Installer.getDefault().getInstallPlatform();		
 
-		SubMonitor monitor = SubMonitor.convert(pm, InstallMessages.CreatingShortcuts, 100);
-
 		IPath shortcutFolder = getPath();
 		String fileName = InstallUtils.makeFileNameSafe(getName());
 		
-		// Install
-		if (mode.isInstall()) {
-			monitor.setTaskName(NLS.bind(InstallMessages.CreatingLink0, fileName));
-			// Create short-cut
-			platform.createShortcut(shortcutFolder, fileName, getTarget(), null, getWorkingDirectory());
+		try {
+			// Install
+			if (mode.isInstall()) {
+				String taskName = NLS.bind(InstallMessages.CreatingLink0, fileName);
+				pm.beginTask(taskName, 1);
+				pm.setTaskName(taskName);
+				// Create short-cut
+				platform.createShortcut(shortcutFolder, fileName, getTarget(), null, getWorkingDirectory());
+				pm.worked(1);
+			}
+			// Uninstall
+			else {
+				String taskName = NLS.bind(InstallMessages.RemovingLink0, shortcutFolder.append(fileName).toOSString());
+				pm.beginTask(taskName, 1);
+				pm.setTaskName(taskName);
+				// Remove short-cut
+				try  {
+					platform.deleteShortcut(shortcutFolder, fileName);
+				}
+				catch (Exception e) {
+					// Do not fail if short-cut can't be removed, just log the error.
+					Installer.log(e);
+				}
+				// Remove short-cut directory (if empty)
+				try {
+					IPath removeFolder = getRemovePath();
+					if ((removeFolder != null) && !removeFolder.isEmpty())
+						platform.deleteDirectory(removeFolder.toOSString(), true);
+				}
+				catch (Exception e) {
+					// Do not fail if short-cut directory can't be removed, just
+					// log the error.
+					Installer.log(e);
+				}
+				pm.worked(1);
+			}
 		}
-		// Uninstall
-		else {
-			monitor.setTaskName(NLS.bind(InstallMessages.RemovingLink0, shortcutFolder.append(fileName).toOSString()));
-			// Remove short-cut
-			try  {
-				platform.deleteShortcut(shortcutFolder, fileName);
-			}
-			catch (Exception e) {
-				// Do not fail if short-cut can't be removed, just log the error.
-				Installer.log(e);
-			}
-			// Remove short-cut directory (if empty)
-			try {
-				IPath removeFolder = getRemovePath();
-				if ((removeFolder != null) && !removeFolder.isEmpty())
-					platform.deleteDirectory(removeFolder.toOSString(), true);
-			}
-			catch (Exception e) {
-				// Do not fail if short-cut directory can't be removed, just
-				// log the error.
-				Installer.log(e);
-			}
+		finally {
+			pm.done();
 		}
 	}
 

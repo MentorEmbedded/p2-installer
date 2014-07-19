@@ -20,6 +20,7 @@ import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.IInstallPlatform;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.Installer;
+import com.codesourcery.internal.installer.InstallMessages;
 	
 /**
  * This action will install digitally signed Windows drivers using the
@@ -66,10 +67,20 @@ public class DriverAction extends AbstractInstallAction {
 	@Override
 	public void run(IProvisioningAgent agent, IInstallProduct product,
 			IInstallMode mode, IProgressMonitor monitor) throws CoreException {
-		if (mode.isInstall()) {
-			IInstallPlatform installPlatform = Installer.getDefault().getInstallPlatform();
-			// If Vista or greater, install signed drivers
-			installPlatform.installWindowsDriver(getDriverPath().toOSString());
+		try {
+			monitor.beginTask(InstallMessages.DriverAction_InstallingDriver, 1);
+			monitor.setTaskName(InstallMessages.DriverAction_InstallingDriver);
+			
+			if (mode.isInstall()) {
+				IInstallPlatform installPlatform = Installer.getDefault().getInstallPlatform();
+				// If Vista or greater, install signed drivers
+				installPlatform.installWindowsDriver(getDriverPath().toOSString());
+			}
+			
+			monitor.worked(1);
+		}
+		finally {
+			monitor.done();
 		}
 	}
 }

@@ -13,6 +13,7 @@ package com.codesourcery.installer.ui;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.jface.wizard.IWizardPage;
 import org.eclipse.jface.wizard.WizardPage;
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.FontData;
@@ -25,14 +26,18 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Label;
 
 import com.codesourcery.installer.IInstallData;
+import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.IInstallWizardPage;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.internal.installer.ContributorRegistry;
 import com.codesourcery.internal.installer.IInstallerImages;
+import com.codesourcery.internal.installer.InstallMessages;
+import com.codesourcery.internal.installer.ui.BusyAnimationControl;
 import com.codesourcery.internal.installer.ui.InstallWizard;
 import com.codesourcery.internal.installer.ui.SideBarComposite;
-import com.codesourcery.internal.installer.ui.BusyAnimationControl;
 import com.codesourcery.internal.installer.ui.StepsControl;
+import com.codesourcery.internal.installer.ui.pages.ProgressPage;
+import com.codesourcery.internal.installer.ui.pages.AbstractSetupPage;
 
 /**
  * Install wizard base page class.  All install wizard pages should subclass
@@ -52,8 +57,6 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	private SideBarComposite sideBar;
 	/** Page top bar */
 	private StepsControl topBar;
-	/** <code>true</code> if this page reports install progress */
-	private boolean installPage;
 	/** Page label */
 	private String pageLabel;
 	/** Page area */
@@ -82,6 +85,18 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	protected InstallWizardPage(String pageName, String title) {
 		super(pageName, "", null); //$NON-NLS-1$
 		setPageLabel(title);
+		
+		// Set default page navigation
+		int navigation = SWT.NONE;
+		// For install default to mode specified in installer properties
+		if (Installer.getDefault().getInstallManager().getInstallMode().isInstall()) {
+			navigation = Installer.getDefault().getInstallManager().getInstallDescription().getPageNavigation();
+		}
+		// For uninstall, default to top navigation
+		else {
+			navigation = SWT.TOP;
+		}
+		setPageNavigation(navigation);
 	}
 	
 	/**
@@ -158,25 +173,6 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	}
 
 	/**
-	 * Sets the page to be the install page.
-	 * 
-	 * @param installPage <code>true</code> if
-	 * install page
-	 */
-	public void setInstallPage(boolean installPage) {
-		this.installPage = installPage;
-	}
-	
-	/**
-	 * Returns if this page is the install page.
-	 * 
-	 * @return <code>true</code> if install page
-	 */
-	public boolean isInstallPage() {
-		return installPage;
-	}
-	
-	/**
 	 * Shows success for this page in the side bar.
 	 * 
 	 * @param success <code>true</code> to show success.
@@ -199,16 +195,24 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	
 	@Override
 	public String getTitle() {
-		if (((InstallWizard)getWizard()).getInstallContext().isInstall()) {
-			return ((InstallWizard)getWizard()).getInstallContext().getInstallDescription().getTitle();
+		if (Installer.getDefault().getInstallManager().getInstallMode().isInstall()) {
+			return Installer.getDefault().getInstallManager().getInstallDescription().getTitle();
 		}
 		return super.getTitle();
 	}
 	
 	@Override
 	public Image getImage() {
+		Image image = null;
+		
 		// Use wizard title image if available
-		Image image = ((InstallWizard)getWizard()).getTitleImage();
+		try {
+			image = ((InstallWizard)getWizard()).getTitleImage();
+		}
+		catch (Exception e) {
+			Installer.log(e);
+		}
+		
 		// Otherwise, use registered title image
 		if (image == null) {
 			image = ContributorRegistry.getDefault().getTitleIcon();
@@ -244,7 +248,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		// Top navigation bar
 		if (getPageNavigation() == SWT.TOP) { 
 			topBar = new StepsControl(area, SWT.NONE);
-			topBar.setFont(getBoldFont());
+			topBar.setFont(getFont());
 			topBar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
 		}
 		// Left navigation bar
@@ -295,8 +299,6 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		
 		// Set page control
 		setControl(area);
-		// Set the side bar steps
-		setSideBarSteps();
 	}
 	
 	/**
@@ -318,6 +320,15 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	}
 
 	/**
+	 * Sets the current status for the page.
+	 * 
+	 * @param status Status
+	 */
+	protected void setStatus(IStatus[] status) {
+		this.status = status;
+	}
+	
+	/**
 	 * Returns the current status for the page.
 	 *  
 	 * @return Status or <code>null</code>
@@ -327,12 +338,63 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	}
 	
 	/**
+	 * Returns if the page status has errors.
+	 * 
+	 * @return <code>true</code> if status has errors
+	 */
+	protected boolean hasStatusError() {
+		boolean isError = false;
+		if (status != null) {
+			for (IStatus stat : status) {
+				if (stat.getSeverity() == IStatus.ERROR) {
+					isError = true;
+					break;
+				}
+			}
+		}
+		
+		return isError;
+	}
+	
+	/**
+	 * Returns the current page status as a console message.
+	 * 
+	 * @param status Status for message
+	 * @return Console message
+	 */
+	protected String getStatusMessage(IStatus[] status) {
+		String message = null;
+		if (status != null) {
+			StringBuilder buffer = new StringBuilder();
+			for (IStatus stat : status) {
+				// Information
+				if (stat.getSeverity() == IStatus.INFO) {
+					buffer.append(stat.getMessage());
+				}
+				// Error
+				else if (stat.getSeverity() == IStatus.ERROR) {
+					buffer.append(NLS.bind(InstallMessages.ConsoleError0, stat.getMessage()));
+				}
+				// Warning
+				else if (stat.getSeverity() == IStatus.WARNING) {
+					buffer.append(NLS.bind(InstallMessages.ConsoleWarning0, stat.getMessage()));
+				}
+				buffer.append('\n');
+			}
+			message = buffer.toString();
+		}
+		
+		return message;
+	}
+	
+	/**
 	 * Shows a status pane at the button of the page.
 	 * 
 	 * @param status Status to show
 	 */
 	protected void showStatus(IStatus[] status) {
-		this.status = status;
+		setStatus(status);
+		
 		if (warningPanel != null) {
 			// Update status
 			warningPanel.setStatus(status);
@@ -341,15 +403,8 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 			data.exclude = false;
 			getPageContainer().layout(true);
 
-			boolean isError = false;
-			for (IStatus stat : status) {
-				if (stat.getSeverity() == IStatus.ERROR) {
-					isError = true;
-					break;
-				}
-			}
 			if (sideBar != null) {
-				sideBar.setState(getPageLabel(), isError ? 
+				sideBar.setState(getPageLabel(), hasStatusError() ? 
 						SideBarComposite.StepState.ERROR : SideBarComposite.StepState.NONE);
 			}
 		}
@@ -359,7 +414,8 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	 * Hides the status pane.
 	 */
 	protected void hideStatus() {
-		this.status = null;
+		setStatus(null);
+		
 		if (warningPanel != null) {
 			// Clear the status
 			warningPanel.clearStatus();
@@ -422,30 +478,52 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	}
 
 	/**
+	 * Returns if the page is running in console mode.
+	 * 
+	 * @return <code>true</code> if console mode, <code>false</code> if GUI mode.
+	 */
+	public boolean isConsoleMode() {
+		return (getShell() == null);
+	}
+	
+	/**
 	 * Returns if the page is currently busy.
 	 * 
 	 * @return <code>true</code> if page is busy.
 	 */
-	protected boolean isBusy() {
+	public boolean isBusy() {
 		return (busyMessage != null);
 	}
 	
 	/**
-	 * Sets the side bar steps
+	 * Initializes the page navigation steps.
 	 */
-	public void setSideBarSteps() {
+	public void setupNavigation() {
 		IWizardPage[] pages = getWizard().getPages();
 		for (IWizardPage page : pages) {
+			// Skip any setup page
+			if (page instanceof AbstractSetupPage)
+				continue;
+			
 			InstallWizardPage installPage = (InstallWizardPage)page;
-			if (sideBar != null)
-				sideBar.addStep(installPage.getPageLabel());
-			if (topBar != null)
-				topBar.addStep(installPage.getPageLabel());
+			// Page is supported
+			if (installPage.isSupported()) {
+				if (sideBar != null)
+					sideBar.addStep(installPage.getPageLabel());
+				if (topBar != null)
+					topBar.addStep(installPage.getPageLabel());
+			}
 		}
-		if (sideBar != null)
+		if (sideBar != null) {
+			sideBar.layout(true);
+			sideBar.getParent().layout(true);
 			sideBar.setCurrentStep(getPageLabel());
-		if (topBar != null)
+		}
+		if (topBar != null) {
+			topBar.layout(true);
+			topBar.getParent().layout(true);
 			topBar.setCurrentStep(getPageLabel());
+		}
 	}
 
 	/**
@@ -457,13 +535,24 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	public abstract Control createContents(Composite parent);
 
 	@Override
+	public IWizardPage getPreviousPage() {
+		IWizardPage previousPage = super.getPreviousPage();
+		// Don't allow moving back to a setup page if present
+		if (previousPage instanceof AbstractSetupPage) {
+			return null;
+		}
+		else {
+			return previousPage;
+		}
+	}
+
+	@Override
 	public boolean canFlipToNextPage() {
 		IWizardPage nextPage = getWizard().getNextPage(this);
-		if (nextPage instanceof InstallWizardPage) {
-			InstallWizardPage installPage = (InstallWizardPage)nextPage;
-			// The installing page is only shown when
-			// the install button is selected.
-			return !installPage.isInstallPage() && isPageComplete();
+		// The installing page is only shown when
+		// the install button is selected.
+		if (nextPage instanceof ProgressPage) {
+			return false;
 		}
 		else {
 			return super.canFlipToNextPage();
@@ -522,6 +611,14 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		return text;
 	}
 
+	@Override
+	public boolean isSupported() {
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		
+		// By default, pages are supported in a new install only
+		return (mode.isInstall() && !mode.isUpdate() && !mode.isPatch());
+	}
+
 	/**
 	 * Composite to show status.
 	 */
@@ -536,7 +633,12 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 			super(parent, style);
 			setLayout(new GridLayout(2, false));
 		}
-		
+
+		/**
+		 * Sets the panel status.
+		 * 
+		 * @param statuses Status to show
+		 */
 		public void setStatus(IStatus[] statuses) {
 			clearStatus();
 			
@@ -552,15 +654,36 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 				else {
 					iconLabel.setImage(Installer.getDefault().getImageRegistry().get(IInstallerImages.INFO));
 				}
+				StringBuilder buffer = new StringBuilder();
+				getStatusMessage(buffer, status);
 				Label messageLabel = new Label(this, SWT.WRAP);
 				messageLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
 				messageLabel.setFont(getBoldFont());
-				messageLabel.setText(status.getMessage());
+				messageLabel.setText(buffer.toString());
 			}
 			
 			layout(true);
 		}
 		
+		/**
+		 * Combines all status messages.
+		 * 
+		 * @param buffer Buffer for messages.  Each status message will be terminated
+		 * with a new line. 
+		 * @param status Status to combine.
+		 */
+		private void getStatusMessage(StringBuilder buffer, IStatus status) {
+			buffer.append(status.getMessage());
+			buffer.append('\n');
+			IStatus[] children = status.getChildren();
+			for (IStatus child : children) {
+				getStatusMessage(buffer, child);
+			}
+		}
+
+		/**
+		 * Clears the panel status.
+		 */
 		public void clearStatus() {
 			Control[] children = getChildren();
 			for (Control child : children) {

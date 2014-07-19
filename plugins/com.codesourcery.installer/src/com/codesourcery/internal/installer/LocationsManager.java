@@ -81,57 +81,15 @@ import com.codesourcery.installer.Installer;
 public class LocationsManager {
 	/** Install locations filename */
 	private static final String INSTALL_LOCATIONS_FILENAME = ".locations";
-	/** Default instance */
-	private static LocationsManager instance = new LocationsManager();
 	/** Install locations */
 	private ArrayList<InstallLocation> installLocations = new ArrayList<InstallLocation>();
-	/** Install location */
-	private IPath installLocation;
 
 	/**
 	 * Constructor
 	 */
-	private LocationsManager() {
+	public LocationsManager() {
 	}
 
-	/**
-	 * Returns the default instance.
-	 * 
-	 * @return Default instance
-	 */
-	public static LocationsManager getDefault() {
-		return instance;
-	}
-
-	/**
-	 * Sets the install location and creates initial directory.
-	 * The directories for any previous install location will be deleted.
-	 * 
-	 * @param path Install location
-	 * @throws CoreException on failure
-	 */
-	public void setInstallLocation(IPath path) throws CoreException {
-		Installer.getDefault().getInstallDescription().setRootLocation(path);
-		
-		// Location changed
-		if ((path == null) || !path.equals(installLocation)) {
-			// Remove old location
-			if (installLocation != null) {
-				RepositoryManager.getDefault().stopAgent();
-				deleteInstallLocation(installLocation);
-			}
-			this.installLocation = path;
-		
-			// Create new location
-			if (installLocation != null) {
-				createInstallLocation(installLocation);
-				// Create new P2 agent
-				// Note, this will result in agent files being created
-				RepositoryManager.getDefault().createAgent(Installer.getDefault().getInstallDescription().getInstallLocation());
-			}
-		}
-	}
-	
 	/**
 	 * Returns an install location for a path.
 	 * 
@@ -253,11 +211,11 @@ public class LocationsManager {
 		InstallLocation productLocation = getInstallLocation(productPath);
 		if (productLocation != null) {
 			installLocations.remove(productLocation);
-			// Remove all files that can be removed (are not locked)
-			removeStatus = deleteProductDirectory(productLocation.getPath(), monitor);
-			// Schedule remaining files to be removed after installer exits
-			ShutdownHandler.getDefault().addDirectoryToRemove(productLocation.getPath().toOSString(), false);
 		}
+		// Remove all files that can be removed (are not locked)
+		removeStatus = deleteProductDirectory(productPath, monitor);
+		// Schedule remaining files to be removed after installer exits
+		ShutdownHandler.getDefault().addDirectoryToRemove(productPath.toOSString(), false);
 
 		sortLocations();
 
@@ -420,10 +378,15 @@ public class LocationsManager {
 					String[] parts = line.split(",");
 					if (parts.length == 2) {
 						try {
-							InstallLocation location = new InstallLocation(new Path(parts[0]));
-							int count = Integer.parseInt(parts[1]);
-							location.setReferenceCount(count);
-							installLocations.add(location);
+							Path installPath = new Path(parts[0]);
+							// If the install path does not exist there is no
+							// need to add or reference it
+							if (installPath.toFile().exists()) {
+								InstallLocation location = new InstallLocation(installPath);
+								int count = Integer.parseInt(parts[1]);
+								location.setReferenceCount(count);
+								installLocations.add(location);
+							}
 						}
 						catch (Exception e) {
 							Installer.log(e);

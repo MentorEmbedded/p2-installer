@@ -11,24 +11,15 @@
 package com.codesourcery.internal.installer;
 
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.ProgressMonitorWrapper;
 
 /**
- * Progress monitor wrapper for the ISizeCalculationMonitor.
+ * Progress monitor which reports the result of an installation plan. 
  */
-public class SizeCalculationMonitorWrapper extends ProgressMonitorWrapper
-		implements ISizeCalculationMonitor {
-
-	protected SizeCalculationMonitorWrapper(IProgressMonitor monitor) {
-		super(monitor);
-	}
-
-	@Override
-	public void done(long installSize) {
-		IProgressMonitor monitor = getWrappedProgressMonitor();
-		if (monitor instanceof ISizeCalculationMonitor) {
-			((ISizeCalculationMonitor) monitor).done(installSize);
-		}
-	}
-
+public interface IInstallPlanMonitor extends IProgressMonitor {
+	/**
+	 * Called when the installation plan has been computed.
+	 * 
+	 * @param installSize Installation plan
+	 */
+	public void done(IInstallPlan plan);
 }

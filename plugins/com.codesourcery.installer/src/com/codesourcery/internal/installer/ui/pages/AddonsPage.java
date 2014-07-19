@@ -11,19 +11,10 @@
 package com.codesourcery.internal.installer.ui.pages;
 
 import java.net.URI;
-import java.util.Iterator;
 
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
-import org.eclipse.equinox.p2.core.IProvisioningAgent;
-import org.eclipse.equinox.p2.core.IProvisioningAgentProvider;
-import org.eclipse.equinox.p2.engine.IProfile;
-import org.eclipse.equinox.p2.engine.IProfileRegistry;
-import org.eclipse.equinox.p2.metadata.IInstallableUnit;
-import org.eclipse.equinox.p2.query.IQuery;
-import org.eclipse.equinox.p2.query.IQueryResult;
-import org.eclipse.equinox.p2.query.QueryUtil;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.FocusAdapter;
@@ -45,7 +36,7 @@ import org.osgi.framework.ServiceReference;
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallDescription;
-import com.codesourcery.installer.IInstallProduct;
+import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.console.ConsoleYesNoPrompter;
 import com.codesourcery.installer.ui.FormattedLabel;
@@ -55,7 +46,6 @@ import com.codesourcery.internal.installer.AuthenticationService;
 import com.codesourcery.internal.installer.ContributorRegistry;
 import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.IInstallRepositoryListener;
-import com.codesourcery.internal.installer.InstallManifest;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.RepositoryManager;
 
@@ -340,25 +330,26 @@ public class AddonsPage extends InstallWizardPage implements IInstallConsoleProv
 	 */
 	private void validateInstallLocation() {
 		try {
-			// Check if this an upgrade
-			boolean upgrade = false;
-			InstallManifest manifest = InstallManifest.loadManifest(installDescription);
-			if (manifest != null) {
-				IInstallProduct product = manifest.getProduct(installDescription.getProductId());
-				upgrade = (product != null);
-			}
-
-			// If it is an upgrade and user chose not to install add-ons
-			// show a warning that existing add-ons will be removed
-			if (!getInstallAddons() && upgrade) {
+			String warningMessage = null;
+			
+			// If not installing add-ons
+			if (!getInstallAddons()) {
 				IPath agentLocation = installDescription.getInstallLocation().append(IInstallConstants.P2_DIRECTORY);
 				if (agentLocation.toFile().exists()) {
-					String message = NLS.bind(InstallMessages.AddonsPage_ExistingAddonsRemoved0, installDescription.getProductName());
-					showStatus(new IStatus[] { new Status(IStatus.INFO, Installer.ID, message) });
+					// Upgrade
+					if (Installer.getDefault().getInstallManager().getInstallMode().isUpgrade()) {
+						warningMessage = NLS.bind(InstallMessages.AddonsPage_ExistingAddonsRemoved0, installDescription.getProductName());
+					}
+					// Update
+					else if (Installer.getDefault().getInstallManager().getInstallMode().isUpdate()) {
+						warningMessage = InstallMessages.AddonsPage_ExistingAddonsUpdate;
+					}
 				}
-				else {
-					hideStatus();
-				}
+			}
+
+			// Show or hide warning
+			if (warningMessage != null) {
+				showStatus(new IStatus[] { new Status(IStatus.INFO, Installer.ID, warningMessage) });
 			}
 			else {
 				hideStatus();
@@ -409,6 +400,15 @@ public class AddonsPage extends InstallWizardPage implements IInstallConsoleProv
 	@Override
 	public void saveInstallData(IInstallData data) {
 		data.setProperty(IInstallConstants.PROPERTY_INSTALL_ADDONS, new Boolean(getInstallAddons()));
+
+		// Set add-ons included state
+		IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
+		for (IInstallComponent component : components) {
+			String addon = (String)component.getProperty(IInstallComponent.PROPERTY_ADDON);
+			if (Boolean.TRUE.toString().equals(addon)) {
+				component.setIncluded(getInstallAddons());
+			}
+		}
 	}
 
 	/**
@@ -448,62 +448,6 @@ public class AddonsPage extends InstallWizardPage implements IInstallConsoleProv
 	}
 	
 	/**
-	 * This method search for any components found in an existing product.
-	 * If the component is found, it is set to install by default.
-	 * If the component is not found or there is no existing product, the
-	 * component is set to not install by default.
-	 * 
-	 * @param components Components to set
-	 */
-	private void setupAddonComponents(IInstallComponent[] components) {
-		// Set component to not install by default
-		for (IInstallComponent component : components) {
-			// Set to not install by default (it can be selected on Components page)
-			component.setInstall(false);
-			// Mark as add-on
-			component.setAddon(true);
-		}
-		
-		IProvisioningAgent agent = null;
-		try {
-			// Look for existing P2 in product directory
-			IPath agentLocation = installDescription.getInstallLocation().append(IInstallConstants.P2_DIRECTORY);
-			if (agentLocation.toFile().exists()) {
-				// Existing product found
-				if (agentLocation != null) {
-					IProvisioningAgentProvider provider = (IProvisioningAgentProvider) getService(Installer.getDefault().getContext(), IProvisioningAgentProvider.SERVICE_NAME);
-					agent = provider.createAgent(agentLocation.toFile().toURI());		
-					IProfileRegistry profileRegistry = (IProfileRegistry)agent.getService(IProfileRegistry.SERVICE_NAME);
-					IProfile profile = profileRegistry.getProfile(installDescription.getProfileName());
-					// Query for existing IU groups
-					IQuery<IInstallableUnit> query = QueryUtil.createIUGroupQuery();
-					IQueryResult<IInstallableUnit> queryResult = profile.query(query, null);
-					Iterator<IInstallableUnit> iter = queryResult.iterator();
-					// Set every component found in existing IU groups to install by default
-					while (iter.hasNext()) {
-						IInstallableUnit existingUnit = iter.next();
-						for (IInstallComponent component : components) {
-							if (existingUnit.getId().equals(component.getInstallUnit().getId())) {
-								component.setInstall(true);
-								break;
-							}
-						}
-					}
-				}
-			}
-		}
-		catch (Exception e) {
-			Installer.log(e);
-		}
-		finally {
-			// Stop agent
-			if (agent != null) {
-				agent.stop();
-			}
-		}
-	}
-	
-	/**
 	 * Retrieves the add-ons and adds them as optional components.
 	 * 
 	 * @return <code>true</code> on success, <code>false</code> on failure
@@ -537,8 +481,10 @@ public class AddonsPage extends InstallWizardPage implements IInstallConsoleProv
 				@Override
 				public void repositoryLoaded(URI location,
 						IInstallComponent[] components) {
-					// Initialize components install status
-					setupAddonComponents(components);
+					// Set add-on property for loaded components
+					for (IInstallComponent component : components) {
+						component.setProperty(IInstallComponent.PROPERTY_ADDON, Boolean.TRUE.toString());
+					}
 				}
 			};
 			// Load add-on repositories
@@ -619,7 +565,6 @@ public class AddonsPage extends InstallWizardPage implements IInstallConsoleProv
 			}
 		}
 		
-		//return (status[0].getSeverity() != IStatus.ERROR);
 		return status[0].isOK();
 	}
 
@@ -697,5 +642,11 @@ public class AddonsPage extends InstallWizardPage implements IInstallConsoleProv
 		}
 		
 		return response;
+	}
+	
+	@Override
+	public boolean isSupported() {
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		return mode.isInstall();
 	}
 }

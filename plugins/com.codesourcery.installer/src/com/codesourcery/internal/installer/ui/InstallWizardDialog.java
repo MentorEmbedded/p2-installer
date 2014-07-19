@@ -17,7 +17,6 @@ import org.eclipse.jface.operation.IRunnableWithProgress;
 import org.eclipse.jface.wizard.IWizardPage;
 import org.eclipse.jface.wizard.ProgressMonitorPart;
 import org.eclipse.swt.widgets.Button;
-import org.eclipse.swt.widgets.Composite;
 
 import com.codesourcery.installer.IInstallWizardPage;
 import com.codesourcery.installer.Installer;
@@ -31,16 +30,6 @@ import com.codesourcery.internal.installer.ui.pages.ProgressPage;
 public class InstallWizardDialog extends WizardDialog {
 	/** Install wizard */
 	private InstallWizard installWizard;
-	/** Back button state */
-	private boolean backButtonState;
-	/** Next button state */
-	private boolean nextButtonState;
-	/** Cancel button state */
-	private boolean cancelButtonState;
-	/** Finish button state */
-	private boolean finishButtonState;
-	/** Current wizard page */
-	private IInstallWizardPage currentPage;
 	
 	/**
 	 * Constructor
@@ -59,15 +48,6 @@ public class InstallWizardDialog extends WizardDialog {
 	 */
 	private InstallWizard getInstallWizard() {
 		return installWizard;
-	}
-	
-	@Override
-	protected void createButtonsForButtonBar(Composite parent) {
-		super.createButtonsForButtonBar(parent);
-
-		// Rename 'Finish' button to 'Install or 'Uninstall'
-		getButton(IDialogConstants.FINISH_ID).setText(getInstallWizard().isInstall() ? 
-				InstallMessages.Install : InstallMessages.Uninstall);
 	}
 	
 	@Override
@@ -113,34 +93,47 @@ public class InstallWizardDialog extends WizardDialog {
 		// Validate current page
 		if (!validateCurrentPage())
 			return;
+
+		saveCurrentPage();
 		
 		super.finishPressed();
 	}
 
 	@Override
-	protected void nextPressed() {
+	public void nextPressed() {
 		// Validate the install page
 		if (!validateCurrentPage()) {
 			return;
 		}
+		
+		saveCurrentPage();
 
 		super.nextPressed();
+	}
+	
+	/**
+	 * Saves the current page.
+	 */
+	private void saveCurrentPage() {
+		if (getCurrentPage() instanceof IInstallWizardPage) {
+			((IInstallWizardPage)getCurrentPage()).saveInstallData(getInstallWizard().getInstallData());
+		}
 	}
 
 	@Override
 	public void showPage(IWizardPage page) {
+		// Set new page
+		super.showPage(page);
+		
 		// Set page active
 		if (page instanceof IInstallWizardPage) {
-			// Save current page data
-			if ((currentPage != null) && !page.equals(currentPage)) {
-				currentPage.saveInstallData(getInstallWizard().getInstallData());
+			try {
+				((IInstallWizardPage)getCurrentPage()).setActive(getInstallWizard().getInstallData());
 			}
-			// Set page active
-			currentPage = (IInstallWizardPage)page;
-			currentPage.setActive(getInstallWizard().getInstallData());
+			catch (Exception e) {
+				Installer.log(e);
+			}
 		}
-		
-		super.showPage(page);
 
 		IWizardPage[] pages = getInstallWizard().getPages();
 		// If final page, update buttons so that only
@@ -177,6 +170,10 @@ public class InstallWizardDialog extends WizardDialog {
 	public void updateButtons() {
 		super.updateButtons();
 		
+		// Rename 'Finish' button to 'Install or 'Uninstall'
+		getButton(IDialogConstants.FINISH_ID).setText(getInstallWizard().isInstall() ? 
+				InstallMessages.Install : InstallMessages.Uninstall);
+
 		// Override the wizard dialog default behavior to set the finish button
 		// as default.  Always set the next button as default.
 		IWizardPage currentPage = getCurrentPage();
@@ -188,43 +185,28 @@ public class InstallWizardDialog extends WizardDialog {
 	public void setButtonsEnabled(boolean enable) {
 		// Restore enabled state
 		if (enable) {
-			Button button = getButton(IDialogConstants.BACK_ID);
+			Button button = getButton(IDialogConstants.CANCEL_ID);
 			if (button != null) {
-				button.setEnabled(backButtonState);
+				button.setEnabled(true);
 			}
-			button = getButton(IDialogConstants.NEXT_ID);
-			if (button != null) {
-				button.setEnabled(nextButtonState);
-			}
-			button = getButton(IDialogConstants.CANCEL_ID);
-			if (button != null) {
-				button.setEnabled(cancelButtonState);
-			}
-			button = getButton(IDialogConstants.FINISH_ID);
-			if (button != null) {
-				button.setEnabled(finishButtonState);
-			}
+			updateButtons();
 		}
 		// Disable
 		else {
 			Button button = getButton(IDialogConstants.BACK_ID);
 			if (button != null) {
-				backButtonState = button.isEnabled();
 				button.setEnabled(false);
 			}
 			button = getButton(IDialogConstants.NEXT_ID);
 			if (button != null) {
-				nextButtonState = button.isEnabled();
 				button.setEnabled(false);
 			}
 			button = getButton(IDialogConstants.CANCEL_ID);
 			if (button != null) {
-				cancelButtonState = button.isEnabled();
 				button.setEnabled(false);
 			}
 			button = getButton(IDialogConstants.FINISH_ID);
 			if (button != null) {
-				finishButtonState = button.isEnabled();
 				button.setEnabled(false);
 			}
 		}

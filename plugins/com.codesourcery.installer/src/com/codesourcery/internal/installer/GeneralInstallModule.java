@@ -12,22 +12,23 @@ package com.codesourcery.internal.installer;
 
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
-import org.eclipse.equinox.p2.metadata.IVersionedId;
+import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 
 import com.codesourcery.installer.AbstractInstallModule;
 import com.codesourcery.installer.IInstallAction;
 import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallDescription;
+import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.IInstallPlatform.ShortcutFolder;
-import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.IInstallWizardPage;
+import com.codesourcery.installer.IInstalledProduct;
+import com.codesourcery.installer.IProductRange;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LicenseDescriptor;
 import com.codesourcery.installer.LinkDescription;
@@ -43,6 +44,8 @@ import com.codesourcery.internal.installer.ui.pages.InformationPage;
 import com.codesourcery.internal.installer.ui.pages.InstallFolderPage;
 import com.codesourcery.internal.installer.ui.pages.LicensePage;
 import com.codesourcery.internal.installer.ui.pages.PathPage;
+import com.codesourcery.internal.installer.ui.pages.SetupInstalledProductsPage;
+import com.codesourcery.internal.installer.ui.pages.SetupPage;
 import com.codesourcery.internal.installer.ui.pages.ShortcutsPage;
 import com.codesourcery.internal.installer.ui.pages.WelcomePage;
 
@@ -51,105 +54,67 @@ import com.codesourcery.internal.installer.ui.pages.WelcomePage;
  */
 public class GeneralInstallModule extends AbstractInstallModule {
 	@Override
-	public IInstallAction[] getInstallActions(IProvisioningAgent agent, IInstallData data, IInstallProduct existingProduct) {
+	public IInstallAction[] getInstallActions(IProvisioningAgent agent, IInstallData data, IInstallMode installMode) {
 		ArrayList<IInstallAction> actions = new ArrayList<IInstallAction>();
 
-		// Get any existing installable units to remove
-		ArrayList<IVersionedId> existingRoots = new ArrayList<IVersionedId>();
-		if (existingProduct != null) {
-			for (IInstallAction action : existingProduct.getActions()) {
-				if (action instanceof InstallIUAction) {
-					InstallIUAction uiAction = (InstallIUAction)action;
-					for (IVersionedId root : uiAction.getRootsToInstall()) {
-						existingRoots.add(root);
-					}
-				}
-			}
-		}
-		
-		IInstallDescription installDescription = getInstallDescription();
-		
-		// Install p2 units
-		IVersionedId[] roots = (IVersionedId[])data.getProperty(IInstallConstants.PROPERTY_REQUIRED_ROOTS);
-		// If not roots selected, install all required and default optional roots
-		if (roots == null) {
-			List <IVersionedId> defaultRoots = new ArrayList<IVersionedId>();
-			defaultRoots.addAll(Arrays.asList(installDescription.getRequiredRoots()));
-			IVersionedId[] optionalRoots = installDescription.getOptionalRoots();
-			IVersionedId[] defaultOptionalRoots = installDescription.getDefaultOptionalRoots();
-			if ((optionalRoots != null) && (defaultOptionalRoots != null)) {
-				for (IVersionedId defaultOptionalRoot : defaultOptionalRoots) {
-					for (IVersionedId optionalRoot : optionalRoots) {
-						if (optionalRoot.equals(defaultOptionalRoot)) {
-							defaultRoots.add(optionalRoot);
-							break;
-						}
-					}
-				}
-			}
-			roots = defaultRoots.toArray(new IVersionedId[defaultRoots.size()]);
-		}
-		actions.add(new InstallIUAction(
-				installDescription.getProfileName(),
-				installDescription.getProfileProperties(),
-				installDescription.getUpdateSites(),
-				roots,
-				installDescription.getRemoveProfile() ? null : existingRoots.toArray(new IVersionedId[existingRoots.size()]),
-				installDescription.getProgressFindPatterns(),
-				installDescription.getProgressReplacePatterns()
-				)
-		);
-		
-		/*
-		 * Add shortcuts actions.
-		 */
-		IInstallAction[] shortcutActions = createShortcutActions(installDescription.getLinks(), installDescription, data);
-		if(shortcutActions.length > 0)
-			actions.addAll(Arrays.asList(shortcutActions));
-		
-		// Add environment
-		Boolean addEnvironment = (Boolean)data.getProperty(IInstallConstants.PROPERTY_MODIFY_PATHS);
-		if ((addEnvironment == null) || (addEnvironment.booleanValue() == true)) {
-			// Add paths
-			String[] paths = installDescription.getEnvironmentPaths();
-			if (paths != null) {
-				String[] resolvedPaths = new String[paths.length];
-				for (int index = 0; index < paths.length; index ++) {
-					IPath path = installDescription.getRootLocation().append(paths[index]);
-					resolvedPaths[index] = path.toOSString();
-				}
-				actions.add(new PathAction(resolvedPaths));
-			}
-		}
+		// P2 IU action
+		addIUAction(actions, data);
 
-		// Uninstall links
-		if (Installer.isWindows()) {
-			if (installDescription.getUninstallerName() != null) {
-				actions.add(new UninstallLinkAction(
-						installDescription.getRootLocation().append(IInstallConstants.UNINSTALL_DIRECTORY),
-						installDescription.getProductVendor(),
-						installDescription.getProductVersion(),
-						installDescription.getProductHelp(),
-						installDescription.getUninstallerName()));
-			}
+		if (!installMode.isUpdate()) {
+			// Short-cut actions
+			addShortcutActions(actions, data);
+			
+			// Add PATH environment action
+			addPathAction(actions, data);
+	
+			// Uninstall links
+			addUninstallLinkAction(actions);
 		}
 		
 		return actions.toArray(new IInstallAction[actions.size()]);
 	}
 
-	/***
-	 * Creates actions for shortcut creation
-	 * @param links
-	 * @param installDescription
-	 * @param data
-	 * @return Array of shortcut actions
+	/**
+	 * Adds the P2 IU action.
+	 * 
+	 * @param actions Actions
+	 * @param data Install data
 	 */
-	protected IInstallAction[] createShortcutActions(LinkDescription[] links, IInstallDescription installDescription, IInstallData data) {
-		if (links == null || links.length == 0)
-			return new ShortcutAction[0];
-		
-		ArrayList<IInstallAction> actions = new ArrayList<IInstallAction>();
+	protected void addIUAction(List<IInstallAction> actions, IInstallData data) {
+		// Units to add
+		ArrayList<IInstallableUnit> unitsToAdd = new ArrayList<IInstallableUnit>();
+		// Units to remove
+		ArrayList<IInstallableUnit> unitsToRemove = new ArrayList<IInstallableUnit>();
 
+		// Get the install plan
+		RepositoryManager.getDefault().getInstallUnits(unitsToAdd, unitsToRemove);
+		
+		// Add P2 provision action
+		actions.add(new InstallIUAction(
+				getInstallDescription().getProfileName(),
+				getInstallDescription().getProfileProperties(),
+				getInstallDescription().getUpdateSites(),
+				unitsToAdd.toArray(new IInstallableUnit[unitsToAdd.size()]),
+				unitsToRemove.toArray(new IInstallableUnit[unitsToRemove.size()]),
+				getInstallDescription().getProgressFindPatterns(),
+				getInstallDescription().getProgressReplacePatterns()
+				)
+		);
+	}
+	
+	/**
+	 * Adds short-cut actions.
+	 * 
+	 * @param actions Actions
+	 * @param data Install data
+	 */
+	protected void addShortcutActions(List<IInstallAction> actions, IInstallData data) {
+		LinkDescription[] links = getInstallDescription().getLinks();
+		
+		// No short-cuts
+		if (links == null || links.length == 0)
+			return;
+		
 		for (LinkDescription link : links) {
 			try {
 				// Add program shortcuts?
@@ -174,8 +139,8 @@ public class GeneralInstallModule extends AbstractInstallModule {
 						continue;
 				}
 
-				IPath target = installDescription.getRootLocation().append(link.getTarget());
-				IPath iconPath = installDescription.getRootLocation().append(link.getIconPath());
+				IPath target = getInstallDescription().getRootLocation().append(link.getTarget());
+				IPath iconPath = getInstallDescription().getRootLocation().append(link.getIconPath());
 				IPath workingDirectory = target.removeLastSegments(1);
 				IPath shortcutFolder;
 				IPath removeFolder = null;
@@ -210,7 +175,7 @@ public class GeneralInstallModule extends AbstractInstallModule {
 					}
 					// No user location (headless mode) - use default
 					else {
-						IPath folder = installDescription.getLinksLocation().append(linkPath);
+						IPath folder = getInstallDescription().getLinksLocation().append(linkPath);
 						shortcutFolder = baseFolder.append(folder);
 						if (!folder.isEmpty())
 							removeFolder = baseFolder.append(getTopFolder(folder));
@@ -235,7 +200,46 @@ public class GeneralInstallModule extends AbstractInstallModule {
 				Installer.log(e);
 			}
 		}
-		return actions.toArray(new IInstallAction[actions.size()]);
+	}
+
+	/**
+	 * Adds PATH environment action.
+	 * 
+	 * @param actions Actions
+	 * @param data Install data
+	 */
+	protected void addPathAction(List<IInstallAction> actions, IInstallData data) {
+		Boolean addEnvironment = (Boolean)data.getProperty(IInstallConstants.PROPERTY_MODIFY_PATHS);
+		if ((addEnvironment == null) || (addEnvironment.booleanValue() == true)) {
+			// Add paths
+			String[] paths = getInstallDescription().getEnvironmentPaths();
+			if (paths != null) {
+				String[] resolvedPaths = new String[paths.length];
+				for (int index = 0; index < paths.length; index ++) {
+					IPath path = getInstallDescription().getRootLocation().append(paths[index]);
+					resolvedPaths[index] = path.toOSString();
+				}
+				actions.add(new PathAction(resolvedPaths));
+			}
+		}
+	}
+	
+	/**
+	 * Adds uninstall link action (Windows only).
+	 * 
+	 * @param actions Actions
+	 */
+	protected void addUninstallLinkAction(List<IInstallAction> actions) {
+		if (Installer.isWindows()) {
+			if (getInstallDescription().getUninstallerName() != null) {
+				actions.add(new UninstallLinkAction(
+						getInstallDescription().getRootLocation().append(IInstallConstants.UNINSTALL_DIRECTORY),
+						getInstallDescription().getProductVendor(),
+						getInstallDescription().getProductVersionString(),
+						getInstallDescription().getProductHelp(),
+						getInstallDescription().getUninstallerName()));
+			}
+		}
 	}
 	
 	/**
@@ -270,25 +274,32 @@ public class GeneralInstallModule extends AbstractInstallModule {
 	}
 
 	@Override
-	public IInstallWizardPage[] getInstallPages() {
+	public IInstallWizardPage[] getInstallPages(IInstallMode installMode) {
 		ArrayList<IInstallWizardPage> pages = new ArrayList<IInstallWizardPage>();
 
 		IInstallDescription installDescription = getInstallDescription();		
 		String productName = installDescription.getProductName();
 
-		// Welcome page
-		IInstallWizardPage welcomePage = createWelcomePage(installDescription, installDescription.getProductName());
-		pages.add(welcomePage);
+		// Setup page
+		IInstallWizardPage setupPage = createSetupPage(installDescription);
+		if (setupPage != null) {
+			pages.add(setupPage);
+		}
 		
 		// Fixed licenses
 		LicenseDescriptor[] licenses = installDescription.getLicenses();
 
+		// Welcome page
+		IInstallWizardPage welcomePage = createWelcomePage(installDescription, installDescription.getProductName());
+		pages.add(welcomePage);
+
+		// License page
 		// If IU license information will not be included, order the license page 
 		// after the Welcome page.
 		if ((licenses !=null) && (licenses.length > 0) && !installDescription.getLicenseIU()) {
 			pages.add(new LicensePage(licenses));
 		}
-
+		
 		// Information page
 		String informationText = installDescription.getInformationText();
 		if (informationText != null) {
@@ -296,16 +307,19 @@ public class GeneralInstallModule extends AbstractInstallModule {
 			informationPage.setScrollable(true);
 			pages.add(informationPage);
 		}
-
-		// Installation folder page
-		String defaultFolder = null;
-		IPath installLocation = installDescription.getRootLocation();
-		if (installLocation != null) {
-			defaultFolder = installLocation.toOSString();
-		}
-		IInstallWizardPage installFolderPage = createInstallFolderPage(installDescription, defaultFolder);
-		pages.add(installFolderPage);
 		
+		// If install location has not already been set
+		if (Installer.getDefault().getInstallManager().getInstallLocation() == null) {
+			// Installation folder page
+			String defaultFolder = null;
+			IPath installLocation = installDescription.getRootLocation();
+			if (installLocation != null) {
+				defaultFolder = installLocation.toOSString();
+			}
+			IInstallWizardPage installFolderPage = createInstallFolderPage(installDescription, defaultFolder);
+			pages.add(installFolderPage);
+		}
+
 		// Add-ons page
 		URI[] addonRepositories = installDescription.getAddonRepositories();
 		if ((addonRepositories != null) && (addonRepositories.length > 0)) {
@@ -325,7 +339,7 @@ public class GeneralInstallModule extends AbstractInstallModule {
 		if (installDescription.getLicenseIU()) {
 			pages.add(new LicensePage(licenses));
 		}
-
+		
 		// Shortcuts page
 		LinkDescription[] links = installDescription.getLinks();
 		if (links != null) {
@@ -345,12 +359,60 @@ public class GeneralInstallModule extends AbstractInstallModule {
 		String[] paths = installDescription.getEnvironmentPaths();
 		if ((paths != null) && (paths.length > 0)) {
 			PathPage pathPage = new PathPage(IInstallPageConstants.PATHS_PAGE, InstallMessages.PathPageTitle, 
-					productName, 
-					true);
+					productName, true, paths);
 			pages.add(pathPage);
 		}
 		
 		return pages.toArray(new IInstallWizardPage[pages.size()]);
+	}
+
+	/**
+	 * Creates the Setup page if required.
+	 * 
+	 * @param installDescription Install description
+	 * @return Setup page or <code>null</code> if not required
+	 */
+	protected IInstallWizardPage createSetupPage(IInstallDescription installDescription) {
+		IInstallWizardPage setupPage = null;
+		
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		// Installing
+		if (mode.isInstall()) {
+			IProductRange[] range = installDescription.getRequires();
+			
+			// Get existing product if available
+			String productId = getInstallDescription().getProductId();
+			IInstalledProduct installedProduct = Installer.getDefault().getInstallManager().getInstalledProduct(productId);
+
+			// If patch install
+			if (mode.isPatch()) {
+				IInstalledProduct[] products = null;
+				// If range is not specified, choose from all products
+				if (range == null) {
+					products = Installer.getDefault().getInstallManager().getInstalledProducts();
+				}
+				// Choose from applicable products
+				else {
+					products = Installer.getDefault().getInstallManager().getInstalledProducts(range, true);
+				}
+				// Show setup page to pick product for update, otherwise the user
+				// must browse for the product installation in the wizard
+				if ((products != null) && (products.length > 0)) {
+					setupPage = new SetupInstalledProductsPage("setupPage", products);
+				}
+			}
+			// Update or upgrade
+			else if (installedProduct != null) {
+				setupPage = new SetupPage("setupPage", installedProduct);
+			}
+			// Else if product range is specified
+			else if (range != null) {
+				IInstalledProduct[] products = Installer.getDefault().getInstallManager().getInstalledProducts(range, true);
+				setupPage = new SetupInstalledProductsPage("setupPage", products);
+			}
+		}
+		
+		return setupPage;
 	}
 	
 	/***
@@ -360,7 +422,7 @@ public class GeneralInstallModule extends AbstractInstallModule {
 	 * @return welcome page
 	 */
 	protected IInstallWizardPage createWelcomePage(IInstallDescription installDescription, String productName) {
-		return new WelcomePage(IInstallPageConstants.WELCOME_PAGE, productName);
+		return new WelcomePage(IInstallPageConstants.WELCOME_PAGE, productName, installDescription.getWelcomeText());
 	}
 	
 	/***

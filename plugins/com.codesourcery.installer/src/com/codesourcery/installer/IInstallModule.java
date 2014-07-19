@@ -34,9 +34,10 @@ public interface IInstallModule {
 	 * Modules can be contributed using the 
 	 * <code>com.codesourcery.installer.modules</code> extension point.
 	 * 
+	 * @param installMode Installation mode
 	 * @return Install wizard pages or <code>null</code>
 	 */
-	public IInstallWizardPage[] getInstallPages();
+	public IInstallWizardPage[] getInstallPages(IInstallMode installMode);
 	
 	/**
 	 * Returns the actions to perform for an installation
@@ -45,10 +46,9 @@ public interface IInstallModule {
 	 * 
 	 * @param P2 provisioning agent for the installation
 	 * @param data Install data
-	 * @param existingProduct Existing product being upgraded or <code>null</code>
-	 * for a new install of the product.
+	 * @param installMode Installation mode
 	 * @return Actions to perform
 	 */
 	public IInstallAction[] getInstallActions(IProvisioningAgent agent, IInstallData data, 
-			IInstallProduct existingProduct);
+			IInstallMode installMode);
 }

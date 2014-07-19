@@ -27,7 +27,6 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 import org.eclipse.osgi.util.NLS;
 import org.w3c.dom.Document;
@@ -84,6 +83,19 @@ public class EnvironmentAction extends AbstractInstallAction {
 	public EnvironmentAction() {
 		super(ID);
 	}
+
+	/**
+	 * Reads a Windows environment variable.
+	 * Only supported on the Windows platform.
+	 * 
+	 * @param variableName Variable name
+	 * @return Variable value
+	 * @throws UnsupportedOperationException if not supported
+	 * @throws CoreException on failure to read the variable value
+	 */
+	public static String readWindowsEnvironmentVariable(String variableName) throws UnsupportedOperationException, CoreException {
+		return Installer.getDefault().getInstallPlatform().getWindowsRegistryValue(REG_USER_ENVIRONMENT, variableName);	
+	}
 	
 	/**
 	 * Adds an environment variable to set.
@@ -116,10 +128,18 @@ public class EnvironmentAction extends AbstractInstallAction {
 	
 	@Override
 	public void run(IProvisioningAgent agent, IInstallProduct product,
-			IInstallMode mode, IProgressMonitor pm) throws CoreException {
+			IInstallMode mode, IProgressMonitor monitor) throws CoreException {
 
-		SubMonitor monitor = SubMonitor.convert(pm, "Setting environment variables...", 100);
 		try {
+			if (mode.isInstall()) {
+				monitor.beginTask(InstallMessages.EnvironmentAction_SettingEnvironmentVariables, 1);
+				monitor.setTaskName(InstallMessages.EnvironmentAction_SettingEnvironmentVariables);
+			}
+			else {
+				monitor.beginTask(InstallMessages.EnvironmentAction_RemovingEnvironmentVariables, 1);
+				monitor.setTaskName(InstallMessages.EnvironmentAction_RemovingEnvironmentVariables);
+			}
+			
 			// Windows
 			if (Installer.isWindows()) {
 				runWindows(mode, monitor);
@@ -128,6 +148,7 @@ public class EnvironmentAction extends AbstractInstallAction {
 			else {
 				runLinux(product, mode, monitor);
 			}
+			monitor.worked(1);
 		}
 		finally {
 			monitor.done();
@@ -154,7 +175,7 @@ public class EnvironmentAction extends AbstractInstallAction {
 	 * @param monitor Progress monitor
 	 * @throws CoreException on failure
 	 */
-	private void runWindows(IInstallMode mode, SubMonitor monitor)
+	private void runWindows(IInstallMode mode, IProgressMonitor monitor)
 		throws CoreException {
 		for (EnvironmentVariable environmentVariable : environmentVariables) {
 			String existingValue = null;
@@ -162,7 +183,7 @@ public class EnvironmentAction extends AbstractInstallAction {
 			// Get existing value
 			if ((environmentVariable.getOperation() != EnvironmentOperation.REPLACE)) { 
 				try {
-					existingValue = Installer.getDefault().getInstallPlatform().getWindowsRegistryValue(REG_USER_ENVIRONMENT, environmentVariable.getName());
+					existingValue = readWindowsEnvironmentVariable(environmentVariable.getName());
 				}
 				catch (CoreException e) {
 					// Ignore
@@ -234,7 +255,7 @@ public class EnvironmentAction extends AbstractInstallAction {
 	 * @param monitor Progress monitor
 	 * @throws CoreException on failure
 	 */
-	private void runLinux(IInstallProduct product, IInstallMode mode, SubMonitor monitor)
+	private void runLinux(IInstallProduct product, IInstallMode mode, IProgressMonitor monitor)
 			throws CoreException {
 		// Path to .profile
 		String homeDir = System.getProperty("user.home");

@@ -10,6 +10,8 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer.ui.pages;
 
+import java.util.ArrayList;
+
 import org.eclipse.jface.viewers.ArrayContentProvider;
 import org.eclipse.jface.viewers.CheckboxTableViewer;
 import org.eclipse.jface.viewers.ISelectionChangedListener;
@@ -25,19 +27,22 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.TableColumn;
 
+import com.codesourcery.installer.IInstallConsoleProvider;
+import com.codesourcery.installer.IInstallData;
+import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.IInstallProduct;
+import com.codesourcery.installer.IInstalledProduct;
 import com.codesourcery.installer.Installer;
+import com.codesourcery.installer.console.ConsoleListPrompter;
 import com.codesourcery.installer.ui.InstallWizardPage;
 import com.codesourcery.internal.installer.IInstallerImages;
 import com.codesourcery.internal.installer.InstallMessages;
-import com.codesourcery.internal.installer.InstallProduct;
 
 /**
  * This page presents installed products
  * for selection.
- * This page does not support console.
  */
-public class ProductsPage extends InstallWizardPage {
+public class ProductsPage extends InstallWizardPage implements IInstallConsoleProvider {
 	private static final String[] COLUMN_NAMES = new String[] { 
 		InstallMessages.ProductsPage_NameColumn, 
 		InstallMessages.ProductsPage_VersionColumn 
@@ -46,52 +51,57 @@ public class ProductsPage extends InstallWizardPage {
 	private static final int[] COLUMN_WIDTHS = new int[] { 350, 100 };
 
 	/** Installed products */
-	protected IInstallProduct[] products;
+	protected IInstallProduct[] installedProducts = null;
+	/** Selected products */
+	protected IInstallProduct[] selectedProducts = null;
 	/** Message label */
 	protected Label messageLabel;
 	/** Message to show */
 	protected String message;
 	/** Products table */
 	protected CheckboxTableViewer viewer;
+	/** Console list prompter */
+	protected ConsoleListPrompter<IInstallProduct> consoleList;
 	
 	/**
 	 * Constructor
 	 * 
 	 * @param pageName Page name
 	 * @param title Page title
-	 * @param products Installed products
 	 * @param message Message to show
 	 */
-	public ProductsPage(String pageName, String title, IInstallProduct[] products, String message) {
+	public ProductsPage(String pageName, String title, String message) {
 		super(pageName, title);
 		
-		this.products = products;
 		this.message = message;
 		setPageComplete(true);
 	}
 	
 	/**
-	 * Returns the installed products.
+	 * Returns the prompt message.
 	 * 
-	 * @return Products
+	 * @return Message
 	 */
-	public IInstallProduct[] getProducts() {
-		return products;
+	private String getPromptMessage() {
+		return message;
 	}
-
+	
 	/**
 	 * Returns the selected products.
 	 * 
 	 * @return Selected products
 	 */
-	public InstallProduct[] getSelectedProducts() {
-		Object[] checkedElements = viewer.getCheckedElements();
-		InstallProduct[] products = new InstallProduct[checkedElements.length];
-		for (int index = 0; index < checkedElements.length; index++) {
-			products[index] = (InstallProduct)checkedElements[index];
-		}
-		
-		return products;
+	public IInstallProduct[] getSelectedProducts() {
+		return selectedProducts;
+	}
+	
+	/**
+	 * Sets the selected products.
+	 * 
+	 * @param products Selected products
+	 */
+	private void setSelectedProducts(IInstallProduct[] products) {
+		this.selectedProducts = products;
 	}
 	
 	@Override
@@ -103,7 +113,7 @@ public class ProductsPage extends InstallWizardPage {
 		// Message label
 		messageLabel = new Label(area, SWT.WRAP);
 		messageLabel.setLayoutData(new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1));
-		messageLabel.setText(message);
+		messageLabel.setText(getPromptMessage());
 		
 		viewer = CheckboxTableViewer.newCheckList(area, SWT.SINGLE | SWT.H_SCROLL | SWT.V_SCROLL | SWT.FULL_SELECTION | SWT.BORDER);
 		viewer.getTable().setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
@@ -116,8 +126,6 @@ public class ProductsPage extends InstallWizardPage {
 			column.setWidth(COLUMN_WIDTHS[i]);
 		}
 		viewer.setContentProvider(new ArrayContentProvider());
-		viewer.setInput(getProducts());
-		viewer.setAllChecked(true);
 		viewer.addSelectionChangedListener(new ISelectionChangedListener() {
 			@Override
 			public void selectionChanged(SelectionChangedEvent event) {
@@ -128,6 +136,41 @@ public class ProductsPage extends InstallWizardPage {
 		return area;
 	}
 	
+	@Override
+	public void setActive(IInstallData data) {
+		super.setActive(data);
+
+		if (installedProducts == null) {
+			installedProducts = Installer.getDefault().getInstallManager().getInstallManifest().getProducts();
+			if (!isConsoleMode()) {
+				viewer.setInput(installedProducts);
+
+				// Find installed product if available
+				IInstallProduct uninstallProduct = null;
+				IInstalledProduct installedProduct = Installer.getDefault().getInstallManager().getInstalledProduct();
+				if (installedProduct != null) {
+					IInstallProduct[] products = Installer.getDefault().getInstallManager().getInstallManifest().getProducts();
+					for (IInstallProduct product : products) {
+						if (product.getId().equals(installedProduct.getId())) {
+							uninstallProduct = product;
+							break;
+						}
+					}
+				}
+
+				// If installed product has been set, check only it
+				if (uninstallProduct != null) {
+					viewer.setAllChecked(false);
+					viewer.setChecked(uninstallProduct, true);
+				}
+				// Else check all products
+				else {
+					viewer.setAllChecked(true);
+				}
+			}
+		}
+	}
+
 	/**
 	 * Called when the products selection has changed.
 	 */
@@ -166,10 +209,54 @@ public class ProductsPage extends InstallWizardPage {
 				if (columnIndex == 0)
 					return product.getName();
 				else if (columnIndex == 1)
-					return product.getVersion();
+					return product.getVersionString();
 			}
 			
 			return null;
 		}
+	}
+
+	@Override
+	public boolean isSupported() {
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		return mode.isUninstall();
+	}
+	
+	@Override
+	public void saveInstallData(IInstallData data) {
+		if (!isConsoleMode()) {
+			Object[] checkedElements = viewer.getCheckedElements();
+			IInstallProduct[] products = new IInstallProduct[checkedElements.length];
+			for (int index = 0; index < checkedElements.length; index++) {
+				products[index] = (IInstallProduct)checkedElements[index];
+			}
+			
+			setSelectedProducts(products);
+		}
+	}
+
+	@Override
+	public String getConsoleResponse(String input)
+			throws IllegalArgumentException {
+		String response = null;
+		
+		if (input == null) {
+			// Create prompter
+			consoleList = new ConsoleListPrompter<IInstallProduct>(getPromptMessage(), false);
+			// Add prompts
+			for (IInstallProduct installedProduct : installedProducts) {
+				consoleList.addItem(installedProduct.getName(), installedProduct, true, true);
+			}
+		}
+		
+		// Get response
+		response = consoleList.getConsoleResponse(input);
+		if (response == null) {
+			ArrayList<IInstallProduct> selectedProducts = new ArrayList<IInstallProduct>();
+			consoleList.getSelectedData(selectedProducts);
+			setSelectedProducts(selectedProducts.toArray(new IInstallProduct[selectedProducts.size()]));
+		}
+		
+		return response;
 	}
 }

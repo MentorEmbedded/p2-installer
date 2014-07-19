@@ -17,7 +17,6 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 import org.eclipse.osgi.util.NLS;
 import org.w3c.dom.Document;
@@ -83,7 +82,8 @@ public class UnityShortcutAction extends ShortcutAction {
 				+ "Type=Application\n" //$NON-NLS-1$
 				+ "Name=" + getName() + "\n"  //$NON-NLS-1$ //$NON-NLS-2$
 				+ "Exec=" + cmd + "\n"//$NON-NLS-1$
-				+ "Icon=" + getIconPath(); //$NON-NLS-1$
+				+ "Icon=" + getIconPath() + "\n" //$NON-NLS-1$
+				+ "StartupWMClass=" + InstallUtils.makeFileNameSafe(getName()); //$NON-NLS-1$
 		
 		return fileContents;
 	}
@@ -142,36 +142,48 @@ public class UnityShortcutAction extends ShortcutAction {
 	public void run(IProvisioningAgent agent, IInstallProduct product, IInstallMode mode, IProgressMonitor pm)
 			throws CoreException {
 		
-		SubMonitor monitor = SubMonitor.convert(pm, InstallMessages.CreatingShortcuts, 100);
-		
-		// Install
-		if (mode.isInstall()) {
-			if (isDashShortcut) {
-				// Register application with Unity by creating a .desktop file in the default 
-				// launcher path. This means that the application will show up in the Unity Dash.
-				
-				// TODO: Also install desktop file to launcher panel using DBUS.
-				if (!new File (getDashRegistrationPath().append(getLauncherName()).toOSString()).exists()) {
-					new File (getDashRegistrationPath().toOSString()).mkdirs();
-					writeLauncherFile(getDashRegistrationPath().append(getLauncherName()), product);	
+		try {
+			// Install
+			if (mode.isInstall()) {
+				if (isDashShortcut) {
+					// Register application with Unity by creating a .desktop file in the default 
+					// launcher path. This means that the application will show up in the Unity Dash.
+					
+					// TODO: Also install desktop file to launcher panel using DBUS.
+					if (!new File (getDashRegistrationPath().append(getLauncherName()).toOSString()).exists()) {
+						new File (getDashRegistrationPath().toOSString()).mkdirs();
+						writeLauncherFile(getDashRegistrationPath().append(getLauncherName()), product);	
+					}
+				} else {
+					// This is a desktop link - write .desktop file to ~/Desktop.
+					String taskName = NLS.bind(InstallMessages.CreatingLink0, getName());
+					pm.beginTask(taskName, 1);
+					pm.setTaskName(taskName);
+					writeLauncherFile(getPath().append(getLauncherName()), product);
+					pm.worked(1);
 				}
-			} else {
-				// This is a desktop link - write .desktop file to ~/Desktop.
-				monitor.setTaskName(NLS.bind(InstallMessages.CreatingLink0, getName()));
-				writeLauncherFile(getPath().append(getLauncherName()), product);
+			}
+			// Uninstall
+			else {
+				if (isDashShortcut) {
+					if (new File (getDashRegistrationPath().append(getLauncherName()).toOSString()).exists()) {
+						String taskName = NLS.bind(InstallMessages.RemovingLink0, getDashRegistrationPath().append(getLauncherName()));
+						pm.beginTask(taskName, 1);
+						pm.setTaskName(taskName);
+						deleteLauncherFile(getDashRegistrationPath().append(getLauncherName()));
+						pm.worked(1);
+					}
+				} else {
+					String taskName = NLS.bind(InstallMessages.RemovingLink0, getPath().append(getLauncherName()));
+					pm.beginTask(taskName, 1);
+					pm.setTaskName(taskName);
+					deleteLauncherFile(getPath().append(getLauncherName()));
+					pm.worked(1);
+				}
 			}
 		}
-		// Uninstall
-		else {
-			if (isDashShortcut) {
-				if (new File (getDashRegistrationPath().append(getLauncherName()).toOSString()).exists()) {
-					monitor.setTaskName(NLS.bind(InstallMessages.RemovingLink0, getDashRegistrationPath().append(getLauncherName())));
-					deleteLauncherFile(getDashRegistrationPath().append(getLauncherName()));	
-				}
-			} else {
-				monitor.setTaskName(NLS.bind(InstallMessages.RemovingLink0, getPath().append(getLauncherName())));
-				deleteLauncherFile(getPath().append(getLauncherName()));
-			}
+		finally {
+			pm.done();
 		}
 	}
 	

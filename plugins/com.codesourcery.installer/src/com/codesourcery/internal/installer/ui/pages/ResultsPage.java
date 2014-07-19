@@ -90,22 +90,7 @@ public class ResultsPage extends InstallWizardPage {
 	public ResultsPage(String pageName, String title) {
 		super(pageName, title);
 	}
-	
-	/**
-	 * Constructor
-	 * 
-	 * @param pageName Page name
-	 * @param title Page title
-	 * @param optionNames Names of options to show
-	 * @param optionChecks Default checked state of options
-	 * @see #getOption(int)
-	 */
-	public ResultsPage(String pageName, String title, LaunchItem[] launchItems) {
-		super(pageName, title);
-		this.launchItems = launchItems;
-		this.optionButtons = new Button[launchItems.length];
-	}
-	
+
 	/**
 	 * Returns an option checked state.
 	 * 
@@ -224,12 +209,6 @@ public class ResultsPage extends InstallWizardPage {
 				((GridData)resultsPane.getLayoutData()).exclude = false;
 				errorPane.setVisible(false);
 				((GridData)errorPane.getLayoutData()).exclude = true;
-				
-				if (launchItems != null) {
-					for (int index = 0; index < launchItems.length; index ++) {
-						optionButtons[index].setVisible(showOptions);
-					}
-				}
 			}
 			// Error in result
 			else {
@@ -256,6 +235,34 @@ public class ResultsPage extends InstallWizardPage {
 	}
 	
 	@Override
+	public void setVisible(boolean visible) {
+		// If installing, create launch items
+		if (visible && 
+			Installer.getDefault().getInstallManager().getInstallMode().isInstall() && 
+			(launchItems == null)) {
+			launchItems = Installer.getDefault().getInstallManager().getInstallDescription().getLaunchItems();
+			// Create launch item buttons
+			if (showOptions && (launchItems != null) && (launchItems.length > 0)) {
+				optionButtons = new Button[launchItems.length];
+				for (int index = 0; index < launchItems.length; index++) {
+					optionButtons[index] = new Button(resultsPane, SWT.CHECK);
+					optionButtons[index].setText(launchItems[index].getName());
+					optionButtons[index].setSelection(launchItems[index].isDefault());
+					optionButtons[index].setData(launchItems[index]);
+					GridData buttonData = new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1);
+					buttonData.horizontalIndent = getDefaultIndent();
+					optionButtons[index].setLayoutData(buttonData);
+				}
+				
+				resultsPane.layout(true);
+				area.layout(true);
+			}
+		}
+		
+		super.setVisible(visible);
+	}
+
+	@Override
 	public Control createContents(Composite parent) {
 		area = new Composite(parent, SWT.NONE);
 		area.setLayout(new GridLayout(1, false));
@@ -279,19 +286,6 @@ public class ResultsPage extends InstallWizardPage {
 		layout.marginWidth = 0;
 		resultsPane.setLayout(layout);
 		resultsPane.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
-		
-		// Create option buttons
-		if (launchItems != null) {
-			for (int index = 0; index < launchItems.length; index++) {
-				optionButtons[index] = new Button(resultsPane, SWT.CHECK);
-				optionButtons[index].setText(launchItems[index].getName());
-				optionButtons[index].setSelection(launchItems[index].isDefault());
-				optionButtons[index].setData(launchItems[index]);
-				GridData buttonData = new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1);
-				buttonData.horizontalIndent = getDefaultIndent();
-				optionButtons[index].setLayoutData(buttonData);
-			}
-		}
 		
 		// Error pane
 		errorPane = new Composite(area, SWT.NONE);
@@ -442,5 +436,11 @@ public class ResultsPage extends InstallWizardPage {
 			clipboard.setContents(new Object[] { contents },
 					new Transfer[] { textTransfer });		
 		}
+	}
+
+	@Override
+	public boolean isSupported() {
+		// Show for all modes
+		return true;
 	}
 }

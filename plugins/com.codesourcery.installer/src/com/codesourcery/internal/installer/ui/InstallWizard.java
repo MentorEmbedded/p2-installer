@@ -12,6 +12,9 @@ package com.codesourcery.internal.installer.ui;
 
 import java.lang.reflect.InvocationTargetException;
 import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
@@ -24,7 +27,6 @@ import org.eclipse.jface.operation.IRunnableWithProgress;
 import org.eclipse.jface.wizard.IWizardPage;
 import org.eclipse.jface.wizard.Wizard;
 import org.eclipse.osgi.util.NLS;
-import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.ImageData;
 import org.eclipse.swt.graphics.ImageLoader;
@@ -32,20 +34,19 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 
 import com.codesourcery.installer.IInstallData;
-import com.codesourcery.installer.IInstallDescription;
+import com.codesourcery.installer.IInstallManager;
+import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.IInstallWizardPage;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LaunchItem;
 import com.codesourcery.installer.ui.InstallWizardPage;
-import com.codesourcery.internal.installer.IInstallContext;
 import com.codesourcery.internal.installer.InstallData;
 import com.codesourcery.internal.installer.InstallMessages;
-import com.codesourcery.internal.installer.InstallProduct;
-import com.codesourcery.internal.installer.LocationsManager;
-import com.codesourcery.internal.installer.ui.pages.InformationPage;
+import com.codesourcery.internal.installer.RepositoryManager;
 import com.codesourcery.internal.installer.ui.pages.ProductsPage;
 import com.codesourcery.internal.installer.ui.pages.ProgressPage;
 import com.codesourcery.internal.installer.ui.pages.ResultsPage;
+import com.codesourcery.internal.installer.ui.pages.AbstractSetupPage;
 import com.codesourcery.internal.installer.ui.pages.SummaryPage;
 
 /**
@@ -54,9 +55,9 @@ import com.codesourcery.internal.installer.ui.pages.SummaryPage;
  */
 public class InstallWizard extends Wizard {
 	/**
-	 * Install context
+	 * Delay before displaying busy animation for long operations (ms)
 	 */
-	private IInstallContext installContext;
+	private final static int BUSY_DELAY = 2000;
 	/**
 	 * Summary page
 	 */
@@ -92,18 +93,15 @@ public class InstallWizard extends Wizard {
 
 	/**
 	 * Constructor
-	 * 
-	 * @param installContext Install context
 	 */
-	public InstallWizard(IInstallContext installContext) {
-		this.installContext = installContext;
+	public InstallWizard() {
 		setNeedsProgressMonitor(true);
 		// Set window title
 		String title;
 		if (isInstall()) {
-			title = installContext.getInstallDescription().getWindowTitle(); 
+			title = getInstallManager().getInstallDescription().getWindowTitle(); 
 			if (title == null) {
-				title = MessageFormat.format(InstallMessages.Title0, installContext.getInstallDescription().getProductName());
+				title = MessageFormat.format(InstallMessages.Title0, getInstallManager().getInstallDescription().getProductName());
 			}
 		}
 		else {
@@ -113,17 +111,19 @@ public class InstallWizard extends Wizard {
 		
 		// Load title image if available
 		try {
-			IPath titleImagePath = installContext.getInstallDescription().getTitleImage();
-			if (titleImagePath != null) {
-				if (titleImagePath.toFile().exists()) {
-					ImageLoader imageLoader = new ImageLoader();
-					ImageData[] imageDatas = imageLoader.load(titleImagePath.toOSString());
-					if (imageDatas.length > 0) {
-						titleImage = new Image(Display.getDefault(), imageDatas[0]);
+			if (isInstall()) {
+				IPath titleImagePath = getInstallManager().getInstallDescription().getTitleImage();
+				if (titleImagePath != null) {
+					if (titleImagePath.toFile().exists()) {
+						ImageLoader imageLoader = new ImageLoader();
+						ImageData[] imageDatas = imageLoader.load(titleImagePath.toOSString());
+						if (imageDatas.length > 0) {
+							titleImage = new Image(Display.getDefault(), imageDatas[0]);
+						}
 					}
-				}
-				else {
-					Installer.log("Missing title image file: " + titleImagePath.toOSString());
+					else {
+						Installer.log("Missing title image file: " + titleImagePath.toOSString());
+					}
 				}
 			}
 		}
@@ -132,6 +132,15 @@ public class InstallWizard extends Wizard {
 		}
 		
 		installData = new InstallData();
+	}
+	
+	/**
+	 * Returns the install manager.
+	 * 
+	 * @return Install manager
+	 */
+	protected IInstallManager getInstallManager() {
+		return Installer.getDefault().getInstallManager();
 	}
 	
 	/**
@@ -160,16 +169,15 @@ public class InstallWizard extends Wizard {
 	 * <code>false</code> if uninstall
 	 */
 	public boolean isInstall() {
-		return getInstallContext().isInstall();
+		return Installer.getDefault().getInstallManager().getInstallMode().isInstall();
 	}
 
 	/**
-	 * Returns the install context.
-	 * 
-	 * @return Install context
+	 * Returns if the wizard is for an upgrade.
+	 * @return <code>true</code> if upgrade
 	 */
-	public IInstallContext getInstallContext() {
-		return installContext;
+	public boolean isUpgrade() {
+		return Installer.getDefault().getInstallManager().getInstallMode().isUpgrade();
 	}
 	
 	/**
@@ -188,8 +196,8 @@ public class InstallWizard extends Wizard {
 			status = new Status(IStatus.CANCEL, Installer.ID, 0, "Cancelled", null);
 			// Cleanup any install files
 			try {
-				if (getInstallContext().isInstall())
-					LocationsManager.getDefault().setInstallLocation(null);
+				if (isInstall())
+					Installer.getDefault().getInstallManager().setInstallLocation(null);
 			} catch (CoreException e) {
 				Installer.log(e);
 			}
@@ -211,7 +219,7 @@ public class InstallWizard extends Wizard {
 		String confirmationMessage;
 		if (isInstall()) {
 			confirmationMessage = MessageFormat.format(InstallMessages.CancelInstallConfirmation2, new Object[] {
-					getInstallContext().getInstallDescription().getProductName(),
+					Installer.getDefault().getInstallManager().getInstallDescription().getProductName(),
 					InstallMessages.Resume,
 					InstallMessages.Quit
 			});
@@ -244,40 +252,51 @@ public class InstallWizard extends Wizard {
 		if (!installed) {
 			complete = false;
 			
-			installed = true;
-			
-			// Show installing page 
-			getContainer().showPage(progressPage);
 			
 			// Install
 			if (isInstall()) {
 				// Save page install data
-				for (IWizardPage page : getPages()) {
-					if (page instanceof IInstallWizardPage) {
-						((IInstallWizardPage)page).saveInstallData(getInstallData());
+				for (IInstallWizardPage page : getSupportedPages()) {
+					page.saveInstallData(getInstallData());
+				}
+				
+				// Show the summary page and validate the installation
+				if (summaryPage != null) {
+					getContainer().showPage(summaryPage);
+					// Installation not valid, don't proceed
+					if (!summaryPage.validate()) {
+						return false;
 					}
 				}
 				
+				// Show installing page 
+				getContainer().showPage(progressPage);
+
 				status = install(getInstallData());
 			}
 			// Uninstall
 			else {
+				// Show uninstalling page 
+				getContainer().showPage(progressPage);
+
 				status = uninstall();
 			}
+			
+			installed = true;
 			
 			// Set result
 			if (resultsPage != null) {
 				// Success
 				if (status.isOK()) {
-					String message = getInstallContext().isInstall() ?
-							NLS.bind(InstallMessages.InstallationComplete0, getInstallContext().getInstallDescription().getProductName()) :
+					String message = isInstall() ?
+							NLS.bind(InstallMessages.InstallationComplete0, getInstallManager().getInstallDescription().getProductName()) :
 							InstallMessages.UninstallationComplete;
 					resultsPage.setResult(message, true); 
 				}
 				// Cancel
 				else if (status.getSeverity() == IStatus.CANCEL) {
-					String message = getInstallContext().isInstall() ?
-							NLS.bind(InstallMessages.InstallationCancelled0, getInstallContext().getInstallDescription().getProductName()) :
+					String message = isInstall() ?
+							NLS.bind(InstallMessages.InstallationCancelled0, getInstallManager().getInstallDescription().getProductName()) :
 							InstallMessages.UninstallationCancelled;
 					resultsPage.setResult(message, false); 
 				}
@@ -295,12 +314,12 @@ public class InstallWizard extends Wizard {
 		else {
 			// Launch selected product items if no errors at end of installation
 			if (isInstall() && (resultsPage != null) && !resultsPage.hasError()) {
-				LaunchItem[] launchItems = getInstallContext().getInstallDescription().getLaunchItems();
+				LaunchItem[] launchItems = getInstallManager().getInstallDescription().getLaunchItems();
 				if (launchItems != null) {
 					for (LaunchItem launchItem : launchItems) {
 						try {
 							if (resultsPage.isItemChecked(launchItem)) {
-								getInstallContext().launch(launchItem);
+								getInstallManager().launch(launchItem);
 							}
 						}
 						catch (Exception e) {
@@ -355,7 +374,7 @@ public class InstallWizard extends Wizard {
 		Throwable error = null;
 		final IStatus[] status = new IStatus[] { Status.OK_STATUS };
 		
-		final InstallProduct[] products = productsPage.getSelectedProducts();
+		final IInstallProduct[] products = productsPage.getSelectedProducts();
 
 		// Install
 		try {
@@ -364,7 +383,7 @@ public class InstallWizard extends Wizard {
 				public void run(IProgressMonitor monitor) throws InvocationTargetException, InterruptedException {
 					try {
 						// Remove products
-						getInstallContext().uninstall(products, monitor);
+						getInstallManager().uninstall(products, monitor);
 						
 						if (monitor.isCanceled())
 							status[0] = Status.CANCEL_STATUS;
@@ -401,7 +420,7 @@ public class InstallWizard extends Wizard {
 				@Override
 				public void run(IProgressMonitor monitor) throws InvocationTargetException, InterruptedException {
 					try {
-						getInstallContext().install(installData, monitor);
+						getInstallManager().install(installData, monitor);
 						
 						if (monitor.isCanceled()) {
 							status[0] = Status.CANCEL_STATUS;
@@ -430,72 +449,96 @@ public class InstallWizard extends Wizard {
 	}
 	
 	/**
-	 * Adds install pages.
+	 * Sets up page navigation.
 	 */
-	private void addInstallPages() {
-		// Add wizard pages
-		IInstallWizardPage[] installPages = getInstallContext().getWizardPages();
-		for (IInstallWizardPage installPage : installPages) {
-			addPage(installPage);
+	public void setupPageNavigation() {
+		IWizardPage[] pages = getPages();
+		for (IWizardPage page : pages) {
+			if (page instanceof InstallWizardPage) {
+				InstallWizardPage wizardPage = (InstallWizardPage)page;
+				wizardPage.setupNavigation();
+			}
 		}
-		
-		// Summary page
-		summaryPage = new SummaryPage("summaryPage", InstallMessages.SummaryPageTitle, getPages());
-		addPage(summaryPage);
-		
-		// Installing page
-		String installingMessage = MessageFormat.format(getInstallContext().isUpgrade() ? InstallMessages.UpgradingMessage0 :InstallMessages.InstallingMessage0, 
-				new Object[] { getInstallContext().getInstallDescription().getProductName() });
-		progressPage = new ProgressPage("progressPage", InstallMessages.InstallingPageTitle, installingMessage);
-		addPage(progressPage);
-		
-		// Results page
-		LaunchItem[] launchItems = getInstallContext().getInstallDescription().getLaunchItems();
-		
-		// There are items to launch at the end of installation
-		if ((launchItems != null) && (launchItems.length > 0)) {
-			resultsPage = new ResultsPage("resultsPage", InstallMessages.ResultsPageTitle, 
-					launchItems);
-		}
-		// No items to launch at the end of installation
-		else {
-			resultsPage = new ResultsPage("resultsPage", InstallMessages.ResultsPageTitle);
-		}
-		addPage(resultsPage);
-	}
-	
-	/**
-	 * Adds uninstall pages.
-	 */
-	private void addUninstallPages() {
-		// Welcome page
-		InformationPage welcomePage = new InformationPage("welcomePage", InstallMessages.WelcomePageTitle, InstallMessages.uninstallMessage);
-		addPage(welcomePage);
-
-		// Products page
-		productsPage = new ProductsPage("productsPage", InstallMessages.ProductsPageTitle, getInstallContext().getInstallManifest().getProducts(), InstallMessages.ProductsMessage);
-		productsPage.setMessage(InstallMessages.SelectProductsToUninstall);
-		addPage(productsPage);
-		
-		// Installing page
-		progressPage = new ProgressPage("progressPage", InstallMessages.Uninstalling, InstallMessages.UninstallingMessage);
-		addPage(progressPage);
-
-		// Results page
-		resultsPage = new ResultsPage("resultsPage", InstallMessages.ResultsPageTitle);
-		addPage(resultsPage);
 	}
 	
 	@Override
 	public void addPages() {
-		// Install
-		if (isInstall()) {
-			addInstallPages();
+		// Add install wizard pages from modules
+		IInstallWizardPage[] installPages = getInstallManager().getWizardPages();
+		for (IInstallWizardPage installPage : installPages) {
+			addPage(installPage);
 		}
-		// Uninstall
-		else {
-			addUninstallPages();
+		
+		// Install summary page
+		summaryPage = new SummaryPage("summaryPage", InstallMessages.SummaryPageTitle);
+		addPage(summaryPage);
+
+		// Uninstall products page
+		productsPage = new ProductsPage("productsPage", InstallMessages.ProductsPageTitle, InstallMessages.ProductsMessage);
+		productsPage.setMessage(InstallMessages.SelectProductsToUninstall);
+		addPage(productsPage);
+		
+		// Progress page
+		progressPage = new ProgressPage("progressPage");
+		addPage(progressPage);
+		
+		// Results page
+		resultsPage = new ResultsPage("resultsPage", InstallMessages.ResultsPageTitle);
+		addPage(resultsPage);
+	}
+
+	@Override
+	public void createPageControls(Composite pageContainer) {
+		super.createPageControls(pageContainer);
+
+		// Initialize the wizard pages navigation unless the Setup page is
+		// present as it will do it.
+		if ((getPageCount() > 0) && !(getPages()[0] instanceof AbstractSetupPage)) {
+			setupPageNavigation();
 		}
+	}
+
+	/**
+	 * Returns is a page is currently supported.
+	 * 
+	 * @param page Page
+	 * @return <code>true</code> if page is supported
+	 */
+	private boolean isPageSupported(IWizardPage page) {
+		boolean supported = true;
+		if (page instanceof IInstallWizardPage) {
+			supported = ((IInstallWizardPage)page).isSupported();
+		}
+		
+		return supported;
+	}
+
+	@Override
+    public IWizardPage getStartingPage() {
+		IWizardPage startPage = null;
+		IWizardPage[] pages = getPages();
+		for (IWizardPage page : pages) {
+			if (isPageSupported(page)) {
+				startPage = page;
+				break;
+			}
+		}
+		if (startPage instanceof IInstallWizardPage) {
+			((IInstallWizardPage)startPage).setActive(getInstallData());
+		}
+		
+		return startPage;
+    }
+	
+	@Override
+	public IWizardPage getNextPage(IWizardPage page) {
+		IWizardPage nextPage = super.getNextPage(page);
+		// If page is not supported, get next supported page
+		while (!isPageSupported(nextPage)) {
+			nextPage = super.getNextPage(nextPage);
+		}
+		
+		return nextPage;
 	}
 
 	/**
@@ -560,17 +603,33 @@ public class InstallWizard extends Wizard {
 		@Override
 		protected IStatus run(IProgressMonitor monitor) {
 			try {
-				// Show page busy
+				// Disable buttons
 				getShell().getDisplay().syncExec(new Runnable() {
 					@Override
 					public void run() {
 						((InstallWizardDialog)getContainer()).setButtonsEnabled(false);
-						installPage.showBusy(message);
 					}
 				});
+				// Show busy animation if operation takes too long
+				Timer busyTimer = new Timer();
+				busyTimer.schedule(new TimerTask() {
+					@Override
+					public void run() {
+						// Show page busy
+						getShell().getDisplay().syncExec(new Runnable() {
+							@Override
+							public void run() {
+								if (!installPage.isBusy()) {
+									installPage.showBusy(message);
+								}
+							}
+						});
+					}
+				}, BUSY_DELAY);
 				
 				// Run operation
 				runnable.run();
+				busyTimer.cancel();
 				done = true;
 				
 				// Hide page busy
@@ -589,27 +648,42 @@ public class InstallWizard extends Wizard {
 		}
 	}
 
-	@Override
-	public void createPageControls(Composite pageContainer) {
-		// Page navigation
-		IInstallDescription.PageNavigation navigation = IInstallDescription.PageNavigation.NONE;
-		if (getInstallContext().isInstall()) {
-			navigation = getInstallContext().getInstallDescription().getPageNavigation();
-		}
-		
-		// Set page navigation
-		for (IWizardPage page : getPages()) {
-			if (page instanceof InstallWizardPage) {
-				InstallWizardPage installPage = (InstallWizardPage)page;
-				if (navigation == IInstallDescription.PageNavigation.NONE)
-					installPage.setPageNavigation(SWT.NONE);
-				else if (navigation == IInstallDescription.PageNavigation.TOP)
-					installPage.setPageNavigation(SWT.TOP);
-				else if (navigation == IInstallDescription.PageNavigation.LEFT)
-					installPage.setPageNavigation(SWT.LEFT);
+	/**
+	 * Returns all wizard pages that are currently supported.
+	 * 
+	 * @return Supported wizard pages
+	 */
+	public IInstallWizardPage[] getSupportedPages() {
+		ArrayList<IInstallWizardPage> supportedPages = new ArrayList<IInstallWizardPage>();
+		IWizardPage[] pages = getPages();
+		for (IWizardPage page : pages) {
+			if (page instanceof IInstallWizardPage) {
+				IInstallWizardPage wizardPage = (IInstallWizardPage)page;
+				if (wizardPage.isSupported()) {
+					supportedPages.add(wizardPage);
+				}
 			}
 		}
 		
-		super.createPageControls(pageContainer);
+		return supportedPages.toArray(new IInstallWizardPage[supportedPages.size()]);
+	}
+	
+	@Override
+	public boolean canFinish() {
+		// Check if all pages report can finish
+		boolean finish = true;
+		for (IInstallWizardPage page : getSupportedPages()) {
+			if (!page.isPageComplete()) {
+				finish = false;
+				break;
+			}
+		}
+		
+		if (finish && isInstall()) {
+			// Allow install only if there is an install plan
+			finish = RepositoryManager.getDefault().hasInstallUnits();
+		}
+		
+		return finish;
 	}
 }

@@ -77,6 +77,27 @@ public class InstallUtils {
 		
 		return units.toArray(new IInstallableUnit[units.size()]);
 	}
+	
+	/**
+	 * Returns the latest version of an installable unit in a profile.
+	 * 
+	 * @param profile Profile
+	 * @param id Installable unit identifier
+	 * @return Latest version found or <code>null</code>
+	 */
+	public static IInstallableUnit getUnitFromProfile(IProfile profile, String id) {
+		IInstallableUnit unit = null;
+		IQueryResult<IInstallableUnit> query = profile.query(QueryUtil.createIUQuery(id), null);
+		Iterator<IInstallableUnit> iter = query.iterator();
+		while (iter.hasNext()) {
+			IInstallableUnit foundUnit = iter.next();
+			if ((unit == null) || (unit.getVersion().compareTo(unit.getVersion()) > 0)) {
+				unit = foundUnit;
+			}
+		}
+		
+		return unit;
+	}
 
 	/**
 	 * Finds an installable unit in all repositories.
@@ -218,5 +239,40 @@ public class InstallUtils {
 		}
 			
 		return null;
+	}
+	
+	/**
+	 * Creates a version range.
+	 * 
+	 * @param range Range
+	 * @return Version range
+	 */
+	public static VersionRange createVersionRange(String range) {
+		return new VersionRange(formatVersion(range));
+	}
+	
+	/**
+	 * Creates a version.
+	 * 
+	 * @param version Version specification
+	 * @return Version
+	 */
+	public static Version createVersion(String version) {
+		return Version.create(formatVersion(version));
+	}
+	
+	/**
+	 * Formats a compatible OmniVersion string from one that may or may not
+	 * be compatible.
+	 * 
+	 * @param version Version string
+	 * @return Version
+	 */
+	public static String formatVersion(String version) {
+		version = version.trim();
+		version = version.replace('-', '.');
+		version = version.replace('_', '.');
+		
+		return version;
 	}
 }

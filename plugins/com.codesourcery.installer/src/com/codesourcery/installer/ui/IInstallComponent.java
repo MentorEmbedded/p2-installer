@@ -16,6 +16,9 @@ import org.eclipse.equinox.p2.metadata.IInstallableUnit;
  * A component that can be installed.
  */
 public interface IInstallComponent {
+	/** Property indicating that component is an add-on */
+	public static final String PROPERTY_ADDON = "addon";
+	
 	/**
 	 * Returns the name of the component.
 	 * 
@@ -36,6 +39,14 @@ public interface IInstallComponent {
 	 * @return Install unit
 	 */
 	public IInstallableUnit getInstallUnit();
+	
+	/**
+	 * Returns the existing install unit for this component.
+	 * 
+	 * @return Existing install unit or <code>null</code> if not install unit
+	 * is installed already
+	 */
+	public IInstallableUnit getInstalledUnit();
 
 	/**
 	 * Returns other components that this component must be installed with.
@@ -53,20 +64,6 @@ public interface IInstallComponent {
 	public boolean isOptional();
 	
 	/**
-	 * Sets if the component is an add-on.
-	 * 
-	 * @param addon <code>true</code> if add-on
-	 */
-	public void setAddon(boolean addon);
-	
-	/**
-	 * Returns if the component is an add-on.
-	 * 
-	 * @return <code>true</code> if add-on
-	 */
-	public boolean isAddon();
-	
-	/**
 	 * Sets whether the component should be installed.
 	 * 
 	 * @param install <code>true</code> to install
@@ -79,4 +76,41 @@ public interface IInstallComponent {
 	 * @return <code>true</code> to install
 	 */
 	public boolean getInstall();
+	
+	/**
+	 * Returns if the component should be installed by default.
+	 * 
+	 * @return <code>true</code> if installed by default
+	 */
+	public boolean isDefault();
+
+	/**
+	 * Sets the component included.
+	 * 
+	 * @param included <code>true</code> if included
+	 */
+	public void setIncluded(boolean included);
+	
+	/**
+	 * Returns if the component is included.
+	 * 
+	 * @return <code>true</code> if included
+	 */
+	public boolean isIncluded();
+	
+	/**
+	 * Sets a component property value.
+	 * 
+	 * @param name Name of property
+	 * @param value Property value or <code>null</code>
+	 */
+	public void setProperty(String name, String value);
+	
+	/**
+	 * Returns a component property value.
+	 * 
+	 * @param name Name of property
+	 * @return Property value or <code>null</code>
+	 */
+	public Object getProperty(String name);
 }

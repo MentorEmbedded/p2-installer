@@ -36,6 +36,8 @@
 #define PATHSEPSTR ":"
 #endif
 
+/* Maximum size of a single command line option and argument */
+#define MAX_OPTION_SIZE 32768
 /* Flag for accessing 64-bit registry node */
 #define KEY_WOW64_64KEY 0x0100
 
@@ -1171,7 +1173,7 @@ read_file_options (int delete, const char *path)
 {
   FILE *fp;
   int length;
-  char buffer[2048];
+  char buffer[MAX_OPTION_SIZE];
   char *sp;
   int index = 0;
 
@@ -1183,7 +1185,7 @@ read_file_options (int delete, const char *path)
   fp = fopen (path, "r");
   if (fp)
     {
-      while (fgets (buffer, 2048, fp) != NULL)
+      while (fgets (buffer, MAX_OPTION_SIZE, fp) != NULL)
         {
           fargc++;
           if (strpbrk (buffer, " \t") != NULL)
@@ -1202,7 +1204,7 @@ read_file_options (int delete, const char *path)
   fp = fopen (path, "r");
   if (fp)
     {
-      while (fgets (buffer, 2048, fp) != NULL)
+      while (fgets (buffer, MAX_OPTION_SIZE, fp) != NULL)
         {
           length = strlen (buffer);
           if (buffer[length - 1] == '\n')

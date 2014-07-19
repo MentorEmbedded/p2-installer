@@ -29,6 +29,12 @@ import org.eclipse.swt.widgets.Composite;
 
 /**
  * A control that displays a sequence of steps.
+ * ---------------------------------
+ * | Step 1 > Step 2 > Step 3 > ... >
+ * ---------------------------------
+ * 
+ * Use {@link #addStep(String)} to add steps to the control.
+ * Use {@link #setCurrentStep(String)} to set the current step.
  */
 public class StepsControl extends Canvas {
 	/** Step colors */
@@ -52,9 +58,9 @@ public class StepsControl extends Canvas {
 	/** Default leader width default */
 	private final static int LEADER_WIDTH_DEFAULT = 7;
 	/** Horizontal margin default */
-	private final static int HORIZONTAL_MARGIN_DEFAULT = 1;
+	private final static int HORIZONTAL_MARGIN_DEFAULT = 2;
 	/** Vertical margin default */
-	private final static int VERTICAL_MARGIN_DEFAULT = 1;
+	private final static int VERTICAL_MARGIN_DEFAULT = 2;
 	/** Text horizontal margin default */
 	private final static int TEXT_HORIZONTAL_MARGIN_DEFAULT = 4;
 	/** Text vertical margin default */
@@ -62,7 +68,7 @@ public class StepsControl extends Canvas {
 	/** Step spacing default */
 	private final static int STEP_SPACING_DEFAULT = 2;
 	/** Shadow offset */
-	private final static int SHADOW_OFFSET = 4;
+	private final static int SHADOW_OFFSET = 2;
 
 	/** <code>true</code> to double-buffer drawing */
 	private boolean doubleBuffer = true;
@@ -322,12 +328,12 @@ public class StepsControl extends Canvas {
 				new Color(device, blendRGB(
 						getDisplay().getSystemColor(SWT.COLOR_LIST_FOREGROUND).getRGB(), 
 						getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND).getRGB(), 
-						10));
+						5));
 		colors[StepColor.AFTER_CURRENT_FOREGROUND.ordinal()] = 
 				new Color(device, blendRGB(
 						getDisplay().getSystemColor(SWT.COLOR_LIST_FOREGROUND).getRGB(), 
 						getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND).getRGB(), 
-						25));
+						30));
 	}
 
 	/**
@@ -374,9 +380,9 @@ public class StepsControl extends Canvas {
 		GC gc = new GC(getShell());
 		gc.setFont(getFont());
 
-		int width = getHorizontalMargin() + getHorizontalMargin() + SHADOW_OFFSET;
+		int width = getHorizontalMargin() + getHorizontalMargin() + (isShadowEnabled() ? SHADOW_OFFSET : 0);
 		int height = getVerticalMargin() + getTextVerticalMargin() + gc.getFontMetrics().getHeight()
-				+ getTextVerticalMargin() + getVerticalMargin() + SHADOW_OFFSET;
+				+ getTextVerticalMargin() + getVerticalMargin() + (isShadowEnabled() ? SHADOW_OFFSET : 0);
 		
 		for (String step : steps) {
 			Point textSize = getTextSize(gc, step);
@@ -469,6 +475,8 @@ public class StepsControl extends Canvas {
 
 		// Set the font
 		gc.setFont(getFont());
+		// Get height of text
+		int textHeight = gc.getFontMetrics().getHeight();
 		// Use advanced graphics if available
 		gc.setAdvanced(true);
 		gc.setAntialias(SWT.ON);
@@ -523,9 +531,6 @@ public class StepsControl extends Canvas {
 		// Adjust clipping
 		gc.setClipping(clientArea.x + getHorizontalMargin(), clientArea.y + getVerticalMargin(), clientArea.width - getHorizontalMargin() - getHorizontalMargin(), clientArea.height - getVerticalMargin() - getVerticalMargin());
 		
-		// Get height of text
-		int textHeight = gc.getFontMetrics().getHeight();
-
 		// Compute widths of steps text
 		int[] textWidths = new int[steps.size()];
 		for (int index = 0; index < steps.size(); index ++) {

@@ -27,13 +27,13 @@ public abstract class AbstractInstallModule implements IInstallModule {
 	}
 
 	@Override
-	public IInstallWizardPage[] getInstallPages() {
+	public IInstallWizardPage[] getInstallPages(IInstallMode installMode) {
 		return null;
 	}
 
 	@Override
 	public IInstallAction[] getInstallActions(IProvisioningAgent agent, IInstallData data, 
-			IInstallProduct existingProduct) {
+			IInstallMode installMode) {
 		return null;
 	}
 	

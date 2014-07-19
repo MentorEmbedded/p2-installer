@@ -14,15 +14,15 @@ import java.net.URI;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.ListenerList;
 import org.eclipse.core.runtime.Status;
-import org.eclipse.equinox.p2.metadata.IVersionedId;
-import org.eclipse.equinox.p2.metadata.VersionedId;
+import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.ISelectionChangedListener;
 import org.eclipse.jface.viewers.ISelectionProvider;
@@ -55,17 +55,18 @@ import org.eclipse.swt.widgets.Text;
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallDescription;
+import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.console.ConsoleListPrompter;
 import com.codesourcery.installer.ui.IInstallComponent;
 import com.codesourcery.installer.ui.IInstallSummaryProvider;
 import com.codesourcery.installer.ui.InstallWizardPage;
 import com.codesourcery.internal.installer.IInstallConstants;
+import com.codesourcery.internal.installer.IInstallPlan;
 import com.codesourcery.internal.installer.IInstallRepositoryListener;
 import com.codesourcery.internal.installer.IInstallerImages;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.RepositoryManager;
-import com.codesourcery.internal.installer.SizeCalculationMonitorAdapter;
 import com.codesourcery.internal.installer.ui.SpinnerProgress;
 import com.codesourcery.internal.installer.ui.UIUtils;
 
@@ -86,8 +87,6 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	/** Component header height */
 	private static final int COMPONENT_HEADER_HEIGHT = 45;
 	
-	/** Selected components */
-	protected ArrayList<IInstallComponent> selectedComponents = new ArrayList<IInstallComponent>();
 	/** Message label */
 	protected Label messageLabel;
 	/** Console list */
@@ -126,6 +125,8 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	protected long installSize;
 	/** Install description */
 	private IInstallDescription installDescription;
+	/** Job to compute install plan */
+	private InstallPlanJob installPlanJob = new InstallPlanJob();
 	
 	
 	/**
@@ -139,24 +140,6 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	public ComponentsPage(String pageName, String title, IInstallDescription installDescription) {
 		super(pageName, title);
 		this.installDescription = installDescription;
-	}
-	
-	/**
-	 * Returns if required components should be sorted.
-	 * 
-	 * @return <code>true</code> to sort required components
-	 */
-	public boolean getSortRequiredComponents() {
-		return installDescription.getSortRequiredComponents();
-	}
-	
-	/**
-	 * Returns if optional components should be sorted.
-	 * 
-	 * @return <code>true</code> to sort optional components
-	 */
-	public boolean getSortOptionalComponents() {
-		return installDescription.getSortOptionalComponents();
 	}
 	
 	/**
@@ -183,30 +166,6 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 		}
 		
 		super.dispose();
-	}
-
-	/**
-	 * Returns the selected components.
-	 * 
-	 * @return Selected components
-	 */
-	protected IInstallComponent[] getSelectedComponents() {
-		return selectedComponents.toArray(new IInstallComponent[selectedComponents.size()]);
-	}
-	
-	/**
-	 * Returns the selected component names.
-	 * 
-	 * @return Selected component names
-	 */
-	public String[] getSelectedComponentNames() {
-		IInstallComponent[] components = getSelectedComponents();
-		String[] names = new String[components.length];
-		for (int index = 0; index < names.length; index ++) {
-			names[index] = components[index].getName();
-		}
-		
-		return names;
 	}
 
 	/**
@@ -296,22 +255,23 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 		optionalComponentsPanel.addSelectionChangedListener(new ISelectionChangedListener() {
 			@Override
 			public void selectionChanged(SelectionChangedEvent event) {
-				selectedComponents.clear();
-				// Add required units
-				for (IInstallComponent component : RepositoryManager.getDefault().getInstallComponents()) {
-					if (!component.isOptional()) {
-						selectedComponents.add(component);
+				IStructuredSelection selection = (IStructuredSelection)event.getSelection();
+				IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
+				for (IInstallComponent component : components) {
+					if (component.isOptional()) {
+						component.setInstall(false);
+						Iterator<?> iter = selection.iterator();
+						while (iter.hasNext()) {
+							if (component.equals(iter.next())) {
+								component.setInstall(true);
+								break;
+							}
+						}
 					}
-				}
-				// Add selected optional units
-				IStructuredSelection ssel = (IStructuredSelection)event.getSelection();
-				Iterator<?> iter = ssel.iterator();
-				while (iter.hasNext()) {
-					selectedComponents.add((IInstallComponent)iter.next());
 				}
 				
 				// Update install space for new component selection
-				updateInstallSpace();
+				updateInstallPlan();
 				// Update button state
 				updateButtons();
 				// Validate selection
@@ -391,6 +351,27 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	}
 
 	/**
+	 * Returns the components title.
+	 * 
+	 * @return Title text
+	 */
+	private String getComponentsTitle() {
+		return Installer.getDefault().getInstallManager().getInstallMode().isUpdate() ?
+				InstallMessages.ComponentsPage_ComponentsLabelUpdate:
+				InstallMessages.ComponentsPage_ComponentsLabelInstall;	
+	}
+
+	@Override
+	public void setVisible(boolean visible) {
+		super.setVisible(visible);
+		
+		// Update page in case component attributes changed
+		if (visible && !RepositoryManager.getDefault().isLoading()) {
+			updatePage();
+		}
+	}
+
+	/**
 	 * Updates the page.
 	 */
 	private void updatePage() {
@@ -403,44 +384,23 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 		if (!RepositoryManager.getDefault().isLoading()) {
 			hideBusy();
 
-			IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
-			selectedComponents.clear();
-			for (IInstallComponent component : components) {
-				if (component.getInstall()) {
-					selectedComponents.add(component);
-				}
-			}
-
 			setPageComplete(true);
-			messageLabel.setText(InstallMessages.ComponentsPage_ComponentsLabel);
+			messageLabel.setText(getComponentsTitle());
 
 			// Add required and optional components
+			IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
 			ArrayList<IInstallComponent> requiredComponents = new ArrayList<IInstallComponent>();
 			ArrayList<IInstallComponent> optionalComponents = new ArrayList<IInstallComponent>();
 			for (IInstallComponent component : components) {
-				if (component.isOptional()) {
-					optionalComponents.add(component);
+				// Component is included
+				if (component.isIncluded()) {
+					if (component.isOptional()) {
+						optionalComponents.add(component);
+					}
+					else {
+						requiredComponents.add(component);
+					}
 				}
-				else {
-					requiredComponents.add(component);
-				}
-			}
-			
-			// Sort components by name
-			Comparator<IInstallComponent> componentComparator = new Comparator<IInstallComponent>() {
-				@Override
-				public int compare(IInstallComponent arg0, IInstallComponent arg1) {
-					return arg0.getName().compareTo(arg1.getName());
-				}
-				
-			};
-			// Sort required components for display
-			if (getSortRequiredComponents()) {
-				Collections.sort(requiredComponents, componentComparator);
-			}
-			// Sort optional components for display
-			if (getSortOptionalComponents()) {
-				Collections.sort(optionalComponents, componentComparator);
 			}
 			
 			// Required components
@@ -470,6 +430,11 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 			// a negative value.
 			minHeight = requiredSize.y + COMPONENT_HEADER_HEIGHT + componentsBar.getSpacing() +
 					optionalSize.y + COMPONENT_HEADER_HEIGHT + componentsBar.getSpacing();
+
+			updateInstallPlan();
+			
+			// Update buttons
+			updateButtons();
 		}
 		// Components not yet loaded
 		else {
@@ -477,11 +442,6 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 			showBusy(InstallMessages.ComponentsPage_LoadingInstallInformation);
 		}
 		
-		updateInstallSpace();
-		
-		// Update buttons
-		updateButtons();
-
 		// Update the scrolled container size
 		componentContainer.setMinHeight(minHeight);
 		componentContainer.setMinWidth(minWidth);
@@ -512,46 +472,15 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	}
 	
 	/**
-	 * Updates the install space status area.
+	 * Updates the install plan.
 	 */
-	private void updateInstallSpace() {
-		
-		// selectedComponents not yet initialized.
-		if (selectedComponents.isEmpty()) {
-			setStatusText("");
-			return;
+	private void updateInstallPlan() {
+		// Cancel current job if running
+		if (installPlanJob.getState() != Job.NONE) {
+			installPlanJob.cancel();
 		}
-		
-		new Thread() {
-			public void run() {
-				RepositoryManager.getDefault().startSizeCalculation(selectedComponents.toArray(new IInstallComponent[]{}), new SizeCalculationMonitorAdapter() {
-					@Override
-					public void beginTask(String name, int totalWork) {
-						super.beginTask(name, totalWork);
-						getShell().getDisplay().syncExec(new Runnable() {
-							@Override
-							public void run() {
-								setProgressVisible(true);
-							}
-						});
-					}
-					@Override
-					public void done(final long installSize) {
-						getShell().getDisplay().syncExec(new Runnable() {
-							@Override
-							public void run() {
-								ComponentsPage.this.installSize = installSize;
-								setProgressVisible(false);
-								String msg = MessageFormat
-										.format(InstallMessages.ComponentsPage_0,
-												UIUtils.formatBytes(installSize));
-								setStatusText(msg);
-							}
-						});
-					}
-				});
-			};
-		}.start();
+		// Schedule plan job
+		installPlanJob.schedule();
 	}
 	
 	/**
@@ -575,11 +504,22 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 		if (optionalList != null) {
 			buttonArea.setEnabled(true);
 			
-			ComponentsPanel panel = (ComponentsPanel)optionalList.getControl();
-			IStructuredSelection selection = (IStructuredSelection)panel.getSelection();
-			Object[] selectedElements = selection.toArray();
-			selectAllButton.setEnabled(selectedComponents.size() != RepositoryManager.getDefault().getInstallComponents().length);
-			deselectAllButton.setEnabled(selectedElements.length != 0);
+			boolean allSelected = true;
+			boolean oneSelected = false;
+			IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
+			for (IInstallComponent component : components) {
+				if (component.isOptional()) {
+					if (component.getInstall()) {
+						oneSelected = true;
+					}
+					else {
+						allSelected = false;
+					}
+				}
+			}
+			
+			selectAllButton.setEnabled(!allSelected);
+			deselectAllButton.setEnabled(oneSelected);
 		}
 		else {
 			selectAllButton.setEnabled(false);
@@ -609,16 +549,17 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 				IInstallComponent component = (IInstallComponent)element;
 				if (columnIndex == 0) {
 					// Add-on component
-					if (component.isAddon()) {
-						image = Installer.getDefault().getImageRegistry().get(IInstallerImages.COMP_ADDON_OVERLAY);
+					String addon = (String)component.getProperty(IInstallComponent.PROPERTY_ADDON);
+					if (Boolean.TRUE.toString().equals(addon)) {
+						image = null;
 					}
 					// Optional component
 					else if (component.isOptional()) {
-						image = Installer.getDefault().getImageRegistry().get(IInstallerImages.COMP_OPTIONAL_OVERLAY);
+						image = null;
 					}
 					// Required component
 					else {
-						image = Installer.getDefault().getImageRegistry().get(IInstallerImages.COMP_REQUIRED_OVERLAY);
+						image = null;
 					}
 				}
 			}
@@ -649,48 +590,73 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	@Override
 	public String getInstallSummary() {
 		StringBuffer buffer = new StringBuffer();
+
+		ArrayList<IInstallableUnit> toAdd = new ArrayList<IInstallableUnit>();
+		ArrayList<IInstallableUnit> toRemove = new ArrayList<IInstallableUnit>();
+		RepositoryManager.getDefault().getInstallUnits(toAdd, toRemove);
 		
-		buffer.append(InstallMessages.SummaryPage_ComponentsLabel);
-		String[] componentNames = getSelectedComponentNames();
-		Arrays.sort(componentNames);
-		for (String name : componentNames) {
-			buffer.append("\n\t");
-			buffer.append(name);
-		}
-
-		return buffer.toString() + "\n\n";
-	}
-
-	/**
-	 * Returns a list of IVersionedId objects from the IInstallComponent list.
-	 * @param components
-	 * @return the IVersionedId list.
-	 */
-	protected IVersionedId[] componentsToVersionIds(IInstallComponent[] components) {
-		if (components != null) {
-			IVersionedId[] versions = new IVersionedId[components.length];
-			for (int index = 0; index < versions.length; index ++) {
-				versions[index] = new VersionedId(components[index].getInstallUnit().getId(), 
-						components[index].getInstallUnit().getVersion());
+		// Added components
+		ArrayList<IInstallComponent> addedComponents = new ArrayList<IInstallComponent>();
+		// Removed components
+		ArrayList<IInstallComponent> removedComponents = new ArrayList<IInstallComponent>();
+		
+		IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
+		for (IInstallComponent component : components) {
+			if (toAdd.contains(component.getInstallUnit())) {
+				addedComponents.add(component);
 			}
-			
-			return versions;
+			else if (toRemove.contains(component.getInstallUnit())) {
+				removedComponents.add(component);
+			}
 		}
 		
-		return null;
+		// If an existing installation is being updated (otherwise it is a new
+		// install or upgrade).
+		boolean update = Installer.getDefault().getInstallManager().getInstallMode().isUpdate();
+
+		// Added components summary
+		if (addedComponents.size() > 0) {
+			buffer.append(update? InstallMessages.ComponentsPage_Added : InstallMessages.ComponentsPage_Installed);
+			for (IInstallComponent component : addedComponents) {
+				buffer.append("\n\t");
+				buffer.append(component.getName());
+				if (!getHideComponentsVersion()) {
+					buffer.append(" (");
+					buffer.append(component.getInstallUnit().getVersion().toString());
+					buffer.append(')');
+				}
+			}
+		}
+		// Removed components summary
+		if (removedComponents.size() > 0) {
+			if (buffer.length() > 0) {
+				buffer.append('\n');
+			}
+			buffer.append(update ? InstallMessages.ComponentsPage_Removed : InstallMessages.ComponentsPage_NotInstalled);
+			for (IInstallComponent component : removedComponents) {
+				buffer.append("\n\t");
+				buffer.append(component.getName());
+				if (!getHideComponentsVersion()) {
+					buffer.append(" (");
+					buffer.append(component.getInstallUnit().getVersion().toString());
+					buffer.append(')');
+				}
+			}
+		}
+
+		if (buffer.length() > 0) {
+			buffer.append("\n\n");
+		}
+
+		return buffer.toString();
 	}
 
 	@Override
 	public void saveInstallData(IInstallData data) {
-		IInstallComponent[] components = getSelectedComponents();
-		if (components != null) {
-			IVersionedId[] versions = componentsToVersionIds(components);
-			data.setProperty(IInstallConstants.PROPERTY_REQUIRED_ROOTS, versions);
-		}
-		
+		// Save install size
 		data.setProperty(IInstallConstants.PROPERTY_INSTALL_SIZE, installSize);
 	}
-
+	
 	@Override
 	public String getConsoleResponse(String input)
 			throws IllegalArgumentException {
@@ -703,7 +669,7 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 
 			// Create console items list
 			ComponentLabelProvider labelProvider = new ComponentLabelProvider();
-			consoleList = new ConsoleListPrompter<IInstallComponent>(InstallMessages.ComponentsPage_ComponentsLabel);
+			consoleList = new ConsoleListPrompter<IInstallComponent>(getComponentsTitle());
 			IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
 			// Sort components by name
 			Arrays.sort(components, new Comparator<IInstallComponent>() {
@@ -726,14 +692,36 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 		response = consoleList.getConsoleResponse(input);
 		// Set selected roots
 		if (response == null) {
+			ArrayList<IInstallComponent> selectedComponents = new ArrayList<IInstallComponent>();
 			consoleList.getSelectedData(selectedComponents);
+			IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
+			for (IInstallComponent component : components) {
+				if (component.isOptional()) {
+					component.setInstall(false);
+					for (IInstallComponent selectedComponent : selectedComponents) {
+						if (component.equals(selectedComponent)) {
+							component.setInstall(true);
+							break;
+						}
+					}
+				}
+			}
+			
+			// Compute plan
+			final IInstallPlan plan = RepositoryManager.getDefault().computeInstallPlan(null);
+			// Error in install plan
+			if ((plan != null) && (plan.getStatus().getSeverity() == IStatus.ERROR)) {
+				response = MessageFormat.format("ERROR: {0}\n{1}", plan.getErrorMessage(), consoleList.toString());
+			}
 			// Validate selections
-			String status = getStatusMessage();
-			// Selection error
-			if (status != null) {
-				response = MessageFormat.format("ERROR: {0}\n{1}",  //$NON-NLS-1$
-						status,
-						consoleList.toString());
+			else {
+				String status = getSelectionMessage();
+				// Selection error
+				if (status != null) {
+					response = MessageFormat.format("ERROR: {0}\n{1}",  //$NON-NLS-1$
+							status,
+							consoleList.toString());
+				}
 			}
 		}
 		
@@ -778,18 +766,21 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	 * 
 	 * @return Status message or <code>null</code> if no error
 	 */
-	private String getStatusMessage() {
+	private String getSelectionMessage() {
 		String message = null;
 		
-		for (IInstallComponent selectedComponent : selectedComponents) {
-			IInstallComponent[] requiredComponents = selectedComponent.getRequiredComponents();
-			if (requiredComponents != null) {
-				for (IInstallComponent requiredComponent : requiredComponents) {
-					if (!selectedComponents.contains(requiredComponent)) {
-						message = MessageFormat.format("{0} requires {1}.",  //$NON-NLS-1$
-								selectedComponent.getName(),
-								requiredComponent.getName());
-						break;
+		IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
+		for (IInstallComponent component : components) {
+			if (component.getInstall()) {
+				IInstallComponent[] requiredComponents = component.getRequiredComponents();
+				if (requiredComponents != null) {
+					for (IInstallComponent requiredComponent : requiredComponents) {
+						if (!requiredComponent.getInstall()) {
+							message = MessageFormat.format("{0} requires {1}.",  //$NON-NLS-1$
+									component.getName(),
+									requiredComponent.getName());
+							break;
+						}
 					}
 				}
 			}
@@ -800,7 +791,7 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	
 	@Override
 	public boolean validate() {
-		String message = getStatusMessage();
+		String message = getSelectionMessage();
 		
 		// Show status for problems in selection
 		if (message != null) {
@@ -829,8 +820,6 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 				// Repositories loaded
 				else if (status == IInstallRepositoryListener.RepositoryStatus.loadingCompleted) {
 					hideBusy();
-					// Select all by default
-					selectedComponents = new ArrayList<IInstallComponent>(Arrays.asList(RepositoryManager.getDefault().getInstallComponents()));
 					updatePage();
 					validate();
 				}
@@ -1034,22 +1023,82 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 		@Override
 		public void setSelection(ISelection selection) {
 			if (selection instanceof IStructuredSelection) {
-				selectedComponents.clear();
 				for (Button titleButton : titleButtons) {
-					IInstallComponent component = (IInstallComponent)titleButton.getData();
+					IInstallComponent buttonComponent = (IInstallComponent)titleButton.getData();
 					boolean selected = false;
-					IStructuredSelection ssel = (IStructuredSelection)selection;
-					Iterator<?> iter = ssel.iterator();
+					Iterator<?> iter = ((IStructuredSelection) selection).iterator();
 					while (iter.hasNext()) {
-						if (component.equals(iter.next())) {
+						IInstallComponent selectedComponent = (IInstallComponent)iter.next();
+						if (buttonComponent.equals(selectedComponent)) {
 							selected = true;
 							break;
 						}
 					}
+					
 					titleButton.setSelection(selected);
 				}
 				fireSelectionChanged();
 			}
+		}
+	}
+	
+	@Override
+	public boolean isSupported() {
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		return mode.isInstall();
+	}
+	
+	/**
+	 * A job to compute the install plan.
+	 */
+	private class InstallPlanJob extends Job {
+		/**
+		 * Constructor
+		 */
+		public InstallPlanJob() {
+			super("InstallPlanJob");
+			setSystem(true);
+		}
+		
+		@Override
+		protected IStatus run(IProgressMonitor monitor) {
+			// Show progress
+			getShell().getDisplay().syncExec(new Runnable() {
+				@Override
+				public void run() {
+					setProgressVisible(true);
+				}
+			});
+			// Compute plan
+			final IInstallPlan plan = RepositoryManager.getDefault().computeInstallPlan(monitor);
+			// Hide progress and update install plan size and status
+			if ((plan != null) && !(getShell() == null) && !getShell().isDisposed()) {
+				getShell().getDisplay().syncExec(new Runnable() {
+					@Override
+					public void run() {
+						// Update size information
+						setProgressVisible(false);
+						ComponentsPage.this.installSize = plan.getSize();
+						String msg = MessageFormat
+								.format(InstallMessages.ComponentsPage_0,
+										UIUtils.formatBytes(installSize));
+						setStatusText(msg);
+						
+						// Update plan status
+						if (plan.getStatus().isOK()) {
+							hideStatus();
+						}
+						else {
+							String errorMessage = plan.getErrorMessage();
+							if (errorMessage != null) {
+								showStatus(new IStatus[] { new Status(IStatus.WARNING, Installer.ID, errorMessage) });
+							}
+						}
+					}
+				});
+			}
+			
+			return Status.OK_STATUS;
 		}
 	}
 }

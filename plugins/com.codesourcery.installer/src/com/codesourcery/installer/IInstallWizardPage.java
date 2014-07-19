@@ -60,4 +60,12 @@ public interface IInstallWizardPage extends IWizardPage {
 	 * <code>false</code> if the page contains invalid data.
 	 */
 	public boolean validate();
+	
+	/**
+	 * Returns if the page is supported.  A page that is not supported will
+	 * be skipped in the install wizard.
+	 * 
+	 * @return <code>true</code> if page is supported.
+	 */
+	public boolean isSupported();
 }
