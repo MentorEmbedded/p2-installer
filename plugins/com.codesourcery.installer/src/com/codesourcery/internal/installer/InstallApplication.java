@@ -231,7 +231,7 @@ public class InstallApplication implements IApplication {
 				// Override the install location if specified
 				String installLocation = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_LOCATION);
 				if (installLocation != null) {
-					description.setInstallLocation(new Path(installLocation));
+					description.setRootLocation(new Path(installLocation));
 				}
 			}
 		} catch (Exception e) {
