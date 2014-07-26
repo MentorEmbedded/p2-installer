@@ -596,7 +596,7 @@ public class InstallManager implements IInstallManager {
 	private void loadManifest() {
 		try {
 			if (getInstallDescription() != null) {
-				InstallManifest existingManifest = InstallManifest.loadManifest(getInstallDescription());
+				InstallManifest existingManifest = InstallManifest.loadManifest(getInstallLocation());
 				if (existingManifest != null) {
 					setInstallManifest(existingManifest);
 					
@@ -837,7 +837,7 @@ public class InstallManager implements IInstallManager {
 			}
 			// Else get existing product in manifest for product being installed
 			else {
-				product = getInstallManifest().getProduct(getInstallDescription().getProductId());
+				product = manifest.getProduct(getInstallDescription().getProductId());
 			}
 		}
 		

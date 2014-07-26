@@ -10,6 +10,7 @@
  *******************************************************************************/
 package com.codesourcery.installer;
 
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 
@@ -19,7 +20,7 @@ import org.eclipse.core.runtime.Status;
  */
 public abstract class AbstractInstallVerifier implements IInstallVerifier {
 	@Override
-	public IStatus verifyInstallLocation(IInstallDescription installDescription) {
+	public IStatus verifyInstallLocation(IPath installLocation) {
 		return Status.OK_STATUS;
 	}
 

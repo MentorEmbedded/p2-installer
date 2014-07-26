@@ -39,7 +39,7 @@ public class SilentInstallOperation extends InstallOperation {
 				// Installation data
 				InstallData installData = new InstallData();
 	
-				checkStatus(ContributorRegistry.getDefault().verifyInstallLocation(getInstallManager().getInstallDescription()));
+				checkStatus(ContributorRegistry.getDefault().verifyInstallLocation(getInstallManager().getInstallDescription().getRootLocation()));
 				
 				// Set default install location
 				getInstallManager().setInstallLocation(getInstallManager().getInstallDescription().getRootLocation());

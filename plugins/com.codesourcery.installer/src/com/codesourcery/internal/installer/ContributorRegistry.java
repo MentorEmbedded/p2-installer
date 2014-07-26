@@ -20,6 +20,7 @@ import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.core.runtime.IConfigurationElement;
 import org.eclipse.core.runtime.IExtension;
 import org.eclipse.core.runtime.IExtensionPoint;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Platform;
@@ -28,7 +29,6 @@ import org.eclipse.swt.graphics.Image;
 import org.osgi.framework.Bundle;
 
 import com.codesourcery.installer.IInstallAction;
-import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallModule;
 import com.codesourcery.installer.IInstallVerifier;
 import com.codesourcery.installer.Installer;
@@ -258,15 +258,16 @@ public class ContributorRegistry {
 	/**
 	 * Verifies an installation folder.
 	 * 
+	 * @param installLocation Install location
 	 * @return Status for the folder
 	 */
-	public IStatus[] verifyInstallLocation(IInstallDescription installDescription) {
+	public IStatus[] verifyInstallLocation(IPath installLocation) {
 
 		ArrayList<IStatus> status = new ArrayList<IStatus>();
 		// Check installation location with verifiers
 		IInstallVerifier[] verifiers = ContributorRegistry.getDefault().getInstallVerifiers();
 		for (IInstallVerifier verifier : verifiers) {
-			IStatus verifyStatus = verifier.verifyInstallLocation(installDescription);
+			IStatus verifyStatus = verifier.verifyInstallLocation(installLocation);
 			if ((verifyStatus != null) && !verifyStatus.isOK()) {
 				status.add(verifyStatus);
 			}

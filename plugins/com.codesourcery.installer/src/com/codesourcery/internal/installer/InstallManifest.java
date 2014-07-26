@@ -33,7 +33,6 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import com.codesourcery.installer.IInstallAction;
-import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallManifest;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.IProductRange;
@@ -83,15 +82,14 @@ public class InstallManifest implements IInstallManifest {
 	 * Loads an install manifest for the location specified in an install
 	 * description.
 	 * 
-	 * @param installDescription Install description
+	 * @param installLocation Install location
 	 * @return Install manifest or <code>null</code> not manifest is found.
 	 * @throws CoreException on failure to load the install manifest
 	 */
-	public static InstallManifest loadManifest(IInstallDescription installDescription) throws CoreException {
+	public static InstallManifest loadManifest(IPath installLocation) throws CoreException {
 		InstallManifest manifest = null;
-		IPath rootLocation = installDescription.getRootLocation();
-		if (rootLocation != null) {
-			IPath uninstallLocation = installDescription.getRootLocation().append(IInstallConstants.UNINSTALL_DIRECTORY);
+		if (installLocation != null) {
+			IPath uninstallLocation = installLocation.append(IInstallConstants.UNINSTALL_DIRECTORY);
 			if (uninstallLocation != null) {
 				IPath manifestPath = uninstallLocation.append(IInstallConstants.INSTALL_MANIFEST_FILENAME);
 				File manifestFile = manifestPath.toFile();

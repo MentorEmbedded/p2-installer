@@ -10,6 +10,7 @@
  *******************************************************************************/
 package com.codesourcery.installer;
 
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 
 /**
@@ -28,11 +29,11 @@ public interface IInstallVerifier {
 	 * The root install location can be obtained from 
 	 * {@link IInstallDescription#getRootLocation()}.
 	 * 
-	 * @param installDescription Install description
+	 * @param installLocation Install location
 	 * @return Status <code>IStatus.OK</code> if the location is valid, 
 	 * otherwise <code>IStatus.WARNING</code> or <code>IStatus.ERROR</code>.
 	 */
-	public IStatus verifyInstallLocation(IInstallDescription installDescription);
+	public IStatus verifyInstallLocation(IPath installLocation);
 	
 	/**
 	 * Verifies users credentials.  This method should return an <code>OK</code>

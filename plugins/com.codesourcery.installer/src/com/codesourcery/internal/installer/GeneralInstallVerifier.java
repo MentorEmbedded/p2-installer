@@ -36,10 +36,9 @@ public class GeneralInstallVerifier extends AbstractInstallVerifier {
 	}
 
 	@Override
-	public IStatus verifyInstallLocation(IInstallDescription installDescription) {
+	public IStatus verifyInstallLocation(IPath location) {
 		IStatus status = Status.OK_STATUS;
 		
-		IPath location = installDescription.getRootLocation();
 		if (location.isEmpty()) {
 			status = new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_PleaseSpecifyLocation);
 		}
@@ -66,7 +65,8 @@ public class GeneralInstallVerifier extends AbstractInstallVerifier {
 		}
 
 		try {
-			InstallManifest manifest = InstallManifest.loadManifest(installDescription);
+			IInstallDescription installDescription = Installer.getDefault().getInstallManager().getInstallDescription();
+			InstallManifest manifest = InstallManifest.loadManifest(location);
 			
 			// Requirement on existing products
 			IProductRange[] ranges = installDescription.getRequires();

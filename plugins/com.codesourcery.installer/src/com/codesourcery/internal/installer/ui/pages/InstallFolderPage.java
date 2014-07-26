@@ -119,8 +119,7 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 	}
 
 	public IStatus[] verifyInstallLocation() {
-		getInstallDescription().setRootLocation(new Path(getFolder()));
-		return (ContributorRegistry.getDefault().verifyInstallLocation(getInstallDescription()));
+		return (ContributorRegistry.getDefault().verifyInstallLocation(new Path(getFolder())));
 	}
 	
 	@Override
