@@ -177,7 +177,7 @@ public class InstallManager implements IInstallManager {
 		getInstallDescription().setRootLocation(path);
 		
 		// Load existing manifest if available
-		loadManifest();
+		loadManifest(path);
 
 		// Location changed
 		if ((path == null) || !path.equals(installLocation)) {
@@ -592,11 +592,13 @@ public class InstallManager implements IInstallManager {
 	/**
 	 * Loads the install manifest from the
 	 * install location if available.
+	 * 
+	 * @param installLocation Install location
 	 */
-	private void loadManifest() {
+	private void loadManifest(IPath installLocation) {
 		try {
 			if (getInstallDescription() != null) {
-				InstallManifest existingManifest = InstallManifest.loadManifest(getInstallLocation());
+				InstallManifest existingManifest = InstallManifest.loadManifest(installLocation);
 				if (existingManifest != null) {
 					setInstallManifest(existingManifest);
 					
