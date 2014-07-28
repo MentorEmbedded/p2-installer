@@ -80,6 +80,7 @@ p2_sfx_linux_build()
     installer="$1"
     scratch="$2"
     output="$3"
+    data_dir="$5"
 
     payload_repo_tar_file="$scratch"/repo.tar
     payload_installer_zip_file="$scratch"/installer.tgz
@@ -158,6 +159,7 @@ p2_sfx_linux_build()
 ARCHIVE_BYTES=$installer_needed_bytes
 INSTALLER_TAR_FILE=$(basename "$payload_installer_zip_file")
 REPO_TAR_FILE=$(basename "$payload_repo_tar_file")
+DATA_DIR=$data_dir
 EOF
     chmod a+r $sfx_script_prefix
 
@@ -192,6 +194,7 @@ p2_sfx_linux_usage() {
   echo "The following arguments are supported:"
   echo "--installer-dir [directory where the installer to be packaged by sfx can be found; required]"
   echo "--scratch-dir [directory where temporary objects and files can be written during sfx generation; optional. Uses current directory if not specified]"
+  echo "--data-dir [name of installer data directory; optional. Uses current default name if not specified (.p2_installer)]"
   echo "--output-file [path and file name of generated sfx; required]"
   echo "--silent [Turn off messages from this script; optional]"
 }
@@ -215,6 +218,10 @@ p2_sfx_linux_main()
         --script-dir)
           shift
           script_dir="$1";
+          ;;
+        --data-dir)
+          shift
+          data_dir="$1";
           ;;
         --silent)
           shift
@@ -286,6 +293,7 @@ p2_sfx_linux_main()
     p2_sfx_linux_build "$installer_dir" \
                        "$scratch_dir" \
                        "$output_file"  \
-                       "$script_dir"
+                       "$script_dir"  \
+                       "$data_dir"  \
 
     }

@@ -13,24 +13,14 @@
 package com.codesourcery.internal.installer;
 
 import java.io.File;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.util.Map;
 
-import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.FileLocator;
-import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.core.runtime.Platform;
-import org.eclipse.core.runtime.SubMonitor;
-import org.eclipse.core.runtime.URIUtil;
 import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
 import org.eclipse.swt.widgets.Display;
 
-import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.IInstallMode.InstallerRunMode;
+import com.codesourcery.installer.Installer;
 import com.codesourcery.internal.installer.ui.GUIInstallOperation;
 
 /**
@@ -128,119 +118,6 @@ public class InstallApplication implements IApplication {
 		return guiInstallOperation;
 	}
 
-	/**
-	 * Resolves an install file.
-	 * 
-	 * @param site File URI or <code>null</code>.
-	 * @param filename File name
-	 * @return File URI
-	 * @throws URISyntaxException on invalid syntax
-	 */
-	private URI resolveFile(String site, String filename) throws URISyntaxException {
-		// If no URL was given from the outside, look for file 
-		// relative to where the installer is running.  This allows the installer to be self-contained
-		if (site == null)
-			site = filename;
-		
-		URI propsURI = URIUtil.fromString(site);
-		if (!propsURI.isAbsolute()) {
-			String installerInstallArea = System.getProperty(IInstallConstants.OSGI_INSTALL_AREA);
-			if (installerInstallArea == null)
-				throw new IllegalStateException(InstallMessages.Error_NoInstallArea);
-			
-			// Get the locale
-			String locale = Platform.getNL();
-			// Check for locale installer description
-			propsURI = URIUtil.append(URIUtil.fromString(installerInstallArea), locale);
-			propsURI = URIUtil.append(propsURI, site);
-			File installerDescription = URIUtil.toFile(propsURI);
-			// If not found, use default install description
-			if (!installerDescription.exists()) {
-				propsURI = URIUtil.append(URIUtil.fromString(installerInstallArea), site);
-				installerDescription = URIUtil.toFile(propsURI);
-				if (!installerDescription.exists()) {
-					propsURI = null;
-				}
-			}
-		}
-		
-		return propsURI;
-	}
-
-	/**
-	 * Loads an install manifest.
-	 * 
-	 * @return Install manifest or <code>null</code>.
-	 * @throws CoreException on failure
-	 */
-	private InstallManifest loadInstallManifest() throws CoreException {
-		InstallManifest manifest = null;
-		
-		try {
-			IPath manifestPath;
-			String site = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_MANIFEST);
-			File manifestFile = null;
-			
-			// Manifest specified on command line
-			if (site != null) {
-				manifestPath = new Path(site);
-				manifestFile = manifestPath.toFile();
-			}
-			// Look for manifest in install area
-			else {
-				String installerInstallArea = System.getProperty(IInstallConstants.OSGI_INSTALL_AREA);
-				if (installerInstallArea == null)
-					throw new IllegalStateException(InstallMessages.Error_NoInstallArea);
-				manifestPath = new Path(installerInstallArea).append(IInstallConstants.INSTALL_MANIFEST_FILENAME);
-				URL url = new URL(manifestPath.toOSString());
-				url = FileLocator.toFileURL(url);
-				manifestFile = new File(url.getPath());
-			}
-			
-			if (manifestFile.exists()) {
-				manifest = new InstallManifest();
-				manifest.load(manifestFile);
-			}
-		}
-		catch (Exception e) {
-			Installer.fail(InstallMessages.Error_LoadingManifest, e);
-		}
-		
-		return manifest;
-	}
-
-	/**
-	 * Loads the install description.
-	 * 
-	 * @param monitor Progress monitor
-	 * @return Install description or <code>null</code>.
-	 * @throws CoreException on failure
-	 */
-	private InstallDescription loadInstallDescription(SubMonitor monitor) throws CoreException {
-		InstallDescription description = null;
-		
-		try {
-			String site = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_DESCRIPTION);
-			URI siteUri = resolveFile(site, IInstallConstants.INSTALL_DESCRIPTION_FILENAME);
-			if (siteUri != null) {
-				description = new InstallDescription();
-				// Properties specified on command line
-				Map<String, String> properties = Installer.getDefault().getCommandLineProperties();
-				// Load description
-				description.load(siteUri, properties, monitor);
-				// Override the install location if specified
-				String installLocation = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_LOCATION);
-				if (installLocation != null) {
-					description.setRootLocation(new Path(installLocation));
-				}
-			}
-		} catch (Exception e) {
-			Installer.fail(InstallMessages.Error_InvalidSite, e);
-		}
-		
-		return description;
-	}
-
 	@Override
 	public Object start(IApplicationContext appContext) {
 		// Run once then delete installer
@@ -271,42 +148,13 @@ public class InstallApplication implements IApplication {
 
 		initializeProxySupport();
 
-		try {
-			InstallManager manager = (InstallManager)Installer.getDefault().getInstallManager();
-					
-			// Attempt to load installation manifest (uninstall)
-			InstallManifest manifest = loadInstallManifest();
-			if (manifest != null) {
-				manager.setInstallManifest(manifest);
-				manager.setInstallMode(new InstallMode(false));
-			}
-			// If no manifest, attempt to load install description (install)
-			else {
-				InstallDescription description = loadInstallDescription(SubMonitor.convert(null));
-				if (description == null)
-					Installer.fail("No install description found.");
-
-				// Set install description
-				manager.setInstallDescription(description);
-				// Set install mode
-				InstallMode mode = new InstallMode(true);
-				// Patch installation
-				if (description.getPatch())
-					mode.setPatch();
-				manager.setInstallMode(mode);
-			}
-
-			// Create install operation
-			InstallOperation installOperation = createInstallOperation();
-			if (installOperation == null) {
-				Installer.logError(InstallMessages.Error_InstallOperation);
-			}
-
-			// Run install operation
-			installOperation.run();
-		} catch (CoreException e) {
-			Installer.log(e);
+		// Create install operation
+		InstallOperation installOperation = createInstallOperation();
+		if (installOperation == null) {
+			Installer.logError(InstallMessages.Error_InstallOperation);
 		}
+		// Run install operation
+		installOperation.run();
 		
 		return IApplication.EXIT_OK;
 	}

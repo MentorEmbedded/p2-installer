@@ -13,6 +13,7 @@ package com.codesourcery.installer;
 import java.io.File;
 
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
 
 /**
  * The install manifest records information for products in an installation.
@@ -57,6 +58,13 @@ public interface IInstallManifest {
 	 */
 	public IInstallProduct[] getProducts(IProductRange[] ranges);
 
+	/**
+	 * Returns the path to the installer data directory.
+	 * 
+	 * @return Path to data directory
+	 */
+	public IPath getDataPath();
+	
 	/**
 	 * Saves the manifest to a file.
 	 * 

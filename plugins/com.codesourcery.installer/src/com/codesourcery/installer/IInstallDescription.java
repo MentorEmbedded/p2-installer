@@ -697,4 +697,19 @@ public interface IInstallDescription {
 	 * @return <code>true</code> to use install registry
 	 */
 	public boolean getUseInstallRegistry();
+
+	/**
+	 * Sets that installer data directory.
+	 * 
+	 * @param dataLocation Path to installer data directory
+	 */
+	public void setDataLocation(IPath dataLocation);
+	
+	/**
+	 * Returns the installer data directory.
+	 * 
+	 * @return Path to installer data directory or <code>null</code> to use
+	 * data directory passed on command line or default data directory.
+	 */
+	public IPath getDataLocation();
 }

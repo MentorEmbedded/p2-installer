@@ -147,6 +147,8 @@ public class InstallDescription implements IInstallDescription {
 	public static final String PROP_INCLUDE_ALL_REPOSITORIES = "eclipse.p2.includeAllRepositories";//$NON-NLS-1$
 	/** Use install registry property */
 	public static final String PROP_USE_INSTALL_REGISTRY = "eclipse.p2.useInstallRegistry";//$NON-NLS-1$
+	/** Installer  property */
+	public static final String PROP_DATA_LOCATION = "eclipse.p2.dataLocation";//$NON-NLS-1$
 		
 	/** Base location for installer */
 	private URI base;
@@ -242,6 +244,8 @@ public class InstallDescription implements IInstallDescription {
 	private IProductRange[] productRanges;
 	/** <code>true</code> to use install registry */
 	private boolean useInstallRegistry = true;
+	/** Installer data location */
+	private IPath dataLocation;
 
 	/**
 	 * Loads an install description.
@@ -604,6 +608,12 @@ public class InstallDescription implements IInstallDescription {
 		property = readPlatformProperty(PROP_ROOT_LOCATION_PREFIX);
 		if (property != null) {
 			setRootLocation(getPath(property));
+		}
+		
+		// Data location
+		property = properties.get(PROP_DATA_LOCATION);
+		if (property != null) {
+			setDataLocation(getPath(property));
 		}
 		
 		// Short-cuts links location
@@ -1540,5 +1550,15 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public boolean getUseInstallRegistry() {
 		return useInstallRegistry;
+	}
+
+	@Override
+	public void setDataLocation(IPath dataLocation) {
+		this.dataLocation = dataLocation;
+	}
+
+	@Override
+	public IPath getDataLocation() {
+		return dataLocation;
 	}
 }

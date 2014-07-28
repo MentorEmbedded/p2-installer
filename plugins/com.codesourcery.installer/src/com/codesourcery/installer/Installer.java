@@ -33,6 +33,7 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.core.runtime.URIUtil;
 import org.eclipse.equinox.internal.p2.core.helpers.LogHelper;
 import org.eclipse.jface.resource.ImageDescriptor;
@@ -44,8 +45,11 @@ import org.osgi.framework.ServiceReference;
 
 import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.IInstallerImages;
+import com.codesourcery.internal.installer.InstallDescription;
 import com.codesourcery.internal.installer.InstallManager;
+import com.codesourcery.internal.installer.InstallManifest;
 import com.codesourcery.internal.installer.InstallMessages;
+import com.codesourcery.internal.installer.InstallMode;
 import com.codesourcery.internal.installer.InstallPlatform;
 import com.codesourcery.internal.installer.Log;
 import com.codesourcery.internal.installer.RepositoryManager;
@@ -111,34 +115,12 @@ public class Installer implements BundleActivator {
 		// Determine platform
 		isWindows = Platform.getOS().equals(Platform.OS_WIN32);
 		
-		// Get log command line argument
-		String dataDirectory = getCommandLineOption(IInstallConstants.COMMAND_LINE_DATA);
-		if (dataDirectory != null) {
-			dataFolder = new Path(dataDirectory);
-		}
-		// Use default location
-		else {
-			String home = System.getProperty("user.home");
-			dataFolder = new Path(home).append(IInstallConstants.DEFAULT_INSTALL_DATA_FOLDER);
-		}
-		File dataDirectoryFile = dataFolder.toFile();
-		// Clean data folder
-		if (hasCommandLineOption(IInstallConstants.COMMAND_CLEAN)) {
-			if (dataDirectoryFile.exists()) {
-				FileUtils.deleteDirectory(dataDirectoryFile);
-			}
-		}
-		// Installer data folder
-		if (!dataDirectoryFile.exists()) {
-			Files.createDirectories(dataDirectoryFile.toPath());
-		}
-
+		// Initialize install manager
+		initInstallManager();
 		// Initialize log path
 		initializeLogPath();
 		// Initialize install platform
 		initializeInstallPlatform();
-		// Initialize install manager
-		installManager = new InstallManager();
 	}
 
 	/*
@@ -163,12 +145,207 @@ public class Installer implements BundleActivator {
 	}
 	
 	/**
+	 * Initializes the install manager.
+	 * 
+	 * @throws CoreException on failure
+	 */
+	private void initInstallManager() throws CoreException {
+		// Attempt to load installation manifest (uninstall)
+		InstallManifest manifest = loadInstallManifest();
+		
+		// Get log command line argument
+		String dataDirectory = getCommandLineOption(IInstallConstants.COMMAND_LINE_DATA);
+		if (dataDirectory != null) {
+			dataFolder = new Path(dataDirectory);
+		}
+		// Use default location
+		else {
+			// Set saved data folder if available
+			if ((manifest != null) && (manifest.getDataPath() != null)) {
+				dataFolder = manifest.getDataPath();
+			}
+			// Else use default folder
+			else {
+				String home = System.getProperty("user.home");
+				dataFolder = new Path(home).append(IInstallConstants.DEFAULT_INSTALL_DATA_FOLDER);
+			}
+		}
+
+		// Load install description
+		InstallDescription description = loadInstallDescription(SubMonitor.convert(null));
+		// If data location is specified in install description, it overrides
+		// default location or any location specified on command line
+		if (description != null) {
+			IPath dataLocation = description.getDataLocation();
+			if (dataLocation != null) {
+				dataFolder = dataLocation;
+			}
+		}
+
+		// Setup data folder
+		try {
+			File dataDirectoryFile = dataFolder.toFile();
+			// Clean data folder
+			if (hasCommandLineOption(IInstallConstants.COMMAND_CLEAN)) {
+				if (dataDirectoryFile.exists()) {
+					FileUtils.deleteDirectory(dataDirectoryFile);
+				}
+			}
+			
+			// Create data folder
+			if (!dataDirectoryFile.exists()) {
+				Files.createDirectories(dataDirectoryFile.toPath());
+			}
+		}
+		catch (Exception e) {
+			fail("Failed to access data folder.", e);
+		}
+		
+		// Create install manager.  This must be done after the data location
+		// has been initialized.
+		installManager = new InstallManager();
+
+		// Install
+		if (manifest != null) {
+			installManager.setInstallManifest(manifest);
+			installManager.setInstallMode(new InstallMode(false));
+		}
+		// Uninstall
+		else if (description != null) {
+			// Set install description
+			installManager.setInstallDescription(description);
+			// Set install mode
+			InstallMode mode = new InstallMode(true);
+			// Patch installation
+			if (description.getPatch())
+				mode.setPatch();
+			installManager.setInstallMode(mode);
+		}
+		else {
+			Installer.fail("No install description found.");
+		}
+	}
+	
+	/**
+	 * Loads the install description.
+	 * 
+	 * @param monitor Progress monitor
+	 * @return Install description or <code>null</code>.
+	 * @throws CoreException on failure
+	 */
+	private InstallDescription loadInstallDescription(SubMonitor monitor) throws CoreException {
+		InstallDescription description = null;
+		
+		try {
+			String site = getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_DESCRIPTION);
+			URI siteUri = resolveFile(site, IInstallConstants.INSTALL_DESCRIPTION_FILENAME);
+			if (siteUri != null) {
+				description = new InstallDescription();
+				// Properties specified on command line
+				Map<String, String> properties = getCommandLineProperties();
+				// Load description
+				description.load(siteUri, properties, monitor);
+				// Override the install location if specified
+				String installLocation = getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_LOCATION);
+				if (installLocation != null) {
+					description.setRootLocation(new Path(installLocation));
+				}
+			}
+		} catch (Exception e) {
+			Installer.fail(InstallMessages.Error_InvalidSite, e);
+		}
+		
+		return description;
+	}
+
+	/**
+	 * Resolves an install file.
+	 * 
+	 * @param site File URI or <code>null</code>.
+	 * @param filename File name
+	 * @return File URI
+	 * @throws URISyntaxException on invalid syntax
+	 */
+	private URI resolveFile(String site, String filename) throws URISyntaxException {
+		// If no URL was given from the outside, look for file 
+		// relative to where the installer is running.  This allows the installer to be self-contained
+		if (site == null)
+			site = filename;
+		
+		URI propsURI = URIUtil.fromString(site);
+		if (!propsURI.isAbsolute()) {
+			String installerInstallArea = System.getProperty(IInstallConstants.OSGI_INSTALL_AREA);
+			if (installerInstallArea == null)
+				throw new IllegalStateException(InstallMessages.Error_NoInstallArea);
+			
+			// Get the locale
+			String locale = Platform.getNL();
+			// Check for locale installer description
+			propsURI = URIUtil.append(URIUtil.fromString(installerInstallArea), locale);
+			propsURI = URIUtil.append(propsURI, site);
+			File installerDescription = URIUtil.toFile(propsURI);
+			// If not found, use default install description
+			if (!installerDescription.exists()) {
+				propsURI = URIUtil.append(URIUtil.fromString(installerInstallArea), site);
+				installerDescription = URIUtil.toFile(propsURI);
+				if (!installerDescription.exists()) {
+					propsURI = null;
+				}
+			}
+		}
+		
+		return propsURI;
+	}
+	
+	/**
 	 * Returns the install manager.
 	 * 
 	 * @return Install manager
 	 */
 	public IInstallManager getInstallManager() {
 		return installManager;
+	}
+	
+	/**
+	 * Loads an install manifest.
+	 * 
+	 * @return Install manifest or <code>null</code>.
+	 * @throws CoreException on failure
+	 */
+	private InstallManifest loadInstallManifest() throws CoreException {
+		InstallManifest manifest = null;
+		
+		try {
+			IPath manifestPath;
+			String site = getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_MANIFEST);
+			File manifestFile = null;
+			
+			// Manifest specified on command line
+			if (site != null) {
+				manifestPath = new Path(site);
+				manifestFile = manifestPath.toFile();
+			}
+			// Look for manifest in install area
+			else {
+				String installerInstallArea = System.getProperty(IInstallConstants.OSGI_INSTALL_AREA);
+				if (installerInstallArea == null)
+					throw new IllegalStateException(InstallMessages.Error_NoInstallArea);
+				manifestPath = new Path(installerInstallArea).append(IInstallConstants.INSTALL_MANIFEST_FILENAME);
+				URL url = new URL(manifestPath.toOSString());
+				url = FileLocator.toFileURL(url);
+				manifestFile = new File(url.getPath());
+			}
+			
+			if (manifestFile.exists()) {
+				manifest = new InstallManifest();
+				manifest.load(manifestFile);
+			}
+		}
+		catch (Exception e) {
+			Installer.fail(InstallMessages.Error_LoadingManifest, e);
+		}
+		
+		return manifest;
 	}
 	
 	/**
@@ -545,12 +722,12 @@ public class Installer implements BundleActivator {
 	/**
 	 * Returns the installer data folder.
 	 * 
-	 * @return Installer data folder
+	 * @return Path to data folder
 	 */
 	public IPath getDataFolder() {
 		return dataFolder;
 	}
-
+	
 	/**
 	 * Returns if a command line option is
 	 * present.

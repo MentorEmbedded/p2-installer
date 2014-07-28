@@ -39,8 +39,14 @@ usage ()
 
 # Start of main
 
+# Use default data directory name if not specified
+if test -z "$DATA_DIR"
+then
+    DATA_DIR=".p2_installer"
+fi
+
 timestamp=`date +%Y%m%d%H%M%S`
-base_log_dir="$HOME/.p2_installer"
+base_log_dir="$HOME/$DATA_DIR"
 timestamp_log_dir="$base_log_dir/logs/$timestamp"
 log_file="/p2_sfx.log"
 log_output="$timestamp_log_dir$log_file"

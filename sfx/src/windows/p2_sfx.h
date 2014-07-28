@@ -12,7 +12,9 @@
 **************************************************************************/
 
 /* The following macros may be adjusted */
-#define LOG_DIRECTORY ".p2_installer"
+#ifndef LOG_DIRECTORY
+  #define LOG_DIRECTORY ".p2_installer"
+#endif
 #define LOG_FILE "p2_sfx.log"
 #define TEMP_PATH_ENV "P2_INSTALLER_TEMP_PATH"
 #define BASE_PATH "p2installer."

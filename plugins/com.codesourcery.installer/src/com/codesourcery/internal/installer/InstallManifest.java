@@ -70,6 +70,8 @@ public class InstallManifest implements IInstallManifest {
 	private static final String ATTRIBUTE_VERSION = "version";
 	/** Identifier attribute */
 	private static final String ATTRIBUTE_ID = "id";
+	/** Data path attribute */
+	private static final String ATTRIBUTE_DATA = "dataLocation";
 
 	/** Installed products */
 	private ArrayList<IInstallProduct> products = new ArrayList<IInstallProduct>();
@@ -77,6 +79,8 @@ public class InstallManifest implements IInstallManifest {
 	private File file;
 	/** Loaded version */
 	private String version = FILE_VERSION;
+	/** Path to installer data directory */
+	private IPath dataPath;
 
 	/**
 	 * Loads an install manifest for the location specified in an install
@@ -103,11 +107,12 @@ public class InstallManifest implements IInstallManifest {
 		
 		return manifest;
 	}
-	
+
 	/**
 	 * Constructor
 	 */
 	public InstallManifest() {
+		dataPath = Installer.getDefault().getDataFolder();
 	}
 
 	@Override
@@ -160,6 +165,11 @@ public class InstallManifest implements IInstallManifest {
 	}
 
 	@Override
+	public IPath getDataPath() {
+		return dataPath;
+	}
+	
+	@Override
 	public void save() throws CoreException {
 		save(file);
 	}
@@ -170,8 +180,10 @@ public class InstallManifest implements IInstallManifest {
 			// Don't overwrite a previous version.  This allows for patching
 			// an old installation without breaking the format used by a
 			// a previous uninstaller.
-			if (!FILE_VERSION.equals(version))
+			if (Installer.getDefault().getInstallManager().getInstallMode().isPatch() && 
+					!FILE_VERSION.equals(version)) {
 				return;
+			}
 			
 			DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
 			DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
@@ -182,6 +194,8 @@ public class InstallManifest implements IInstallManifest {
 			document.appendChild(installElement);
 			// File version
 			installElement.setAttribute(ATTRIBUTE_VERSION, FILE_VERSION);
+			// Data path
+			installElement.setAttribute(ATTRIBUTE_DATA, getDataPath().toOSString());
 
 			// Products root
 			Element productsElement = document.createElement(ELEMENT_PRODUCTS);
@@ -263,6 +277,11 @@ public class InstallManifest implements IInstallManifest {
 
 			NodeList installNodes = document.getElementsByTagName(ELEMENT_INSTALL);
 			version = ((Element)installNodes.item(0)).getAttribute(ATTRIBUTE_VERSION);
+			
+			String data = ((Element)installNodes.item(0)).getAttribute(ATTRIBUTE_DATA);
+			if ((data != null) && !data.isEmpty()) {
+				dataPath = new Path(data);
+			}
 
 			NodeList productNodes = document.getElementsByTagName(ELEMENT_PRODUCT);
 			for (int productIndex = 0; productIndex < productNodes.getLength(); productIndex++) {

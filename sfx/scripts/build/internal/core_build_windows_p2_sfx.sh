@@ -385,9 +385,18 @@ p2_sfx_windows_build()
     # Create source file for splash bitmap
     p2_sfx_windows_create_splash_bmp
 
+    # Compile definitions
+    if test ! -z "$data_dir"
+    then
+        COMPILE_DEFS="-DLOG_DIRECTORY=\"$data_dir\""
+    else
+        COMPILE_DEFS=""
+    fi
+    echo $COMPILE_DEFS
+
     $compiler_for_host -c "$GENERATED_ASM_FILE" -o ${GENERATED_ASM_FILE%.*}.o
-    $compiler_for_host -c "$GENERATED_C_FILE"  -I"$script_dir"/../../../src/windows -o ${GENERATED_C_FILE%.*}.o
-    $compiler_for_host -c "$core_c_file"  -I"$core_c_include_dir" -o "$core_c_object"
+    $compiler_for_host -c "$GENERATED_C_FILE" -I"$script_dir"/../../../src/windows -o ${GENERATED_C_FILE%.*}.o
+    $compiler_for_host -c "$core_c_file" $COMPILE_DEFS -I"$core_c_include_dir" -o "$core_c_object"
     $compiler_for_host -c "$splash_file" -o ${splash_file%.*}.o
 
     CLEANUP_LIST="$CLEANUP_LIST ${GENERATED_ASM_FILE%.*}.o ${GENERATED_C_FILE%.*}.o ${splash_file%.*}.o"
@@ -415,6 +424,7 @@ p2_sfx_windows_usage() {
   echo "The following arguments are supported:"
   echo "--installer-dir [directory where the installer to be packaged by sfx can be found; required]"
   echo "--scratch-dir [directory where temporary objects and files can be written during sfx generation; optional. Uses current directory if not specified]"
+  echo "--data-dir [name of installer data directory; optional. Uses current default name if not specified (.p2_installer)]"
   echo "--output-file [path and file name of generated sfx; required]"
   echo "--compiler [path to windows compiler; required]"
   echo "--resource-compiler [path to windows resource compiler; required]"
@@ -448,6 +458,10 @@ p2_sfx_windows_main()
        --script-dir)
          shift
          script_dir="$1";
+         ;;
+       --data-dir)
+         shift
+         data_dir="$1";
          ;;
         --silent)
           shift
@@ -520,5 +534,6 @@ p2_sfx_windows_main()
                          "$output_file" \
                          "$compiler" \
                          "$resource_compiler" \
-                         "$script_dir"
+                         "$script_dir" \
+                         "$data_dir"
 }
