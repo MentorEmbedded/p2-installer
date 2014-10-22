@@ -154,7 +154,7 @@ public class InstallPlatform implements IInstallPlatform {
 			// Monitor executable
 			args.add(getPath());
 			// Use response file to avoid any command line length limitations
-			args.add("-tempfile");
+			args.add("-file");
 			args.add("\"" + responseFile.getAbsolutePath() + "\"");
 			
 			// Create monitor process
