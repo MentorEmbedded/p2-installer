@@ -33,7 +33,7 @@ public interface IInstallVerifier {
 	 * @return Status <code>IStatus.OK</code> if the location is valid, 
 	 * otherwise <code>IStatus.WARNING</code> or <code>IStatus.ERROR</code>.
 	 */
-	public IStatus verifyInstallLocation(IPath installLocation);
+	public IStatus[] verifyInstallLocation(IPath installLocation);
 	
 	/**
 	 * Verifies users credentials.  This method should return an <code>OK</code>
@@ -46,5 +46,5 @@ public interface IInstallVerifier {
 	 * @return Status <code>IStatus.OK</code> if the credentials are valid, 
 	 * otherwise <code>IStatus.WARNING</code> or <code>IStatus.ERROR</code>.
 	 */
-	public IStatus verifyCredentials(String username, String password);
+	public IStatus[] verifyCredentials(String username, String password);
 }

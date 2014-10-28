@@ -12,6 +12,8 @@ package com.codesourcery.internal.installer;
 
 import java.io.IOException;
 import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import org.eclipse.core.runtime.CoreException;
@@ -36,9 +38,9 @@ public class GeneralInstallVerifier extends AbstractInstallVerifier {
 	}
 
 	/** Returns an error caused by the installation path.  Null means no error. */
-	private IStatus checkLocation(IPath location) {
+	private void checkLocation(List<IStatus> problems, IPath location) {
 		if (location.isEmpty()) {
-			return new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_PleaseSpecifyLocation);
+			problems.add(new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_PleaseSpecifyLocation));
 		}
 		else {
 			// Find the parent folder
@@ -58,15 +60,13 @@ public class GeneralInstallVerifier extends AbstractInstallVerifier {
 					path.toFile().delete();
 				}
 			} catch (IOException e) {
-				return new Status(IStatus.ERROR, Installer.ID, InstallMessages.NoWritePermissions);
+				problems.add(new Status(IStatus.ERROR, Installer.ID, InstallMessages.NoWritePermissions));
 			}
 		}
-		
-		return null;
 	}
 	
 	/** Returns an error caused by problems in the product version or required products.  Null means no error. */
-	private IStatus checkProductVersions(IPath location) {
+	private void checkProductVersions(List<IStatus> problems, IPath location) {
 		try {
 			IInstallDescription installDescription = Installer.getDefault().getInstallManager().getInstallDescription();
 			InstallManifest manifest = InstallManifest.loadManifest(location);
@@ -80,7 +80,7 @@ public class GeneralInstallVerifier extends AbstractInstallVerifier {
 				}
 				// No products found that match required ranges
 				if ((matchedProducts == null) || (matchedProducts.length == 0)) {
-					return new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_ProductsNotFound);
+					problems.add(new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_ProductsNotFound));
 				}
 			}
 			// Check for existing version of install product
@@ -94,7 +94,7 @@ public class GeneralInstallVerifier extends AbstractInstallVerifier {
 								installDescription.getProductName(),
 								product.getVersionString()
 							});
-						return new Status(IStatus.ERROR, Installer.ID, errorMessage);
+						problems.add(new Status(IStatus.ERROR, Installer.ID, errorMessage));
 					}
 					// Older version installed
 					else if (product.getVersion().compareTo(installDescription.getProductVersion()) < 0) {
@@ -103,43 +103,29 @@ public class GeneralInstallVerifier extends AbstractInstallVerifier {
 								product.getVersionString(),
 								installDescription.getProductVersionString()
 							});
-						return new Status(IStatus.WARNING, Installer.ID, errorMessage);
+						problems.add(new Status(IStatus.WARNING, Installer.ID, errorMessage));
 					}
 				}
 			}
 		} catch (CoreException e) {
 			Installer.log(e);
 		}
-		
-		return null;
 	}
 	
 	/** Returns an error caused by problems in the product version or required products.  Null means no error. */
-	private IStatus checkAdminIfAllUsers() {
+	private void checkAdminIfAllUsers(List<IStatus> problems) {
 		IInstallDescription installDescription = Installer.getDefault().getInstallManager().getInstallDescription();
 		if (installDescription.getAllUsers() && !Installer.getDefault().getInstallPlatform().isRunningAsAdmin()) {
-			return new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_AllUsersNeedsAdmin);
+			problems.add(new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_AllUsersNeedsAdmin));
 		}
-		return null;
 	}
 	
 	@Override
-	public IStatus verifyInstallLocation(IPath location) {
-		IStatus status = checkLocation(location);
-		if (status != null) {
-			return status;
-		}
-		
-		status = checkProductVersions(location);
-		if (status != null) {
-			return status;
-		}
-
-		status = checkAdminIfAllUsers();
-		if (status != null) {
-			return status;
-		}
-		
-		return Status.OK_STATUS;
+	public IStatus[] verifyInstallLocation(IPath location) {
+		List<IStatus> statuses = new ArrayList<IStatus>();
+		checkLocation(statuses, location);
+		checkProductVersions(statuses, location);
+		checkAdminIfAllUsers(statuses);
+		return statuses.toArray(new IStatus[statuses.size()]);
 	}
 }

@@ -81,7 +81,7 @@ public class ContributorRegistry {
 
 		return registry;
 	}
-	
+
 	/**
 	 * Returns all registered install verifiers.
 	 * 
@@ -105,7 +105,7 @@ public class ContributorRegistry {
 					IConfigurationElement confElement = elements[i2];
 					if (!(confElement.getName().equals(ELEMENT_VERIFIER))) //$NON-NLS-1$
 						continue;
-	
+
 					IInstallVerifier verifier = (IInstallVerifier)confElement.createExecutableExtension(ATTRIBUTE_CLASS);
 					contributions.add(verifier);
 				}
@@ -118,7 +118,7 @@ public class ContributorRegistry {
 		verifiers = contributions.toArray(new IInstallVerifier[contributions.size()]);
 		return verifiers;
 	}
-	
+
 	/**
 	 * Returns all registered modules. If moduleIDs is not null, the loaded 
 	 * modules will be restricted to those specified by ID in the list.
@@ -194,7 +194,7 @@ public class ContributorRegistry {
 		actions = contributors.toArray(new ActionDescription[0]);
 		return actions;
 	}
-	
+
 	/**
 	 * Creates an install action.
 	 * 
@@ -204,7 +204,7 @@ public class ContributorRegistry {
 	 */
 	public IInstallAction createAction(String id) throws CoreException {
 		IInstallAction action = null;
-		
+
 		ActionDescription[] actionDescriptions = getActions();
 		for (ActionDescription actionDescription : actionDescriptions) {
 			String actionId= actionDescription.getId();
@@ -216,17 +216,17 @@ public class ContributorRegistry {
 
 		return action;
 	}
-	
+
 	/**
 	 * Returns the title icon.
 	 * 
 	 * @return Title icon or <code>null</code> if no icon has been registered
 	 */
 	public Image getTitleIcon() {
-		
+
 		if (iconImage != null)
 			return iconImage;
-		
+
 		String plugin = Installer.getDefault().getContext().getBundle().getSymbolicName();
 		IExtensionPoint extensionPoint = Platform.getExtensionRegistry().getExtensionPoint(plugin, ICON_EXTENSION_ID);
 		IExtension[] extensions = extensionPoint.getExtensions();
@@ -254,7 +254,7 @@ public class ContributorRegistry {
 		}
 		return null;
 	}
-	
+
 	/**
 	 * Verifies an installation folder.
 	 * 
@@ -267,15 +267,19 @@ public class ContributorRegistry {
 		// Check installation location with verifiers
 		IInstallVerifier[] verifiers = ContributorRegistry.getDefault().getInstallVerifiers();
 		for (IInstallVerifier verifier : verifiers) {
-			IStatus verifyStatus = verifier.verifyInstallLocation(installLocation);
-			if ((verifyStatus != null) && !verifyStatus.isOK()) {
-				status.add(verifyStatus);
+			IStatus[] problems = verifier.verifyInstallLocation(installLocation);
+			if (problems != null) {
+				for (IStatus problem : problems) {
+					if (!problem.isOK()) {
+						status.add(problem);
+					}
+				}
 			}
 		}
-		
+
 		return status.toArray(new IStatus[status.size()]);
 	}
-	
+
 	/**
 	 * Verify the user supplied credentials to insure they are valid
 	 * 
@@ -286,11 +290,15 @@ public class ContributorRegistry {
 	public IStatus[] verifyCredentials(String username, String password) {
 		IInstallVerifier[] verifiers = ContributorRegistry.getDefault().getInstallVerifiers();
 		ArrayList<IStatus> status = new ArrayList<IStatus>();
-		
+
 		for (IInstallVerifier verifier : verifiers) {
-			IStatus verifyStatus = verifier.verifyCredentials(username, password);
-			if ((verifyStatus != null) && !verifyStatus.isOK()) {
-				status.add(verifyStatus);
+			IStatus[] problems = verifier.verifyCredentials(username, password);			
+			if (problems != null) {
+				for (IStatus problem : problems) {
+					if (!problem.isOK()) {
+						status.add(problem);
+					}
+				}
 			}
 		}
 		return status.toArray(new IStatus[status.size()]);
