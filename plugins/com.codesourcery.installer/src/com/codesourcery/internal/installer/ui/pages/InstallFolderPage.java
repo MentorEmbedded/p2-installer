@@ -188,6 +188,7 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 			@Override
 			public void handleEvent(Event event) {
 				allUsers = allUsersBtn.getSelection();
+				Installer.getDefault().getInstallManager().getInstallDescription().setAllUsers(allUsers);
 				validate();
 			}
 		};
@@ -220,8 +221,7 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		}
 		
 		// and user-related data
-		data.setProperty(IInstallConstants.PROPERTY_INSTALL_FOR_ALL_USERS, allUsersBtn.getSelection());
-		Installer.getDefault().getInstallManager().getInstallDescription().setAllUsers(allUsersBtn.getSelection());
+		data.setProperty(IInstallConstants.PROPERTY_INSTALL_FOR_ALL_USERS, allUsers);
 	}
 	
 	/**
