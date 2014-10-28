@@ -150,12 +150,12 @@ public interface IInstallPlatform {
 		throws CoreException;
 	
 	/**
-	 * Returns the path to a short-cut folder.
+	 * Returns the path to a short-cut folder, either for the current user or for all users (aka the system).
 	 * 
 	 * @return Short-cut folder
 	 * @throws CoreException on failure
 	 */
-	public IPath getShortcutFolder(ShortcutFolder folder) throws CoreException;
+	public IPath getShortcutFolder(ShortcutFolder folder, boolean allUsers) throws CoreException;
 	
 	/**
 	 * Returns the Windows System folder. A Typical path is C:\Windows\System32.

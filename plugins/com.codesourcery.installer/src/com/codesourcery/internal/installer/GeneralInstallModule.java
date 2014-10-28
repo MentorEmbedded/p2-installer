@@ -145,7 +145,9 @@ public class GeneralInstallModule extends AbstractInstallModule {
 				IPath shortcutFolder;
 				IPath removeFolder = null;
 				IPath linkPath = new Path(link.getPath());
-				IPath baseFolder = Installer.getDefault().getInstallPlatform().getShortcutFolder(link.getFolder()); 
+				
+				boolean allUsers = getInstallDescription().getAllUsers();
+				IPath baseFolder = Installer.getDefault().getInstallPlatform().getShortcutFolder(link.getFolder(), allUsers); 
 
 				// Desktop short-cut
 				if (link.getFolder() == ShortcutFolder.DESKTOP) {
@@ -344,8 +346,9 @@ public class GeneralInstallModule extends AbstractInstallModule {
 		LinkDescription[] links = installDescription.getLinks();
 		if (links != null) {
 			try {
+				boolean allUsers = Installer.getDefault().getInstallManager().getInstallDescription().getAllUsers();
 				IPath location = Installer.isWindows() ? installDescription.getLinksLocation() : 
-					Installer.getDefault().getInstallPlatform().getShortcutFolder(ShortcutFolder.PROGRAMS).append(installDescription.getLinksLocation());
+					Installer.getDefault().getInstallPlatform().getShortcutFolder(ShortcutFolder.PROGRAMS, allUsers).append(installDescription.getLinksLocation());
 				ShortcutsPage shortcutsPage = new ShortcutsPage(IInstallPageConstants.SHORTCUTS_PAGE, 
 						InstallMessages.ShortcutsPageTitle, links, location);
 				pages.add(shortcutsPage);
