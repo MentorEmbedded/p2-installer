@@ -61,10 +61,7 @@ public class EnvironmentAction extends AbstractInstallAction {
 	/** Variable operation attribute */
 	private static final String ATTRIBUTE_OPERATION = "operation";
 	/** Variable delimiter attribute */
-	private static final String ATTRIBUTE_DELIMITER = "delimiter";
-	
-	/** Windows user environment registry key */
-	private static final String REG_USER_ENVIRONMENT = "HKEY_CURRENT_USER\\Environment";
+	private static final String ATTRIBUTE_DELIMITER = "delimiter";	
 	/** Profile file names. */  
 	private static final String PROFILE_FILENAMES[] = {
 		".bash_profile",
@@ -74,6 +71,22 @@ public class EnvironmentAction extends AbstractInstallAction {
 	/** Index of PROFILE_FILENAMES to use when creating a new profile. */
 	private static final int PROFILE_DEFAULT_INDEX = 2;
 
+	
+	/**
+	 * Returns the key into the Windows Registry for the environment, either the system or the user.
+	 * 
+	 * @param system Determines whether to return the key for the system or the current user.
+	 * @return Key into the Windows Registry.
+	 */
+	private static String getWindowsEnvironmentKey(boolean system) {
+		// Windows user environment registry key
+		final String REG_USER_ENVIRONMENT = "HKEY_CURRENT_USER\\Environment";
+		// Windows system environment registry key
+		final String REG_SYSTEM_ENVIRONMENT = "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+		
+		return system ? REG_SYSTEM_ENVIRONMENT : REG_USER_ENVIRONMENT;
+	}
+	
 	/** Environment variables */
 	private ArrayList<EnvironmentVariable> environmentVariables = new ArrayList<EnvironmentVariable>();
 
@@ -93,8 +106,8 @@ public class EnvironmentAction extends AbstractInstallAction {
 	 * @throws UnsupportedOperationException if not supported
 	 * @throws CoreException on failure to read the variable value
 	 */
-	public static String readWindowsEnvironmentVariable(String variableName) throws UnsupportedOperationException, CoreException {
-		return Installer.getDefault().getInstallPlatform().getWindowsRegistryValue(REG_USER_ENVIRONMENT, variableName);	
+	public static String readWindowsEnvironmentVariable(boolean system, String variableName) throws UnsupportedOperationException, CoreException {
+		return Installer.getDefault().getInstallPlatform().getWindowsRegistryValue(getWindowsEnvironmentKey(system), variableName);	
 	}
 	
 	/**
@@ -177,13 +190,15 @@ public class EnvironmentAction extends AbstractInstallAction {
 	 */
 	private void runWindows(IInstallMode mode, IProgressMonitor monitor)
 		throws CoreException {
+		
+		boolean system = Installer.getDefault().getInstallManager().getInstallDescription().getAllUsers();
 		for (EnvironmentVariable environmentVariable : environmentVariables) {
 			String existingValue = null;
 			
 			// Get existing value
 			if ((environmentVariable.getOperation() != EnvironmentOperation.REPLACE)) { 
 				try {
-					existingValue = readWindowsEnvironmentVariable(environmentVariable.getName());
+					existingValue = readWindowsEnvironmentVariable(system, environmentVariable.getName());
 				}
 				catch (CoreException e) {
 					// Ignore
@@ -212,7 +227,7 @@ public class EnvironmentAction extends AbstractInstallAction {
 				}
 				
 				// Set new variable value
-				Installer.getDefault().getInstallPlatform().setWindowsRegistryValue(REG_USER_ENVIRONMENT, environmentVariable.getName(), valuesBuffer.toString());
+				Installer.getDefault().getInstallPlatform().setWindowsRegistryValue(getWindowsEnvironmentKey(system), environmentVariable.getName(), valuesBuffer.toString());
 			}
 			// Uninstall - remove variable value (prefix,append) or remove variable (replace)
 			else {
@@ -237,11 +252,11 @@ public class EnvironmentAction extends AbstractInstallAction {
 					}
 					
 					// Set new variable value
-					Installer.getDefault().getInstallPlatform().setWindowsRegistryValue(REG_USER_ENVIRONMENT, environmentVariable.getName(), valuesBuffer.toString());
+					Installer.getDefault().getInstallPlatform().setWindowsRegistryValue(getWindowsEnvironmentKey(system), environmentVariable.getName(), valuesBuffer.toString());
 				}
 				// Remove variable
 				else {
-					Installer.getDefault().getInstallPlatform().deleteWindowsRegistryValue(REG_USER_ENVIRONMENT, environmentVariable.getName());
+					Installer.getDefault().getInstallPlatform().deleteWindowsRegistryValue(getWindowsEnvironmentKey(system), environmentVariable.getName());
 				}
 			}
 		}

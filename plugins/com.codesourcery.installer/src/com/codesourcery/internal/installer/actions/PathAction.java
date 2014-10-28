@@ -30,7 +30,7 @@ import com.codesourcery.installer.actions.EnvironmentAction;
  */
 public class PathAction extends EnvironmentAction {
 	/** Path environment variable name */
-	private final static String PATH_VARIABLE_NAME = "PATH";
+	private final static String PATH_VARIABLE_NAME = "Path";
 	/** Maximum length of PATH environment variable on Windows platform */
 	private final static int PATH_MAX_LENGTH_WINDOWS = 2048;
 	/** Paths */
@@ -56,6 +56,7 @@ public class PathAction extends EnvironmentAction {
 
 	/**
 	 * Checks if paths can be added to the PATH environment variable.
+	 * @param allUsers 
 	 * 
 	 * @param path Path to add
 	 * @return <code>true</code> if there is sufficient space to add the
@@ -63,9 +64,9 @@ public class PathAction extends EnvironmentAction {
 	 * @throws UnsupportedOperationException if not supported
 	 * @throws CoreException on failure
 	 */
-	public static boolean checkPaths(String[] paths) throws UnsupportedOperationException, CoreException {
+	public static boolean checkPaths(boolean allUsers, String[] paths) throws UnsupportedOperationException, CoreException {
 		if (Installer.isWindows()) {
-			StringBuffer totalPath = new StringBuffer(readWindowsEnvironmentVariable(PATH_VARIABLE_NAME));
+			StringBuffer totalPath = new StringBuffer(readWindowsEnvironmentVariable(allUsers, PATH_VARIABLE_NAME));
 			for (String path : paths) {
 				totalPath.append(File.pathSeparator);
 				totalPath.append(path);
@@ -77,7 +78,7 @@ public class PathAction extends EnvironmentAction {
 			return true;
 		}
 	}
-	
+
 	/**
 	 * Sets the paths to add in the PATH environment.
 	 * 

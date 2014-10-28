@@ -184,14 +184,15 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 		if (getModifyPath()) {
 			if ((getPaths() != null) && (getPaths().length > 0)) {
 				try {
-					valid = PathAction.checkPaths(paths);
+					boolean allUsers = Installer.getDefault().getInstallManager().getInstallDescription().getAllUsers();
+					valid = PathAction.checkPaths(allUsers, paths);
 				}
 				catch (Exception e) {
 					Installer.log(e);
 				}
 			}
 		}
-
+		
 		return valid;
 	}
 
