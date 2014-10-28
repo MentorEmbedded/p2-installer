@@ -222,4 +222,12 @@ public interface IInstallPlatform {
 	 * the operation system.
 	 */
 	public void installWindowsDriver(String path) throws CoreException, UnsupportedOperationException;
+	
+	/**
+	 * Determines if this instance of java is being run
+	 * as admin.
+	 * 
+	 * @return whether this program is running as admin/root or not
+	 */
+	public boolean isRunningAsAdmin();
 }

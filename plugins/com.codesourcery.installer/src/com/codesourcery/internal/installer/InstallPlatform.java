@@ -19,6 +19,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.prefs.Preferences;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
@@ -614,5 +615,19 @@ public class InstallPlatform implements IInstallPlatform {
 		catch (Exception e) {
 			Installer.fail("Failed to install driver: " + path, e);
 		}
+	}
+	
+	/** Thanks to http://stackoverflow.com/a/23538961/1153071 for this implementation. */
+	@Override
+	public boolean isRunningAsAdmin() {
+	    Preferences prefs = Preferences.systemRoot();
+	    try {
+	        prefs.put("foo", "bar"); // SecurityException on Windows
+	        prefs.remove("foo");
+	        prefs.flush(); // BackingStoreException on Linux
+	        return true;
+	    } catch (Exception e) {
+	        return false;
+	    }
 	}
 }

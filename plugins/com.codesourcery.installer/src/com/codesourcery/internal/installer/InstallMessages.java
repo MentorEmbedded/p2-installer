@@ -41,6 +41,9 @@ public class InstallMessages extends NLS {
 	public static String Browse;
 	public static String SelectInstallFolder;
 	public static String SelectInstallFolderMessage;
+	public static String InstallFor;
+	public static String InstallForAllUsers;
+	public static String InstallForThisUser;
 	public static String LicensePageTitle;
 	public static String LicensePageTitle0;
 	public static String LicensePageConsoleMessage;
