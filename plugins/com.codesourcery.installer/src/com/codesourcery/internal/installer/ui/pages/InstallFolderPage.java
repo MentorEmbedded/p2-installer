@@ -200,13 +200,19 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		return area;
 	}
 	
-	private String getThisUserStr() {
+	/** Returns "Just me (username)" */
+	private static String getThisUserStr() {
 		return NLS.bind(InstallMessages.InstallForThisUser, System.getProperty("user.name"));
+	}
+	
+	/** Returns either "All users" or "Just me (ntwigg)". */
+	public static String getAllUsersOrJustMe(boolean allUsers) {
+		return allUsers ? InstallMessages.InstallForAllUsers : getThisUserStr();
 	}
 
 	@Override
 	public String getInstallSummary() {
-		String userStr = allUsers ? InstallMessages.InstallForAllUsers : getThisUserStr();
+		String userStr = getAllUsersOrJustMe(allUsers);
 		return NLS.bind(InstallMessages.SummaryInstallFolder, getFolder(), userStr);	
 	}
 

@@ -137,7 +137,6 @@ public class InstallMessages extends NLS {
 	public static String ShortcutsPageMessage;
 	public static String PathPageTitle;
 	public static String PathPageMessage;
-	public static String PathPageSummaryLabel;
 	public static String PathPageSummaryModified0;
 	public static String PathPageSummaryNotModified0;
 	public static String ShortcutsPageSummaryTitle;

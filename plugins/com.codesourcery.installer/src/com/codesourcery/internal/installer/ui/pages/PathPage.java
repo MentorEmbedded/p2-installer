@@ -14,6 +14,7 @@ import java.text.MessageFormat;
 
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -124,7 +125,7 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 		
 		// Do not modify PATH button
 		doNotModifyButton = new Button(area, SWT.RADIO);
-		data = new GridData(SWT.BEGINNING, SWT.BEGINNING, false, false, 1, 1);
+		data = new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1);
 		data.horizontalIndent = getDefaultIndent();
 		doNotModifyButton.setLayoutData(data);
 		doNotModifyButton.setText(InstallMessages.PathPage_DoNotModifyPath);
@@ -139,10 +140,9 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 		
 		// Modify PATH button
 		modifyButton = new Button(area, SWT.RADIO);
-		data = new GridData(SWT.BEGINNING, SWT.BEGINNING, false, false, 1, 1);
+		data = new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1);
 		data.horizontalIndent = getDefaultIndent();
 		modifyButton.setLayoutData(data);
-		modifyButton.setText(InstallMessages.PathPage_ModifyPath);
 		modifyButton.setSelection(getModifyPath());
 		modifyButton.addSelectionListener(new SelectionAdapter() {
 			@Override
@@ -152,6 +152,21 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 		});
 
 		return area;
+	}
+	
+	@Override
+	public void setVisible(boolean visible) {
+		super.setVisible(visible);
+		
+		if (visible) {
+			// Update the text of the modify button based on allUsers
+			modifyButton.setText(getModifyPathString());
+		}
+	}
+	
+	private String getModifyPathString() {
+		boolean allUsers = Installer.getDefault().getInstallManager().getInstallDescription().getAllUsers();
+		return NLS.bind(InstallMessages.PathPage_ModifyPath, InstallFolderPage.getAllUsersOrJustMe(allUsers).toLowerCase());
 	}
 
 	@Override
@@ -198,10 +213,9 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 
 	@Override
 	public String getInstallSummary() {
-		return MessageFormat.format(getModifyPath() ? 
-				InstallMessages.PathPageSummaryModified0 : 
-					InstallMessages.PathPageSummaryNotModified0, 
-					new Object[] { InstallMessages.PathPageSummaryLabel }) + "\n\n";
+		boolean allUsers = Installer.getDefault().getInstallManager().getInstallDescription().getAllUsers();		
+		String pattern = getModifyPath() ? InstallMessages.PathPageSummaryModified0 : InstallMessages.PathPageSummaryNotModified0;
+		return MessageFormat.format(pattern, InstallFolderPage.getAllUsersOrJustMe(allUsers).toLowerCase()) + "\n\n";
 	}
 
 	@Override
