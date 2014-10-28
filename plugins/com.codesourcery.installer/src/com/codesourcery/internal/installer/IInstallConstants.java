@@ -77,7 +77,15 @@ public class IInstallConstants {
 	 * </code>
 	 */
 	public static final String COMMAND_LINE_INSTALL_LOCATION = "-install.location";
-	
+
+	/**
+	 * Command line option for which users to install for.
+	 * <code>
+	 * -install.allusers=true
+	 * </code>
+	 */
+	public static final String COMMAND_LINE_INSTALL_ALL_USERS = "-install.allusers";
+
 	/**
 	 * Command line option for URL of install description
 	 * <code>
@@ -182,6 +190,8 @@ public class IInstallConstants {
 	
 	/** Installation folder (String) */
 	public static final String PROPERTY_INSTALL_FOLDER = "com.codesourcery.installer.folder";
+	/** Installation folder (String) */
+	public static final String PROPERTY_INSTALL_FOR_ALL_USERS = "com.codesourcery.installer.allUsers";
 	/** Modify system PATH (Boolean) */
 	public static final String PROPERTY_MODIFY_PATHS = "com.codesourcery.installer.modifyPaths";
 	/** Create desktop shortcuts (Boolean) */

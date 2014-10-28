@@ -209,6 +209,7 @@ public class InstallMessages extends NLS {
 	public static String Help_Usage;
 	public static String Help_Help;
 	public static String Help_InstallLocation;
+	public static String Help_InstallForAllUsers;
 	public static String Help_InstallDescription;
 	public static String Help_InstallManifest;
 	public static String Help_Silent;
@@ -256,6 +257,7 @@ public class InstallMessages extends NLS {
 	public static String Error_FilesNotRemoved;
 	public static String Error_PathTooLarge;
 	public static String Error_NothingToInstall;
+	public static String Error_AllUsersNeedsAdmin;
 	
 	static {
 		// initialize resource bundle

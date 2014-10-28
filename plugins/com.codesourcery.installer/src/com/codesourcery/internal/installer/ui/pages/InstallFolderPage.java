@@ -22,9 +22,12 @@ import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.Listener;
 
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
@@ -51,10 +54,16 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 	private String defaultFolder;
 	/** Installation folder */
 	private String folder;
+	/** Whether all users is selected or not */
+	private boolean allUsers;
 	/** Install context */
 	private IInstallDescription installDescription;
 	/** Warning console prompter */
 	private ConsoleYesNoPrompter warningConsolePrompter;
+	
+	/** All users vs Only this user buttons. */
+	private Button allUsersBtn;
+	private Button thisUserBtn;
 
 	/**
 	 * Constructor
@@ -72,6 +81,7 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		}
 		setFolder(this.defaultFolder);
 		this.installDescription = installDescription;
+		this.allUsers = installDescription.getAllUsers();
 	}
 	
 	/**
@@ -104,6 +114,8 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		}
 		return folder;
 	}
+	
+	
 
 	/**
 	 * Sets the install folder.
@@ -159,24 +171,57 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		});
 		valueEditor.setBrowseMessage(InstallMessages.SelectInstallFolderMessage);
 
+		// Install for users label
+		Label usersLabel = new Label(area, SWT.NONE);
+		usersLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
+		usersLabel.setText(InstallMessages.InstallFor);
+		
+		allUsersBtn = new Button(area, SWT.RADIO);
+		allUsersBtn.setText(InstallMessages.InstallForAllUsers);
+		allUsersBtn.setSelection(allUsers);
+		
+		thisUserBtn = new Button(area, SWT.RADIO);
+		thisUserBtn.setText(getThisUserStr());
+		thisUserBtn.setSelection(!allUsers);
+		
+		Listener allUserUpdate = new Listener() {
+			@Override
+			public void handleEvent(Event event) {
+				allUsers = allUsersBtn.getSelection();
+				validate();
+			}
+		};
+		allUsersBtn.addListener(SWT.Selection, allUserUpdate);
+		thisUserBtn.addListener(SWT.Selection, allUserUpdate);
+		
 		validate();
 		
 		return area;
 	}
+	
+	private String getThisUserStr() {
+		return NLS.bind(InstallMessages.InstallForThisUser, System.getProperty("user.name"));
+	}
 
 	@Override
 	public String getInstallSummary() {
-		return InstallMessages.SummaryInstallFolder + getFolder() + "\n\n";	
+		String userStr = allUsers ? InstallMessages.InstallForAllUsers : getThisUserStr();
+		return NLS.bind(InstallMessages.SummaryInstallFolder, getFolder(), userStr);	
 	}
 
 	@Override
 	public void saveInstallData(IInstallData data) {
+		// save folder-related data
 		data.setProperty(IInstallConstants.PROPERTY_INSTALL_FOLDER, getFolder());
 		try {
 			Installer.getDefault().getInstallManager().setInstallLocation(new Path(getFolder()));
 		} catch (CoreException e) {
 			Installer.log(e);
 		}
+		
+		// and user-related data
+		data.setProperty(IInstallConstants.PROPERTY_INSTALL_FOR_ALL_USERS, allUsersBtn.getSelection());
+		Installer.getDefault().getInstallManager().getInstallDescription().setAllUsers(allUsersBtn.getSelection());
 	}
 	
 	/**

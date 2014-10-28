@@ -228,6 +228,20 @@ public interface IInstallDescription {
 	public IPath getRootLocation();
 
 	/**
+	 * Sets whether the installation will take place for all users or not.
+	 * 
+	 * @param allUsers Whether installation will take place for all users or not.
+	 */
+	public void setAllUsers(boolean allUsers);
+
+	/**
+	 * Returns whether the installation will take place for all users or not.
+	 * 
+	 * @return Whether installation will take place for all users or not.
+	 */
+	public boolean getAllUsers();
+	
+	/**
 	 * Sets the items to launch.
 	 * 
 	 * @param name Launch items
