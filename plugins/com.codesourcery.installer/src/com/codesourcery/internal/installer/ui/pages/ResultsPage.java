@@ -353,7 +353,7 @@ public class ResultsPage extends InstallWizardPage {
 				logFile = Platform.getLogFileLocation().toFile();
 			}
 		} catch (IOException e) {
-			Installer.log(e);
+//			Installer.log(e);
 		}		
 	}
 	
