@@ -181,6 +181,7 @@ public class InstallApplication implements IApplication {
 		
 		printHelp(IInstallConstants.COMMAND_LINE_INSTALL_HELP, InstallMessages.Help_Help);
 		printHelp(IInstallConstants.COMMAND_LINE_INSTALL_LOCATION + "=\"<location>\"", InstallMessages.Help_InstallLocation);
+		printHelp(IInstallConstants.COMMAND_LINE_INSTALL_ALL_USERS + "=true (or false)", InstallMessages.Help_InstallForAllUsers);
 		printHelp(IInstallConstants.COMMAND_LINE_INSTALL_DESCRIPTION + "=\"<install.properties>\"", InstallMessages.Help_InstallDescription);
 		printHelp(IInstallConstants.COMMAND_LINE_INSTALL_MANIFEST + "=\"<install.manifest>\"", InstallMessages.Help_InstallManifest);
 		printHelp(IInstallConstants.COMMAND_LINE_INSTALL_CONSOLE, InstallMessages.Help_Console);

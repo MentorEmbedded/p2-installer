@@ -150,12 +150,12 @@ public interface IInstallPlatform {
 		throws CoreException;
 	
 	/**
-	 * Returns the path to a short-cut folder.
+	 * Returns the path to a short-cut folder, either for the current user or for all users (aka the system).
 	 * 
 	 * @return Short-cut folder
 	 * @throws CoreException on failure
 	 */
-	public IPath getShortcutFolder(ShortcutFolder folder) throws CoreException;
+	public IPath getShortcutFolder(ShortcutFolder folder, boolean allUsers) throws CoreException;
 	
 	/**
 	 * Returns the Windows System folder. A Typical path is C:\Windows\System32.
@@ -222,4 +222,12 @@ public interface IInstallPlatform {
 	 * the operation system.
 	 */
 	public void installWindowsDriver(String path) throws CoreException, UnsupportedOperationException;
+	
+	/**
+	 * Determines if this instance of java is being run
+	 * as admin.
+	 * 
+	 * @return whether this program is running as admin/root or not
+	 */
+	public boolean isRunningAsAdmin();
 }

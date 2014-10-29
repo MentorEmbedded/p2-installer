@@ -166,6 +166,8 @@ public class InstallDescription implements IInstallDescription {
 	private String addonDescription;
 	/** Root install location */
 	private IPath rootLocation;
+	/** Which users to install for */
+	private boolean allUsers = true;
 	/** P2 install location */
 	private IPath p2Location;
 	/** Items to launch after installation */
@@ -1350,6 +1352,16 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public IPath getRootLocation() {
 		return rootLocation;
+	}
+	
+	@Override
+	public void setAllUsers(boolean allUsers) {
+		this.allUsers = allUsers;
+	}
+	
+	@Override
+	public boolean getAllUsers() {
+		return allUsers;
 	}
 	
 	@Override

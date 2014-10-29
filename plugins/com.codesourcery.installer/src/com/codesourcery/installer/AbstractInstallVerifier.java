@@ -12,20 +12,18 @@ package com.codesourcery.installer;
 
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.Status;
-
 /**
  * Abstract install verifier.
  * @see {@link com.codesourcery.installer.IInstallVerifier}
  */
 public abstract class AbstractInstallVerifier implements IInstallVerifier {
 	@Override
-	public IStatus verifyInstallLocation(IPath installLocation) {
-		return Status.OK_STATUS;
+	public IStatus[] verifyInstallLocation(IPath installLocation) {
+		return new IStatus[0];
 	}
 
 	@Override
-	public IStatus verifyCredentials(String username, String password) {
-		return Status.OK_STATUS;
+	public IStatus[] verifyCredentials(String username, String password) {
+		return new IStatus[0];
 	}
 }

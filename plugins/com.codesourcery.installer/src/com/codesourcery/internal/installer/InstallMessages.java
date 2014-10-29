@@ -41,6 +41,9 @@ public class InstallMessages extends NLS {
 	public static String Browse;
 	public static String SelectInstallFolder;
 	public static String SelectInstallFolderMessage;
+	public static String InstallFor;
+	public static String InstallForAllUsers;
+	public static String InstallForThisUser;
 	public static String LicensePageTitle;
 	public static String LicensePageTitle0;
 	public static String LicensePageConsoleMessage;
@@ -134,7 +137,6 @@ public class InstallMessages extends NLS {
 	public static String ShortcutsPageMessage;
 	public static String PathPageTitle;
 	public static String PathPageMessage;
-	public static String PathPageSummaryLabel;
 	public static String PathPageSummaryModified0;
 	public static String PathPageSummaryNotModified0;
 	public static String ShortcutsPageSummaryTitle;
@@ -206,6 +208,7 @@ public class InstallMessages extends NLS {
 	public static String Help_Usage;
 	public static String Help_Help;
 	public static String Help_InstallLocation;
+	public static String Help_InstallForAllUsers;
 	public static String Help_InstallDescription;
 	public static String Help_InstallManifest;
 	public static String Help_Silent;
@@ -253,6 +256,7 @@ public class InstallMessages extends NLS {
 	public static String Error_FilesNotRemoved;
 	public static String Error_PathTooLarge;
 	public static String Error_NothingToInstall;
+	public static String Error_AllUsersNeedsAdmin;
 	
 	static {
 		// initialize resource bundle

@@ -19,6 +19,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.prefs.Preferences;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
@@ -154,7 +155,7 @@ public class InstallPlatform implements IInstallPlatform {
 			// Monitor executable
 			args.add(getPath());
 			// Use response file to avoid any command line length limitations
-			args.add("-tempfile");
+			args.add("-file");
 			args.add("\"" + responseFile.getAbsolutePath() + "\"");
 			
 			// Create monitor process
@@ -345,12 +346,13 @@ public class InstallPlatform implements IInstallPlatform {
 	 * @param folder Folder name
 	 * @return Folder identifier
 	 */
-	private String getWindowsFolderId(ShortcutFolder folder) {
+	private String getWindowsFolderId(ShortcutFolder folder, boolean allUsers) {
 		if (folder == ShortcutFolder.PROGRAMS) {
-			return "CSIDL_STARTMENU";
+			return allUsers ? "CSIDL_COMMON_STARTMENU" : "CSIDL_STARTMENU";
 		}
 		else if (folder == ShortcutFolder.DESKTOP) {
-			return "CSIDL_DESKTOP";
+			// Why DESKTOPDIRECOTRY and DESKTOP?  http://blogs.msdn.com/b/oldnewthing/archive/2009/07/30/9852685.aspx explains if you're curious
+			return allUsers ? "CSIDL_COMMON_DESKTOPDIRECTORY" : "CSIDL_DESKTOP";
 		}
 		else {
 			return null;
@@ -388,8 +390,8 @@ public class InstallPlatform implements IInstallPlatform {
 	 * @return Folder path
 	 * @throws CoreException on failure
 	 */
-	private IPath getWindowsSpecialFolderPath(ShortcutFolder folder) throws CoreException {
-		String folderId = getWindowsFolderId(folder);
+	private IPath getWindowsSpecialFolderPath(ShortcutFolder folder, boolean allUsers) throws CoreException {
+		String folderId = getWindowsFolderId(folder, allUsers);
 		
 		String path = run(new String[] {
 				MessageFormat.format("-getSpecialFolder \"{0}\"", new Object[] { folderId })
@@ -482,10 +484,10 @@ public class InstallPlatform implements IInstallPlatform {
 	}
 
 	@Override
-	public IPath getShortcutFolder(ShortcutFolder folder) throws CoreException {
+	public IPath getShortcutFolder(ShortcutFolder folder, boolean allUsers) throws CoreException {
 		IPath path = null;
 		if (Installer.isWindows()) {
-			path = getWindowsSpecialFolderPath(folder);
+			path = getWindowsSpecialFolderPath(folder, allUsers);
 		}
 		else {
 			if (folder == ShortcutFolder.DESKTOP) {
@@ -614,5 +616,19 @@ public class InstallPlatform implements IInstallPlatform {
 		catch (Exception e) {
 			Installer.fail("Failed to install driver: " + path, e);
 		}
+	}
+	
+	/** Thanks to http://stackoverflow.com/a/23538961/1153071 for this implementation. */
+	@Override
+	public boolean isRunningAsAdmin() {
+	    Preferences prefs = Preferences.systemRoot();
+	    try {
+	        prefs.put("foo", "bar"); // SecurityException on Windows
+	        prefs.remove("foo");
+	        prefs.flush(); // BackingStoreException on Linux
+	        return true;
+	    } catch (Exception e) {
+	        return false;
+	    }
 	}
 }

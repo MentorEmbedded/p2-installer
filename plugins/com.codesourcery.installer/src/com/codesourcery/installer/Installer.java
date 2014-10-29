@@ -250,6 +250,11 @@ public class Installer implements BundleActivator {
 				if (installLocation != null) {
 					description.setRootLocation(new Path(installLocation));
 				}
+				
+				String allUsers = getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_ALL_USERS);
+				if (allUsers != null) {
+					description.setAllUsers(Boolean.parseBoolean(allUsers)); 
+				}
 			}
 		} catch (Exception e) {
 			Installer.fail(InstallMessages.Error_InvalidSite, e);
