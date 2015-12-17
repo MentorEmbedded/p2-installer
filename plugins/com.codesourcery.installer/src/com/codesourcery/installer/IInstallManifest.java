@@ -88,4 +88,11 @@ public interface IInstallManifest {
 	 * @throws CoreException on failure
 	 */
 	public void load(File file) throws CoreException;
+
+	/**
+	 * Returns the install location.
+	 * 
+	 * @return Install location or <code>null</code> if manifest has not been saved or loaded.
+	 */
+	public IPath getInstallLocation();
 }

@@ -15,8 +15,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.HashMap;
 
-import org.apache.commons.io.FileUtils;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.jface.dialogs.Dialog;
@@ -38,10 +40,15 @@ import org.eclipse.swt.widgets.Link;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Text;
 
+import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LaunchItem;
+import com.codesourcery.installer.LaunchItem.LaunchItemPresentation;
+import com.codesourcery.installer.LaunchItem.LaunchItemType;
 import com.codesourcery.installer.ui.FormattedLabel;
 import com.codesourcery.installer.ui.InstallWizardPage;
+import com.codesourcery.internal.installer.FileUtils;
+import com.codesourcery.internal.installer.InstallManager;
 import com.codesourcery.internal.installer.InstallMessages;
 
 /**
@@ -68,12 +75,12 @@ public class ResultsPage extends InstallWizardPage {
 	private Composite resultsPane;
 	/** Error pane */
 	private Composite errorPane;
-	/** Option buttons */
-	private Button[] optionButtons;
 	/** Launch items */
-	private LaunchItem[] launchItems;
+	private HashMap<LaunchItem, Control> launchItems;
 	/** <code>true</code> to show option buttons */
 	private boolean showOptions = true;
+	/** <code>true</code> to show reset/logout option */
+	private boolean showResetOrLogoutOption = true;
 
 	/** Log file copy location */
 	private File logFile;
@@ -89,6 +96,7 @@ public class ResultsPage extends InstallWizardPage {
 	 */
 	public ResultsPage(String pageName, String title) {
 		super(pageName, title);
+		launchItems = new HashMap<LaunchItem, Control>();
 	}
 
 	/**
@@ -101,16 +109,20 @@ public class ResultsPage extends InstallWizardPage {
 	public boolean isItemChecked(LaunchItem item) {
 		boolean checked = false;
 		
-		if (optionButtons == null) {
+		if (launchItems.keySet() == null) {
 			checked = false;
 		}
 		else if (!showOptions) {
 			checked = false;
 		}
+		else if ((item.getType() == LaunchItemType.RESTART || item.getType() == LaunchItemType.LOGOUT)
+				&& !showResetOrLogoutOption) {
+				checked = false;
+		}
 		else {
-			for (Button optionButton : optionButtons) {
-				if (optionButton.getData() == item) {
-					checked = optionButton.getSelection();
+			for (Control control : launchItems.values()) {
+				if (control instanceof Button && control.getData() == item) {
+					checked = ((Button)control).getSelection() && control.isEnabled();
 					break;
 				}
 			}
@@ -127,10 +139,10 @@ public class ResultsPage extends InstallWizardPage {
 	 * check option
 	 */
 	public void setItemChecked(LaunchItem item, boolean checked) {
-		if (optionButtons != null) {
-			for (Button optionButton : optionButtons) {
-				if (optionButton.getData() == item) {
-					optionButton.setSelection(checked);
+		if (launchItems.values() != null) {
+			for (Control control : launchItems.values()) {
+				if (control.getData() == item) {
+					((Button)control).setSelection(checked);
 					break;
 				}
 			}
@@ -146,6 +158,7 @@ public class ResultsPage extends InstallWizardPage {
 	public void setResult(String message, boolean showOptions) {
 		this.resultMessage = message;
 		this.showOptions = showOptions;
+
 		copyLog();
 		updateInformation();
 	}
@@ -209,6 +222,21 @@ public class ResultsPage extends InstallWizardPage {
 				((GridData)resultsPane.getLayoutData()).exclude = false;
 				errorPane.setVisible(false);
 				((GridData)errorPane.getLayoutData()).exclude = true;
+				
+				if (launchItems.keySet() != null) {
+					for (LaunchItem launchItem: launchItems.keySet()) {
+						Control control = launchItems.get(launchItem);
+						if (launchItem.getType() == LaunchItemType.RESTART 
+								|| launchItem.getType() == LaunchItemType.LOGOUT) {
+							control.setVisible(showResetOrLogoutOption);
+							// Initial enablement
+							if (control instanceof Button && ((Button)control).getSelection() && showResetOrLogoutOption)
+								restartOrLogoutSelectionChanged((Button)control);
+						}
+						else
+							control.setVisible(showOptions);
+					}
+				}
 			}
 			// Error in result
 			else {
@@ -236,32 +264,196 @@ public class ResultsPage extends InstallWizardPage {
 	
 	@Override
 	public void setVisible(boolean visible) {
+		boolean restartOrLogoutPresent = false;
+		LaunchItem []launchItemsArray;
 		// If installing, create launch items
 		if (visible && 
 			Installer.getDefault().getInstallManager().getInstallMode().isInstall() && 
-			(launchItems == null)) {
-			launchItems = Installer.getDefault().getInstallManager().getInstallDescription().getLaunchItems();
-			// Create launch item buttons
-			if (showOptions && (launchItems != null) && (launchItems.length > 0)) {
-				optionButtons = new Button[launchItems.length];
-				for (int index = 0; index < launchItems.length; index++) {
-					optionButtons[index] = new Button(resultsPane, SWT.CHECK);
-					optionButtons[index].setText(launchItems[index].getName());
-					optionButtons[index].setSelection(launchItems[index].isDefault());
-					optionButtons[index].setData(launchItems[index]);
-					GridData buttonData = new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1);
-					buttonData.horizontalIndent = getDefaultIndent();
-					optionButtons[index].setLayoutData(buttonData);
+			(launchItems.keySet().isEmpty())) {
+			launchItemsArray = Installer.getDefault().getInstallManager().getInstallDescription().getLaunchItems();
+			
+			if (launchItemsArray != null) {
+				ArrayList<LaunchItem> launchItemList = new ArrayList<LaunchItem>();
+				for (LaunchItem item : launchItemsArray) {
+					if (Installer.getDefault().getInstallManager().isLaunchItemAvailable(item)) {
+						if (item.getType() == LaunchItemType.RESTART
+								|| item.getType() == LaunchItemType.LOGOUT) {
+							restartOrLogoutPresent = true;
+							break;
+						}
+						launchItemList.add(item);	
+					}
 				}
-				
-				resultsPane.layout(true);
-				area.layout(true);
+				// Add restart or logout launch item If it is not provided in installer.properties.
+				if (!restartOrLogoutPresent)
+					addRestartOrLogoutItems(launchItemList);
+				// Create launch item buttons
+				createOptionButtons(launchItemList);
 			}
 		}
 		
 		super.setVisible(visible);
 	}
 
+
+	@Override
+	public void setActive(IInstallData data) {
+		super.setActive(data);
+		// Get property to check whether we need to show reset or logout option 
+		this.showResetOrLogoutOption = ((InstallManager)Installer.getDefault().getInstallManager()).needsRestartOrRelogin();
+		if (showOptions) {
+			updatePageMessage();
+			updateInformation();
+		}
+	}
+
+	/**
+	 * Add RestartOrLogout launch item
+	 */
+	protected void addRestartOrLogoutItems(ArrayList<LaunchItem>items) {
+		if (Installer.isWindows())
+		{
+			LaunchItem item = new LaunchItem(LaunchItemType.RESTART, InstallMessages.ResultsPage_RestartMessage, "", LaunchItemPresentation.CHECKED);
+			items.add(item);
+			// Update launch items
+			Installer.getDefault().getInstallManager().getInstallDescription().setLaunchItems(items.toArray(new LaunchItem[items.size()]));
+		}
+	}
+	
+	/**
+	 * Create launch item option buttons
+	 * @param items
+	 */
+	private void createOptionButtons(ArrayList<LaunchItem>items) {
+		if (showOptions && (items != null) && (items.size() > 0)) {
+			ArrayList <LaunchItem>buttonLaunchItems = new ArrayList <LaunchItem>();
+			ArrayList <LaunchItem>linkLaunchItems = new ArrayList <LaunchItem>();
+			for (LaunchItem item: items) {
+				if (item.getPresentation() != LaunchItemPresentation.LINK) {
+					buttonLaunchItems.add(item);
+				}
+			}
+			for (LaunchItem item: items) {
+				if (item.getPresentation() == LaunchItemPresentation.LINK) {
+					linkLaunchItems.add(item);
+				}
+			}
+			items.clear();
+			items.addAll(buttonLaunchItems);
+			items.addAll(linkLaunchItems);
+			FormattedLabel linkSectionLabel = null;
+			for (LaunchItem item: items) {
+				Control control = null;
+				GridData controlGridData = new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1);
+				if (item.getPresentation() == LaunchItemPresentation.LINK) {
+					if (linkSectionLabel == null) {
+						Label spacer = new Label(resultsPane, SWT.NONE);
+						spacer.setLayoutData(new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1));
+						
+						linkSectionLabel = new FormattedLabel(resultsPane, SWT.NONE);
+						linkSectionLabel.setText(InstallMessages.ResultsPage_Link_Label);
+						GridData gridData = new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1);
+						gridData.horizontalIndent = getDefaultIndent();
+						linkSectionLabel.setLayoutData(gridData);
+					}
+					control = new Link(resultsPane, SWT.NONE);
+					((Link)control).setText("<A>"+item.getName()+"</A>");
+					controlGridData.horizontalIndent = getDefaultIndent() * 3;
+				}
+				else {
+					control = new Button(resultsPane, SWT.CHECK);
+					((Button)control).setText(item.getName());
+					((Button)control).setSelection(item.isDefault());
+					controlGridData.horizontalIndent = getDefaultIndent();
+				}
+				launchItems.put(item, control);
+				control.setData(item);
+				control.setLayoutData(controlGridData);
+				
+				// Create Restart or logout option button
+				if (item.getType() == LaunchItemType.RESTART
+						|| item.getType() == LaunchItemType.LOGOUT) {
+					
+					// Add selection listener
+					if (control instanceof Button) {
+						((Button)control).addSelectionListener(new SelectionAdapter() {
+							@Override
+							public void widgetSelected(SelectionEvent e) {
+								Button restartLogoutButton = (Button) e.widget;
+								restartOrLogoutSelectionChanged(restartLogoutButton);
+							}
+						});	
+					} 
+				}
+				if (item.getPresentation() == LaunchItemPresentation.LINK) {
+					if (control instanceof Link) {
+						((Link)control).addSelectionListener(new SelectionAdapter() {
+							@Override
+							public void widgetSelected(SelectionEvent event) {
+								Link link = (Link) event.widget;
+								LaunchItem launchItem = (LaunchItem)link.getData();
+								try {
+									Installer.getDefault().getInstallManager().launch(launchItem);
+								} catch (CoreException e) {
+									Installer.log(e);
+								}
+							}
+						});
+					}
+				}
+			}
+
+			resultsPane.layout(true);
+			area.layout(true);
+		}
+	}
+	
+	/**
+	 * Restart or Logout launch item selection changed. Disable all other
+	 * launch items if restart or logout item is checked.
+	 * 
+	 * @param resetOrLogoutButton Reset or Logout button
+	 */
+	protected void restartOrLogoutSelectionChanged(Button resetOrLogoutButton) {
+		// Restart or Logout launch item is mutually exclusive to other launch items. If
+		// this item is checked, all other launch items should be disabled.
+		for (Control control : launchItems.values()) {
+			if (control != resetOrLogoutButton && (control instanceof Button))
+				control.setEnabled(!resetOrLogoutButton.getSelection());
+		}
+	}
+	
+	protected void updatePageMessage() {
+		if (this.showResetOrLogoutOption)
+			this.resultMessage = this.resultMessage + "\n\n" + getRestartOrLogoutText();
+	}
+	
+	/**
+	 * Returns text of Restart or Logout option depending on which one is present.
+	 * 
+	 * @return text of Restart or Logout option or <code>null</code> if Restart of 
+	 * logout option item is not found.
+	 */
+	protected String getRestartOrLogoutText() {
+		String text = null;
+		
+		for (LaunchItem item : launchItems.keySet()) {
+			if (item.getType() == LaunchItemType.RESTART) {
+				text =  InstallMessages.ResultsPage_RestartText;
+				break;
+			}
+			else if (item.getType() == LaunchItemType.LOGOUT) {
+				text = InstallMessages.ResultsPage_ReloginText;
+				break;
+			}
+		}
+		if (text == null) {
+			text = Installer.isWindows() ? InstallMessages.ResultsPage_RestartText : InstallMessages.ResultsPage_ReloginText; 
+		}
+
+		return text;
+	}
+	
 	@Override
 	public Control createContents(Composite parent) {
 		area = new Composite(parent, SWT.NONE);
@@ -311,7 +503,7 @@ public class ResultsPage extends InstallWizardPage {
 				File logFile = Platform.getLogFileLocation().toFile();
 				if (logFile.exists()) {
 					try {
-						String  configContents = FileUtils.readFileToString(logFile);
+						String  configContents = FileUtils.readFile(logFile);
 						LogDialog dialog = new LogDialog(getShell(), configContents);
 						dialog.open();
 					} catch (IOException e1) {
@@ -340,19 +532,22 @@ public class ResultsPage extends InstallWizardPage {
 			return;
 		}
 		
-		IPath logDirPath = Installer.getDefault().getLogPath();
 		try {
+			IPath logDirPath = Installer.getDefault().getLogPath();
+			
 			// Copy the platform log file
 			if (Installer.getDefault().isCopyLog()) {
 				File originalLogFile = Platform.getLogFileLocation().toFile();
 				logFile = logDirPath.append(originalLogFile.getName()).toFile();
-				Files.copy(originalLogFile.toPath(), logFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+				if (logFile.exists()) {
+					Files.copy(originalLogFile.toPath(), logFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+				}
 			}
 			// Use the platform log file
 			else {
 				logFile = Platform.getLogFileLocation().toFile();
 			}
-		} catch (IOException e) {
+		} catch (Exception e) {
 			Installer.log(e);
 		}		
 	}

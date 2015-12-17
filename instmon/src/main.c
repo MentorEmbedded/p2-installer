@@ -41,6 +41,10 @@
 /* Flag for accessing 64-bit registry node */
 #define KEY_WOW64_64KEY 0x0100
 
+#ifndef COUNTOF
+#define COUNTOF(STR) (sizeof (STR) / sizeof ((STR)[0]))
+#endif
+
 /* Log file */
 FILE *logFile = NULL;
 /* File command line options */
@@ -117,7 +121,10 @@ usage (FILE *stream)
     "  -filetemp <file>             Same as -file <file> option, but removes\n"
     "                               the specified file after reading.\n"
     "  -log <file>                  Output errors to a log file.\n"
-    "  -deleteOnExit                Deletes the utility on exit.\n");
+    "  -deleteOnExit                Deletes the utility on exit.\n"
+    "  -updateEnvironment <timeout> Updates system environment by sending system\n"
+    "	                            environment change message.\n"
+    "                               <timeout> is time-out in milliseconds.\n");
 }
 
 /**
@@ -729,6 +736,95 @@ set_registry_value (char *keyName, const char *name, const char *value, const ch
   RegCloseKey (hKey);
 
   return ret;
+}
+
+/**
+ * Returns error message string for last error. Last error is
+ * obtained via GetLastError.
+ *
+ * @return Error message string of last error or NULL if failed to
+ * obtain error message.
+ */
+char* getWinErrorMessage() {
+#ifdef _WIN32
+  static char buf[1024];
+  TCHAR *msgbuf;
+  DWORD lasterr = GetLastError ();
+  DWORD chars = FormatMessage (FORMAT_MESSAGE_FROM_SYSTEM
+			       | FORMAT_MESSAGE_ALLOCATE_BUFFER, 
+			       NULL, 
+			       lasterr, 
+			       0, /* Default language */
+			       (LPVOID)&msgbuf, 
+			       0, 
+			       NULL);
+
+  if (chars != 0)
+    {
+      /* If there is an \r\n appended, remove it.  */
+      if (chars >= 2 
+	  && msgbuf[chars - 2] == '\r' 
+	  && msgbuf[chars - 1] == '\n') 
+	{
+	  chars -= 2;
+	  msgbuf[chars] = 0;
+	}
+
+      if (chars > ((COUNTOF (buf)) - 1))
+	{
+	  chars = COUNTOF (buf) - 1;
+	  msgbuf [chars] = 0;
+	}
+
+#ifdef UNICODE
+      wcstombs (buf, msgbuf, chars + 1);
+#else
+      strncpy (buf, msgbuf, chars + 1);
+#endif
+
+      LocalFree (msgbuf);
+    }
+  else
+    return NULL;
+
+  return buf;
+
+#else
+  return NULL;
+#endif
+}
+
+/**
+ * Update system environment
+ *
+ * @param timeout Time-out in milliseconds.
+ *
+ * @return error message on failure or NULL in case of success
+ */
+char* update_system_environment (int timeout)
+{
+  int result = 1;
+  char *errorMessage;
+  char *ret_error_message = NULL;
+  result = SendMessageTimeout (HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)TEXT("Environment"), SMTO_NORMAL, timeout, NULL);
+  if (result == 0)
+    {
+      errorMessage = getWinErrorMessage();
+
+      ret_error_message = malloc (strlen(errorMessage) + 256);
+      strcpy(ret_error_message,"Error while updating environment changes");
+
+      if (errorMessage != NULL)
+	{
+	  strcat (ret_error_message, ": ");
+	  strcat (ret_error_message, errorMessage);
+	}
+
+      log_message(ret_error_message);
+    }
+
+  // Return error string
+  return ret_error_message;
 }
 
 /**
@@ -1430,6 +1526,28 @@ main (int argc, char* argv[])
       log_message ("-regSetValue is only supported on Windows.");
 #endif
     }
+  /****************************************************************************
+   * Update System environment
+  ****************************************************************************/
+  if (get_option (argv, argc, "-updateEnvironment", &option) == 0)
+      {
+#ifdef _WIN32
+	  // Get the timeout
+	  iparam1 = atoi (option);
+
+	  // Update system environment
+      sparam1 = update_system_environment (iparam1);
+
+   	  // Return error string
+   	  puts(sparam1);
+
+   	  free (option);
+   	  free (sparam1);
+#else
+      log_message ("-updateEnvironment is only supported on Windows.");
+#endif
+
+      }
   /****************************************************************************
    * Delete registry value
   ****************************************************************************/

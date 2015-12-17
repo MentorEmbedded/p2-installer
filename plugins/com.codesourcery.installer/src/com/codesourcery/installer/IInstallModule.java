@@ -10,6 +10,8 @@
  *******************************************************************************/
 package com.codesourcery.installer;
 
+import java.util.Map;
+
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 
 /**
@@ -22,11 +24,33 @@ import org.eclipse.equinox.p2.core.IProvisioningAgent;
  */
 public interface IInstallModule {
 	/**
-	 * Initializes the install module.  This is the first method called.
+	 * Returns the module identifier.
 	 * 
-	 * @param description Install description
+	 * @return Identifier
+	 */
+	public String getId();
+	
+	/**
+	 * Called to initialize the install module.
+	 * 
+	 * @param description Installation description
 	 */
 	public void init(IInstallDescription description);
+	
+	/**
+	 * Called to give the install module the opportunity to register services with a new provisioning agent.
+	 * 
+	 * @param agent Provisioning agent
+	 */
+	public void initAgent(IProvisioningAgent agent);
+	
+	/**
+	 * Called to set defaults for any install data.  Modules should set default
+	 * values for data used in wizard pages or during silent installation.
+	 * 
+	 * @param data Install data
+	 */
+	public void setDataDefaults(IInstallData data);
 	
 	/**
 	 * Returns pages to add to the install wizard.  All pages should extend
@@ -51,4 +75,13 @@ public interface IInstallModule {
 	 */
 	public IInstallAction[] getInstallActions(IProvisioningAgent agent, IInstallData data, 
 			IInstallMode installMode);
+	
+	/**
+	 * Called to let the module set any environment variables that are needed
+	 * for items launched at the end of an installation.
+	 * 
+	 * @param Map of environment variable names to environment variable values.
+	 * The module can set new variable values.
+	 */
+	public void setEnvironmentVariables(Map<String, String> environmentVariables);
 }

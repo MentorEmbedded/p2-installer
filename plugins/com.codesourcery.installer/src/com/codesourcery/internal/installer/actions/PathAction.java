@@ -45,7 +45,6 @@ public class PathAction extends EnvironmentAction {
 	/**
 	 * Constructor
 	 * 
-	 * @param productName Product name
 	 * @param paths Paths to add in environment
 	 */
 	public PathAction(String[] paths) {

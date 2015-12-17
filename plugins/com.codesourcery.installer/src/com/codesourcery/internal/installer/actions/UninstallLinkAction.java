@@ -42,6 +42,8 @@ public class UninstallLinkAction extends AbstractInstallAction {
 	private String helpLink;
 	/** Name of uninstaller */
 	private String uninstallerName;
+	/** Installation size */
+	private int size;
 	
 	/**
 	 * Constructor
@@ -57,14 +59,16 @@ public class UninstallLinkAction extends AbstractInstallAction {
 	 * @param vendor Vendor name or <code>null</code>
 	 * @param version Version or <code>null</code>
 	 * @param helpLink Help link or <code>null</code>
+	 * @param size Installation size in Kilobytes or <code>-1/</code>
 	 */
-	public UninstallLinkAction(IPath uninstallLocation, String vendor, String version, String helpLink, String uninstallerName) {
+	public UninstallLinkAction(IPath uninstallLocation, String vendor, String version, String helpLink, String uninstallerName, int size) {
 		super(ID);
 		this.uninstallLocation = uninstallLocation;
 		this.vendor = vendor;
 		this.version = version;
 		this.helpLink = helpLink;
 		this.uninstallerName = uninstallerName;
+		this.size = size;
 	}
 	
 	/**
@@ -102,6 +106,15 @@ public class UninstallLinkAction extends AbstractInstallAction {
 	public String getHelpLink() {
 		return helpLink;
 	}
+	
+	/**
+	 * Returns the installation size.
+	 * 
+	 * @return Size
+	 */
+	public int getSize() {
+		return size;
+	}
 
 	@Override
 	public void run(IProvisioningAgent agent, IInstallProduct product, IInstallMode mode, IProgressMonitor monitor) throws CoreException {
@@ -110,16 +123,16 @@ public class UninstallLinkAction extends AbstractInstallAction {
 			return;
 		
 		try {
-			// No uninstall location
-			if (getUninstallLocation() == null)
-				return;
-
 			IInstallPlatform platform = Installer.getDefault().getInstallPlatform();
 			
-			String uninstallKey = "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + product.getName();
+			String uninstallKey = "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + product.getId();
 
 			// Install
 			if (mode.isInstall()) {
+				// No uninstall location
+				if (getUninstallLocation() == null)
+					return;
+
 				monitor.beginTask(InstallMessages.CreatingAddRemove, 10);
 				monitor.setTaskName(InstallMessages.CreatingAddRemove);
 				IPath installerPath = getUninstallLocation().append(uninstallerName);
@@ -129,8 +142,10 @@ public class UninstallLinkAction extends AbstractInstallAction {
 				String installerLocation = installerPath.toOSString();
 				
 				// Create add/remove entry
+				// Registry keys can be found at: https://msdn.microsoft.com/en-us/library/aa372105(v=vs.85).aspx
+				
 				// Display name
-				platform.setWindowsRegistryValue(uninstallKey, "DisplayName", product.getName());
+				platform.setWindowsRegistryValue(uninstallKey, "DisplayName", product.getUninstallName());
 				monitor.worked(1);
 				// Display icon
 				platform.setWindowsRegistryValue(uninstallKey, "DisplayIcon", installerLocation);
@@ -167,6 +182,11 @@ public class UninstallLinkAction extends AbstractInstallAction {
 				if (getHelpLink() != null) {
 					platform.setWindowsRegistryValue(uninstallKey,  "HelpLink", getHelpLink());
 				}
+				// Installation size
+				if (getSize() != -1) {
+					platform.setWindowsRegistryValue(uninstallKey, "EstimatedSize", getSize());
+				}
+				
 				monitor.worked(1);
 			}
 			// Uninstall

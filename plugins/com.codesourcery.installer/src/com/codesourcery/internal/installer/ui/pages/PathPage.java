@@ -12,6 +12,7 @@ package com.codesourcery.internal.installer.ui.pages;
 
 import java.text.MessageFormat;
 
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.swt.SWT;
@@ -26,12 +27,13 @@ import org.eclipse.swt.widgets.Label;
 
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
+import com.codesourcery.installer.IInstallDescription;
+import com.codesourcery.installer.IInstallValues;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.console.ConsoleYesNoPrompter;
 import com.codesourcery.installer.ui.FormattedLabel;
 import com.codesourcery.installer.ui.IInstallSummaryProvider;
 import com.codesourcery.installer.ui.InstallWizardPage;
-import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.actions.PathAction;
 
@@ -46,8 +48,6 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 	private Button modifyButton;
 	/** Do not modify PATH button */
 	private Button doNotModifyButton;
-	/** <code>true</code> to modify PATH */
-	private boolean modifyPath = true;
 	/** Paths */
 	private String[] paths;
 	
@@ -57,14 +57,11 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 	 * @param pageName Page name
 	 * @param title Page title
 	 * @param productName Product name
-	 * @param modifyDefault <code>true</code> to set paths by default
 	 * @param paths Paths
 	 */
-	public PathPage(String pageName, String title, String productName, boolean modifyDefault, String[] paths) {
+	public PathPage(String pageName, String title, String productName, String[] paths) {
 		super(pageName, title);
 		this.productName = productName;
-		// Set default
-		setModifyPath(modifyDefault);
 		this.paths = paths;
 	}
 
@@ -92,7 +89,7 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 	 * @param modifyPath <code>true</code> to modify the PATH
 	 */
 	protected void setModifyPath(boolean modifyPath) {
-		this.modifyPath = modifyPath;
+		getInstallData().setProperty(IInstallValues.SET_PATH, modifyPath);
 	}
 	
 	/**
@@ -101,7 +98,7 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 	 * @return <code>true</code> to modify the PATH
 	 */
 	protected boolean getModifyPath() {
-		return modifyPath;
+		return getInstallData().getBooleanProperty(IInstallValues.SET_PATH);
 	}
 
 	@Override
@@ -116,7 +113,8 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 		messageLabel.setLayoutData(data);
 		String message = MessageFormat.format(InstallMessages.PathPage_MessageLabel0, 
 				new Object[] { getProductName() });
-		messageLabel.setText(message);
+		messageLabel.setText(Installer.getDefault().getInstallManager().getInstallDescription().getText(
+				IInstallDescription.TEXT_PATHS_PAGE_MESSAGE, message));
 
 		// Spacing
 		Label spacing = new Label(area, SWT.NONE);
@@ -204,8 +202,18 @@ public class PathPage extends InstallWizardPage implements IInstallSummaryProvid
 	}
 
 	@Override
-	public void saveInstallData(IInstallData data) {
-		data.setProperty(IInstallConstants.PROPERTY_MODIFY_PATHS, new Boolean(getModifyPath()));
+	public void setActive(IInstallData data) {
+		if (!isConsoleMode()) {
+			doNotModifyButton.setSelection(!getModifyPath());
+			modifyButton.setSelection(getModifyPath());
+		}
+		
+		super.setActive(data);
+	}
+
+	@Override
+	public void saveInstallData(IInstallData data) throws CoreException {
+		data.setProperty(IInstallValues.SET_PATH, getModifyPath());
 	}
 
 	@Override

@@ -161,8 +161,9 @@ public class WizardDialog extends TitleAreaDialog implements IWizardContainer2,
 
 	private Composite pageContainer;
 
+	// Mentor Graphics: Changed default page margins from 5 to 0
 	private PageContainerFillLayout pageContainerLayout = new PageContainerFillLayout(
-			5, 5, 300, 225);
+			0, 0, 300, 225);
 
 	private int pageWidth = SWT.DEFAULT;
 

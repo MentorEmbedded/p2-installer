@@ -16,20 +16,43 @@ package com.codesourcery.installer;
  */
 public interface IInstallData {
 	/**
+	 * Returns if the data has a property value.
+	 * 
+	 * @param name Property name
+	 * @return <code>true</code> if property has a value
+	 */
+	public boolean hasProperty(String name);
+	
+	/**
 	 * Sets a property.
 	 * 
 	 * @param name Property name
 	 * @param value Property value
 	 */
-	public void setProperty(String name, Object value);
+	public void setProperty(String name, String value);
 	
 	/**
-	 * Gets a property.  The property must be cast to the appropriate data
-	 * type.
+	 * Gets a property.
 	 * 
 	 * @param name Property name
 	 * @return Property value or <code>null</code> if the property has not
 	 * been set.
 	 */
-	public Object getProperty(String name);
+	public String getProperty(String name);
+	
+	/**
+	 * Sets a boolean property.
+	 * 
+	 * @param name Property name
+	 * @param value Property value
+	 */
+	public void setProperty(String name, boolean value);
+	
+	/**
+	 * Returns a boolean property.
+	 * 
+	 * @param name Property name
+	 * @return Property value or <code>false</code> if value has not been set
+	 */
+	public boolean getBooleanProperty(String name);
 }

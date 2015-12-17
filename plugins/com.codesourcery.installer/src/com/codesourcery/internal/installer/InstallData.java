@@ -19,15 +19,42 @@ import com.codesourcery.installer.IInstallData;
  */
 public class InstallData implements IInstallData {
 	/** Properties */
-	private HashMap<String, Object> properties = new HashMap<String, Object>();
+	private HashMap<String, String> properties = new HashMap<String, String>();
+
+	/**
+	 * Constructor
+	 */
+	public InstallData() {
+	}
 	
 	@Override
-	public void setProperty(String name, Object value) {
+	public boolean hasProperty(String name) {
+		return properties.containsKey(name);
+	}
+
+	@Override
+	public void setProperty(String name, String value) {
 		properties.put(name, value);
 	}
 
 	@Override
-	public Object getProperty(String name) {
+	public String getProperty(String name) {
 		return properties.get(name);
+	}
+
+	@Override
+	public void setProperty(String name, boolean value) {
+		properties.put(name, Boolean.toString(value).toLowerCase());
+	}
+
+	@Override
+	public boolean getBooleanProperty(String name) {
+		String value = properties.get(name);
+		if (value == null) {
+			return false;
+		}
+		else {
+			return Boolean.TRUE.toString().toLowerCase().equals(value.toLowerCase());
+		}
 	}
 }

@@ -13,6 +13,7 @@ package com.codesourcery.installer;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jface.wizard.IWizardPage;
 
 import com.codesourcery.installer.IInstallData;
@@ -40,6 +41,8 @@ public interface IInstallWizardPage extends IWizardPage {
 	/**
 	 * Called when the page is shown.  The page is passed install data that
 	 * it can use to retrieve known data from other pages.
+	 * If a page saves any install data, it should try to load the values here
+	 * as they can be set by other pages or in the installer properties.
 	 * 
 	 * @param data Install data
 	 */
@@ -49,8 +52,10 @@ public interface IInstallWizardPage extends IWizardPage {
 	 * Saves the page data to the install data.
 	 * 
 	 * @param data Install data
+	 * @throws CoreException on failure to save page data.  The page will be
+	 * set incomplete and the exception information will be shown in the status.
 	 */
-	public void saveInstallData(IInstallData data);
+	public void saveInstallData(IInstallData data) throws CoreException;
 	
 	/**
 	 * Called to validate the page data.

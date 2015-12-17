@@ -10,24 +10,25 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 
-import com.codesourcery.installer.ui.IInstallComponent;
+import com.codesourcery.installer.IInstallComponent;
 
 /**
  * A component that can be installed.
  */
 public class InstallComponent implements IInstallComponent {
+	/** Constant for no members */
+	private static final IInstallComponent[] NO_MEMBERS = new IInstallComponent[0];
 	/** Install unit */
 	private IInstallableUnit installUnit;
 	/** Existing install unit */
 	private IInstallableUnit installedUnit;
 	/** <code>true</code> if component is optional */
 	private boolean optional;
-	/** Other required components */
-	private IInstallComponent[] requiredComponents;
 	/** <code>true</code> if component should be installed */
 	private boolean install = false;
 	/** <code>true</code> if component should be installed by default */
@@ -36,6 +37,10 @@ public class InstallComponent implements IInstallComponent {
 	private boolean included = true;
 	/** Component properties */
 	private HashMap<String, Object> properties;
+	/** Parent component or <code>null</code> */
+	private IInstallComponent parent;
+	/** Group components */
+	private ArrayList<IInstallComponent> members;
 
 	/**
 	 * Constructor
@@ -62,19 +67,28 @@ public class InstallComponent implements IInstallComponent {
 	}
 	
 	/**
-	 * Sets required components.
+	 * Sets the parent component for this component.
 	 * 
-	 * @param requiredComponents Required components
+	 * @param parent Parent or <code>null</code> for no parent
 	 */
-	public void setRequiredComponents(IInstallComponent[] requiredComponents) {
-		this.requiredComponents = requiredComponents;
+	public void setParent(IInstallComponent parent) {
+		this.parent = parent;
 	}
 	
-	@Override
-	public IInstallComponent[] getRequiredComponents() {
-		return requiredComponents;
+	/**
+	 * Adds a component to the group.
+	 * 
+	 * @param component Component to add
+	 */
+	public void addComponent(IInstallComponent component) {
+		if (members == null) {
+			members = new ArrayList<IInstallComponent>();
+		}
+		if (!members.contains(component)) {
+			members.add(component);
+		}
 	}
-
+	
 	/**
 	 * Sets the component optional.
 	 * 
@@ -82,6 +96,13 @@ public class InstallComponent implements IInstallComponent {
 	 */
 	public void setOptional(boolean optional) {
 		this.optional = optional;
+		// If required and has members, set all members as required
+		if (hasMembers()) {
+			IInstallComponent[] members = getMembers();
+			for (IInstallComponent member : members) {
+				((InstallComponent)member).setOptional(optional);
+			}
+		}
 	}
 	
 	@Override
@@ -91,12 +112,20 @@ public class InstallComponent implements IInstallComponent {
 
 	@Override
 	public String toString() {
-		return getName() + " - " + getInstallUnit().getVersion().toString();
+		return getName() + " - " + getInstallUnit().getVersion().toString();	
 	}
 
 	@Override
 	public void setInstall(boolean install) {
 		this.install = install;
+		// If group component, set install for members also
+		if (hasMembers()) {
+			IInstallComponent[] members = getMembers();
+			for (IInstallComponent member : members) {
+				((InstallComponent)member).setInstall(install);
+			}
+		}
+		RepositoryManager.getDefault().fireComponentChanged(this);
 	}
 
 	@Override
@@ -112,6 +141,13 @@ public class InstallComponent implements IInstallComponent {
 	 */
 	public void setDefault(boolean defaultInstall) {
 		this.defaultInstall = defaultInstall;
+		// If group component, set default for members also
+		if (defaultInstall && hasMembers()) {
+			IInstallComponent[] members = getMembers();
+			for (IInstallComponent member : members) {
+				((InstallComponent)member).setDefault(defaultInstall);
+			}
+		}
 	}
 	
 	@Override
@@ -154,10 +190,46 @@ public class InstallComponent implements IInstallComponent {
 	@Override
 	public void setIncluded(boolean included) {
 		this.included = included;
+		RepositoryManager.getDefault().fireComponentChanged(this);
 	}
 
 	@Override
 	public boolean isIncluded() {
 		return included;
+	}
+
+	@Override
+	public boolean hasMembers() {
+		return (members != null);
+	}
+
+	@Override
+	public IInstallComponent[] getMembers() {
+		if (members == null) {
+			return NO_MEMBERS;
+		}
+		else {
+			return members.toArray(new IInstallComponent[members.size()]);
+		}
+	}
+
+	@Override
+	public boolean isMemberOf(IInstallComponent component) {
+		boolean member = false;
+		IInstallComponent parent = getParent();
+		while (parent != null) {
+			if (parent.equals(component)) {
+				member = true;
+				break;
+			}
+			parent = parent.getParent();
+		}
+		
+		return member;
+	}
+
+	@Override
+	public IInstallComponent getParent() {
+		return parent;
 	}
 }

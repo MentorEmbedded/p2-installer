@@ -12,6 +12,8 @@ package com.codesourcery.internal.installer;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Map.Entry;
+import java.util.Set;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -43,7 +45,7 @@ import com.codesourcery.installer.Installer;
  */
 public class InstallManifest implements IInstallManifest {
 	/** File version */
-	private static final String FILE_VERSION = "1.1";
+	private static final String FILE_VERSION = "1.2";
 	
 	/** Install element */
 	private static final String ELEMENT_INSTALL = "install";
@@ -59,6 +61,10 @@ public class InstallManifest implements IInstallManifest {
 	private static final String ELEMENT_UNITS = "units";
 	/** Unit element */
 	private static final String ELEMENT_UNIT = "unit";
+	/** Properties element */
+	private static final String ELEMENT_PROPERTIES = "properties";
+	/** Property element */
+	private static final String ELEMENT_PROPERTY = "property";
 	
 	/** Location attribute */
 	private static final String ATTRIBUTE_LOCATION = "location";
@@ -66,12 +72,18 @@ public class InstallManifest implements IInstallManifest {
 	private static final String ATTRIBUTE_INSTALL_LOCATION = "installLocation";
 	/** Name attribute */
 	private static final String ATTRIBUTE_NAME = "name";
+	/** Uninstall Name attribute */
+	private static final String ATTRIBUTE_UNINSTALL_NAME = "uninstallName";
+	/** Value attribute */
+	private static final String ATTRIBUTE_VALUE = "value";
 	/** Version attribute */
 	private static final String ATTRIBUTE_VERSION = "version";
 	/** Identifier attribute */
 	private static final String ATTRIBUTE_ID = "id";
 	/** Data path attribute */
 	private static final String ATTRIBUTE_DATA = "dataLocation";
+	/** Parent directory names attribute */
+	private static final String ATTRIBUTE_DIRECTORIES = "directories";
 
 	/** Installed products */
 	private ArrayList<IInstallProduct> products = new ArrayList<IInstallProduct>();
@@ -81,6 +93,8 @@ public class InstallManifest implements IInstallManifest {
 	private String version = FILE_VERSION;
 	/** Path to installer data directory */
 	private IPath dataPath;
+	/** Directories to remove during uninstallation */
+	private String[] directories = new String[0];
 
 	/**
 	 * Loads an install manifest for the location specified in an install
@@ -94,14 +108,12 @@ public class InstallManifest implements IInstallManifest {
 		InstallManifest manifest = null;
 		if (installLocation != null) {
 			IPath uninstallLocation = installLocation.append(IInstallConstants.UNINSTALL_DIRECTORY);
-			if (uninstallLocation != null) {
-				IPath manifestPath = uninstallLocation.append(IInstallConstants.INSTALL_MANIFEST_FILENAME);
-				File manifestFile = manifestPath.toFile();
-				// Loading existing manifest
-				if (manifestFile.exists()) {
-					manifest = new InstallManifest();
-					manifest.load(manifestFile);
-				}
+			IPath manifestPath = uninstallLocation.append(IInstallConstants.INSTALL_MANIFEST_FILENAME);
+			File manifestFile = manifestPath.toFile();
+			// Loading existing manifest
+			if (manifestFile.exists()) {
+				manifest = new InstallManifest();
+				manifest.load(manifestFile);
 			}
 		}
 		
@@ -174,8 +186,40 @@ public class InstallManifest implements IInstallManifest {
 		save(file);
 	}
 
+	/**
+	 * Converts an absolute path into a path relative to this manifest file.
+	 * 
+	 * @param path Absolute path
+	 * @return Relative path
+	 */
+	private IPath toRelativePath(IPath path) {
+		if (path != null) {
+			if (path.isAbsolute()) {
+				path = path.makeRelativeTo(getPath().removeLastSegments(1));
+			}
+		}
+		
+		return path;
+	}
+	
+	/**
+	 * Converts a path relative to this manifest file into an absolute path.
+	 * 
+	 * @param path Relative path
+	 * @return Absolute path
+	 */
+	private IPath fromRelativePath(IPath path) {
+		IPath absPath = path;
+		if (!path.isAbsolute()) {
+			absPath = getPath().removeLastSegments(1).append(path);
+		}
+		
+		return absPath;
+	}
+	
 	@Override
 	public void save(File file) throws CoreException {
+        this.file = file;
 		try {
 			// Don't overwrite a previous version.  This allows for patching
 			// an old installation without breaking the format used by a
@@ -196,6 +240,8 @@ public class InstallManifest implements IInstallManifest {
 			installElement.setAttribute(ATTRIBUTE_VERSION, FILE_VERSION);
 			// Data path
 			installElement.setAttribute(ATTRIBUTE_DATA, getDataPath().toOSString());
+			// Directory levels
+			installElement.setAttribute(ATTRIBUTE_DIRECTORIES, InstallUtils.getStringFromArray(directories, "/"));
 
 			// Products root
 			Element productsElement = document.createElement(ELEMENT_PRODUCTS);
@@ -211,10 +257,12 @@ public class InstallManifest implements IInstallManifest {
 				productElement.setAttribute(ATTRIBUTE_NAME, product.getName());
 				// Product version
 				productElement.setAttribute(ATTRIBUTE_VERSION, product.getVersionString());
+				// Product uninstall name
+				productElement.setAttribute(ATTRIBUTE_UNINSTALL_NAME, product.getUninstallName());
 				// Product location
-				productElement.setAttribute(ATTRIBUTE_LOCATION, product.getLocation().toOSString());
+				productElement.setAttribute(ATTRIBUTE_LOCATION, toRelativePath(product.getLocation()).toOSString());
 				// Product install location
-				productElement.setAttribute(ATTRIBUTE_INSTALL_LOCATION, product.getInstallLocation().toOSString());
+				productElement.setAttribute(ATTRIBUTE_INSTALL_LOCATION, toRelativePath(product.getInstallLocation()).toOSString());
 				
 				productsElement.appendChild(productElement);
 				
@@ -241,6 +289,17 @@ public class InstallManifest implements IInstallManifest {
 					unitElement.setAttribute(ATTRIBUTE_ID, unit.getId());
 					unitElement.setAttribute(ATTRIBUTE_VERSION, unit.getVersion().getOriginal());
 				}
+				
+				// Product properties
+				Element propertiesElement = document.createElement(ELEMENT_PROPERTIES);
+				productElement.appendChild(propertiesElement);
+				Set<Entry<String, String>> properties = product.getProperties().entrySet();
+				for (Entry<String, String> property : properties) {
+					Element propertyElement = document.createElement(ELEMENT_PROPERTY);
+					propertyElement.setAttribute(ATTRIBUTE_NAME, property.getKey());
+					propertyElement.setAttribute(ATTRIBUTE_VALUE, property.getValue());
+					propertiesElement.appendChild(propertyElement);
+				}
 			}
 			
 			file.getParentFile().mkdirs();
@@ -260,8 +319,6 @@ public class InstallManifest implements IInstallManifest {
             transformer.setOutputProperty(OutputKeys.METHOD, "xml");
             transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
             transformer.transform(source, result);
-            
-            this.file = file;
 		}
 		catch (Exception e) {
 			Installer.fail(InstallMessages.Error_SaveManifest, e);
@@ -270,6 +327,7 @@ public class InstallManifest implements IInstallManifest {
 
 	@Override
 	public void load(File file) throws CoreException {
+		this.file = file;
 		try {
 			DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
 			DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
@@ -281,6 +339,11 @@ public class InstallManifest implements IInstallManifest {
 			String data = ((Element)installNodes.item(0)).getAttribute(ATTRIBUTE_DATA);
 			if ((data != null) && !data.isEmpty()) {
 				dataPath = new Path(data);
+			}
+			
+			data = ((Element)installNodes.item(0)).getAttribute(ATTRIBUTE_DIRECTORIES);
+			if ((data != null) && !data.isEmpty()) {
+				directories = InstallUtils.getArrayFromString(data, "/");
 			}
 
 			NodeList productNodes = document.getElementsByTagName(ELEMENT_PRODUCT);
@@ -326,13 +389,17 @@ public class InstallManifest implements IInstallManifest {
 						}
 					}
 					
+					String attrLocation = productElement.getAttribute(ATTRIBUTE_LOCATION);
+					String attrInstallLocation = productElement.getAttribute(ATTRIBUTE_INSTALL_LOCATION);
+					
 					// Create product
 					InstallProduct product = new InstallProduct(
 							productElement.getAttribute(ATTRIBUTE_ID),
 							productElement.getAttribute(ATTRIBUTE_NAME),
 							productElement.getAttribute(ATTRIBUTE_VERSION),
-							new Path(productElement.getAttribute(ATTRIBUTE_LOCATION)),
-							new Path(productElement.getAttribute(ATTRIBUTE_INSTALL_LOCATION)));
+							productElement.getAttribute(ATTRIBUTE_UNINSTALL_NAME),
+							attrLocation != null ? fromRelativePath(new Path(attrLocation)) : null,
+							attrInstallLocation != null ? fromRelativePath(new Path(attrInstallLocation)) : null);
 					// Add product actions
 					for (IInstallAction action : actions) {
 						product.addAction(action);
@@ -370,13 +437,80 @@ public class InstallManifest implements IInstallManifest {
 							}
 						}
 					}
+					
+					// Load product properties
+					NodeList propertiesNodes = productElement.getElementsByTagName(ELEMENT_PROPERTIES);
+					for (int propertiesIndex = 0; propertiesIndex < propertiesNodes.getLength(); propertiesIndex++) {
+						Node propertiesNode = propertiesNodes.item(propertiesIndex);
+						if (propertiesNode.getNodeType() == Node.ELEMENT_NODE) {
+							Element propertiesElement = (Element)propertiesNode;
+							NodeList propertyNodes = propertiesElement.getElementsByTagName(ELEMENT_PROPERTY);
+							for (int propertyIndex = 0; propertyIndex < propertyNodes.getLength(); propertyIndex++) {
+								Node propertyNode = propertyNodes.item(propertyIndex);
+								if (propertyNode.getNodeType() == Node.ELEMENT_NODE) {
+									Element propertyElement = (Element)propertyNode;
+									try {
+										String name = propertyElement.getAttribute(ATTRIBUTE_NAME);
+										String value = propertyElement.getAttribute(ATTRIBUTE_VALUE);
+										if (name != null) {
+											product.setProperty(name, value);
+										}
+									}
+									catch (Exception e) {
+										Installer.log(e);
+									}
+								}
+							}
+						}
+					}
 				}
 			}
-			
-			this.file = file;
 		}
 		catch (Exception e) {
 			Installer.fail(InstallMessages.Error_LoadManifest, e);
+		}
+	}
+	
+	/**
+	 * Sets the names of the parent directories created during installation.
+	 * 
+	 * @param directories Directory names created
+	 */
+	public void setDirectories(String[] directories) {
+		this.directories = directories;
+	}
+	
+	/**
+	 * Returns the names of the parent directories created during installation.
+	 * 
+	 * @return Directory name
+	 */
+	public String[] getDirectories() {
+		return directories;
+	}
+
+	/**
+	 * Returns the path to the manifest file.
+	 * 
+	 * @return Manifest file path
+	 */
+	private IPath getPath() {
+		if (file != null) {
+			return new Path(file.getAbsolutePath());
+		}
+		else {
+			return null;
+		}
+	}
+
+	@Override
+	public IPath getInstallLocation() {
+		IPath path = getPath();
+		if ((path != null) && (path.segmentCount() > 2)) {
+			return path.removeLastSegments(2);
+		}
+		else {
+			return null;
 		}
 	}
 }

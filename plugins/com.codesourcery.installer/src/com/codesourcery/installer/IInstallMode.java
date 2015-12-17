@@ -57,17 +57,6 @@ public interface IInstallMode {
 	public boolean isUpdate();
 	
 	/**
-	 * Returns if the entire installation is being removed.  This is only valid
-	 * if uninstalling.  If an actions artifacts will be removed when the
-	 * installation directory is removed, the action can choose not to run.
-	 * 
-	 * @return <code>true</code> if the entire installation is being removed,
-	 * <code>false</code> if only a single product is being removed.
-	 * @see #isUninstall()
-	 */
-	public boolean isRootUninstall();
-	
-	/**
 	 * Returns if the installation is a patch to an existing product.
 	 * This is only valid if installing.
 	 * 
@@ -76,6 +65,11 @@ public interface IInstallMode {
 	 */
 	public boolean isPatch();
 	
+	/**
+	 * @return <code>true</code> if performing a mirror operation
+	 */
+	public boolean isMirror();
+
 	/**
 	 * Returns if the installer run mode.
 	 * 

@@ -11,7 +11,10 @@
 package com.codesourcery.installer.console;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+
+import org.eclipse.osgi.util.NLS;
 
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.internal.installer.InstallMessages;
@@ -54,12 +57,18 @@ import com.codesourcery.internal.installer.InstallMessages;
  * item using ...
  */
 public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
+	/** Checked item prefix */
+	private String checkedPrefix = "[*]";
+	/** Unchecked item prefix */
+	private String uncheckedPrefix = "[ ]";
 	/** Items */
 	private ArrayList<Item<T>> items = new ArrayList<Item<T>>();
 	/** Console message */
 	private String message;
 	/** <code>true</code> if only a single option can be selected */
 	private boolean single = false;
+	/** Default item */
+	private Item<T> defaultItem = null;
 
 	/**
 	 * Constructor
@@ -91,12 +100,39 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 	}
 	
 	/**
+	 * Sets a default item.  This is only used if a single
+	 * selection is allowed.
+	 * 
+	 * @param index Index of the default item or <code>-1</code>
+	 */
+	public void setDefaultItem(int index) {
+		if (index == -1) {
+			this.defaultItem = null;
+		}
+		else {
+			this.defaultItem = items.get(index);
+		}
+	}
+	
+	/**
 	 * Returns the message.
 	 * 
 	 * @return Message
 	 */
 	public String getMessage() {
 		return message;
+	}
+	
+	/**
+	 * Sets the string used for checked and un-checked items.
+	 * The default is "[*]" and "[ ]".
+	 * 
+	 * @param checked Checked string
+	 * @param unchecked Un-checked string
+	 */
+	public void setCheckedString(String checked, String unchecked) {
+		checkedPrefix = checked;
+		uncheckedPrefix = unchecked;
 	}
 	
 	/**
@@ -112,6 +148,40 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 		Item<T> item = new Item<T>(name, data, selected, optional);
 		items.add(item);
 		return items.size() - 1;
+	}
+	
+	/**
+	 * Adds an item to the list.
+	 * 
+	 * @param index Index of parent item
+	 * @param name Name to display for the item
+	 * @param data Data associated with the item
+	 * @param selected <code>true</code> if item should be checked initially
+	 * @param optional <code>true</code> if the item can be changed
+	 * @return Index of item
+	 */
+	public int addItem(int index, String name, T data, boolean selected, boolean optional) {
+		Item<T> item = new Item<T>(items.get(index), name, data, selected, optional);
+		items.add(item);
+		return items.size() - 1;
+	}
+
+	/**
+	 * Returns the index of the first item with data.
+	 * 
+	 * @param data Data
+	 * @return Index of item or <code>-1</code>
+	 */
+	public int getItemIndex(T data) {
+		int index = -1;
+		for (int i = 0; i < items.size(); i ++) {
+			if (data.equals(items.get(i).getData())) {
+				index = i;
+				break;
+			}
+		}
+		
+		return index;
 	}
 	
 	/**
@@ -145,32 +215,48 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 			// Continue
 			if (input.isEmpty()) {
 				response = null;
+				// If single selection
+				if (isSingleSelection()) {
+					// If there is a default then select it
+					if (defaultItem != null) {
+						defaultItem.setSelected(true);
+					}
+					// Else prompt user to select an item
+					else {
+						response = NLS.bind(InstallMessages.Error_InvalidSelection0, Integer.toString(items.size()));
+					}
+				}
 			}
 			// Toggle item
 			else {
-				int index = Integer.parseInt(input) - 1;
-				// Invalid input
-				if ((index < 0) || (index >= items.size())) {
-					response = InstallMessages.Error_InvalidSelection;
-				}
-				else {
-					Item<T> item = items.get(index);
-					// Single selection
-					if (isSingleSelection()) {
-						item.setSelected(true);
-						response = null;
+				try {
+					int index = Integer.parseInt(input) - 1;
+					// Invalid input
+					if ((index < 0) || (index >= items.size())) {
+						response = NLS.bind(InstallMessages.Error_InvalidSelection0, Integer.toString(items.size()));
 					}
-					// Multiple selection
 					else {
-						// Item can be changed
-						if (item.isOptional()) {
-							item.setSelected(!item.isSelected());
-							response = toString();
+						Item<T> item = items.get(index);
+						// Single selection
+						if (isSingleSelection()) {
+							item.setSelected(true);
+							response = null;
 						}
+						// Multiple selection
 						else {
-							response = InstallMessages.Error_ItemCantChange;
+							// Item can be changed
+							if (item.isOptional()) {
+								item.setSelected(!item.isSelected());
+								response = toString();
+							}
+							else {
+								response = InstallMessages.Error_ItemCantChange;
+							}
 						}
 					}
+				}
+				catch (NumberFormatException e) {
+					response = NLS.bind(InstallMessages.Error_InvalidSelection0, Integer.toString(items.size()));
 				}
 			}
 		}
@@ -247,20 +333,61 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 	
 	@Override
 	public String toString() {
+		return toString(true, true, true);
+	}
+
+	/**
+	 * Returns the list as a string.
+	 * 
+	 * @param message <code>true</code> to include message
+	 * @param numbers <code>true</code> to include item numbers
+	 * @param prompt <code>true</code> to include prompt
+	 * @return List as string
+	 */
+	public String toString(boolean message, boolean numbers, boolean prompt) {
 		StringBuilder buffer = new StringBuilder();
 		
-		if (getMessage() != null) {
+		// Message
+		if (message && (getMessage() != null)) {
 			buffer.append(getMessage());
 			buffer.append("\n\n");
 		}
-		
+		// Items
 		int index = 0;
+		int defaultIndex = -1;
 		for (Item<T> item : items) {
-			buffer.append(String.format("%4d. %s\n", ++index, item.toString()));
+			if (item == defaultItem) {
+				defaultIndex = index;
+			}
+			if (numbers) {
+				buffer.append(String.format("%4d. %s\n", ++index, item.toString()));
+			}
+			else {
+				buffer.append(String.format("%s\n", item.toString()));
+			}
 		}
-		
-		buffer.append("\n");
-		buffer.append(InstallMessages.ConsoleItemsTogglePrompt);
+		// Prompt
+		if (prompt) {
+			buffer.append("\n");
+			if (isSingleSelection()) {
+				// Select option
+				if (defaultIndex == -1) {
+					buffer.append(NLS.bind(InstallMessages.ConsoleItemsSelectPrompt1, "1", Integer.toString(items.size())));
+				}
+				// Select option or use default
+				else {
+					buffer.append(NLS.bind(InstallMessages.ConsoleItemsSelectDefaultPrompt2, new Object[] {
+							Integer.toString(defaultIndex + 1), 
+							"1", 
+							Integer.toString(items.size())
+					}));
+				}
+			}
+			// Select option to toggle
+			else {
+				buffer.append(InstallMessages.ConsoleItemsTogglePrompt);
+			}
+		}
 		
 		return buffer.toString();
 	}
@@ -268,7 +395,8 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 	/**
 	 * Internal class to store item attributes.
 	 */
-	private class Item<TT> {
+	@SuppressWarnings("hiding")
+	private class Item<T> {
 		/** Item name */
 		private String name;
 		/** <code>true</code> if item is selected */
@@ -276,7 +404,11 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 		/** <code>true</code> if item can change */
 		private boolean optional;
 		/** Item data */
-		private TT data;
+		private T data;
+		/** Parent item */
+		private Item<T> parent;
+		/** Child items */
+		private ArrayList<Item<T>> children = new ArrayList<Item<T>>();
 		
 		/**
 		 * Constructor
@@ -286,13 +418,38 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 		 * @param selected <code>true</code> to select item by default
 		 * @param optional <code>true</code> if item can change
 		 */
-		public Item(String name, TT data, boolean selected, boolean optional) {
+		public Item(String name, T data, boolean selected, boolean optional) {
 			this.name = name;
 			this.data = data;
 			this.selected = selected;
 			this.optional = optional;
 		}
 		
+		/**
+		 * Constructor
+		 * 
+		 * @param parent Parent item
+		 * @param name Item name
+		 * @param data Data for item
+		 * @param selected <code>true</code> to select item by default
+		 * @param optional <code>true</code> if item can change
+		 */
+		public Item(Item<T> parent, String name, T data, boolean selected, boolean optional) {
+			this.parent = parent;
+			this.data = data;
+			this.selected = selected;
+			this.optional = optional;
+			StringBuffer prefix = new StringBuffer();
+			Item<T> p = parent;
+			while (p != null) {
+				prefix.append("  ");
+				p = p.parent;
+			}
+			prefix.append(name);
+			this.name = prefix.toString();
+			this.parent.children.add(this);
+		}
+
 		/**
 		 * Returns the item name.
 		 * 
@@ -307,7 +464,7 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 		 * 
 		 * @return Data
 		 */
-		public TT getData() {
+		public T getData() {
 			return data;
 		}
 		
@@ -327,6 +484,37 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 		 */
 		public void setSelected(boolean selected) {
 			this.selected = selected;
+			
+			// Set children state
+			if (children.size() > 0) {
+				for (Item<T> child : children) {
+					child.setSelected(selected);
+				}
+			}
+			// If de-selected, set parents de-selected
+			if (!selected) {
+				Item<T> parent = this.parent;
+				while (parent != null) {
+					parent.selected = false;
+					parent = parent.parent;
+				}
+			}
+			// If selected, see if parent can be selected
+			else {
+				Item<T> parent = this.parent;
+				while (parent != null) {
+					boolean childrenSelected = true;
+					for (Item<T> child : parent.children) {
+						if (!child.selected) {
+							childrenSelected = false;
+							break;
+						}
+					}
+					parent.selected = childrenSelected;
+					parent = parent.parent;
+				}
+			}
+			
 		}
 		
 		/**
@@ -346,11 +534,14 @@ public class ConsoleListPrompter<T> implements IInstallConsoleProvider {
 			}
 			// Multiple selection
 			else {
-				// [<'x' if selected>] name
-				return "[" +
-						(isSelected() ? "*" : " ") +
-						"]" + 
-						getName();
+				if (isOptional()) {
+					return (isSelected() ? checkedPrefix : uncheckedPrefix) + " " + getName();
+				}
+				else {
+					char[] padding = new char[checkedPrefix.length()];
+					Arrays.fill(padding, ' ');
+					return new String(padding) + " " + getName();
+				}
 			}
 		}
 	}

@@ -23,8 +23,10 @@ import java.util.ArrayList;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.swt.widgets.Shell;
 
 import com.codesourcery.installer.IInstallPlatform;
+import com.codesourcery.installer.IInstallPlatformActions;
 import com.codesourcery.installer.Installer;
 
 /**
@@ -46,6 +48,8 @@ public class InstallPlatform implements IInstallPlatform {
 	private String logPath;
 	/** Response file for commands */
 	private File responseFile = null;
+	/** Platform dependent actions */
+	private IInstallPlatformActions osActions;
 	
 	/**
 	 * Constructor
@@ -66,6 +70,19 @@ public class InstallPlatform implements IInstallPlatform {
 		// Create temporary response file to avoid command line length
 		// limitations
 		responseFile = File.createTempFile("instmon", null);
+	}
+	
+	/**
+	 * Returns the platform actions.
+	 * 
+	 * @return Platform actions
+	 */
+	private IInstallPlatformActions getPlatformActions() {
+		if (osActions == null) {
+			osActions = ContributorRegistry.getDefault().getPlatformActions();
+		}
+		
+		return osActions;
 	}
 	
 	/**
@@ -347,7 +364,7 @@ public class InstallPlatform implements IInstallPlatform {
 	 */
 	private String getWindowsFolderId(ShortcutFolder folder) {
 		if (folder == ShortcutFolder.PROGRAMS) {
-			return "CSIDL_STARTMENU";
+			return "CSIDL_PROGRAMS";
 		}
 		else if (folder == ShortcutFolder.DESKTOP) {
 			return "CSIDL_DESKTOP";
@@ -400,7 +417,8 @@ public class InstallPlatform implements IInstallPlatform {
 
 	@Override
 	public void createShortcut(IPath path, String linkName,
-			IPath targetFile, String arguments, IPath workingDirectory)
+			IPath targetFile, String arguments, IPath workingDirectory, IPath iconPath,
+			int iconIndex)
 			throws CoreException {
 		
 		run(new String[] {
@@ -412,8 +430,8 @@ public class InstallPlatform implements IInstallPlatform {
 						"",
 						"-1",
 						workingDirectory != null ? workingDirectory.toOSString() : "",
-						targetFile.toOSString(),
-						"0"
+						(iconPath == null) ? targetFile.toOSString() : iconPath.toOSString(),
+						Integer.toString(iconIndex)
 					})
 			});
 	}
@@ -512,8 +530,15 @@ public class InstallPlatform implements IInstallPlatform {
 			throw new UnsupportedOperationException();
 		
 		String majorVersion = run(new String[] { "-getOsProperty WIN_MAJOR_VERSION" });
-		if (!majorVersion.isEmpty())
-			return Integer.parseInt(majorVersion);
+		if (!majorVersion.isEmpty()) {
+			try {
+				return Integer.parseInt(majorVersion);
+			}
+			catch (NumberFormatException e) {
+				Installer.log(e);
+				return -1;
+			}
+		}
 		else
 			return -1;
 	}
@@ -524,8 +549,15 @@ public class InstallPlatform implements IInstallPlatform {
 			throw new UnsupportedOperationException();
 		
 		String minorVersion = run(new String[] { "-getOsProperty WIN_MINOR_VERSION" });
-		if (!minorVersion.isEmpty())
-			return Integer.parseInt(minorVersion);
+		if (!minorVersion.isEmpty()) {
+			try {
+				return Integer.parseInt(minorVersion);
+			}
+			catch (NumberFormatException e) {
+				Installer.log(e);
+				return -1;
+			}
+		}
 		else
 			return -1;
 	}
@@ -613,6 +645,24 @@ public class InstallPlatform implements IInstallPlatform {
 		}
 		catch (Exception e) {
 			Installer.fail("Failed to install driver: " + path, e);
+		}
+	}
+
+	@Override
+	public String updateWindowsSystemEnvironment(int timeout)
+			throws CoreException, UnsupportedOperationException {
+		// Operation is only supported on Windows.
+		if (!Installer.isWindows())
+			throw new UnsupportedOperationException();
+
+		return run(new String[] { "-updateEnvironment " + Integer.toString(timeout) });
+	}
+
+	@Override
+	public void bringShellToFront(Shell shell) {
+		IInstallPlatformActions actions = getPlatformActions();
+		if (actions != null) {
+			actions.bringToFront(shell);
 		}
 	}
 }

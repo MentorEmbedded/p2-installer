@@ -13,7 +13,7 @@ package com.codesourcery.installer.ui;
 /**
  * General install wizard page names
  */
-public interface IInstallPageConstants {
+public interface IInstallPages {
 	/** Welcome page name */
 	public static final String WELCOME_PAGE = "welcomePage";
 	/** License page name */
@@ -28,6 +28,8 @@ public interface IInstallPageConstants {
 	public static final String SHORTCUTS_PAGE = "shortcutsPage";
 	/** Paths page name */
 	public static final String PATHS_PAGE = "pathsPage";
-	/** Add-ons page name */
-	public static final String ADDONS_PAGE = "addonsPage";
+	/** Setup page name */
+	public static final String SETUP_PAGE = "setupPage";
+	/** Mirror page name */
+	public static final String MIRROR_PAGE = "mirrorPage";
 }

@@ -16,9 +16,6 @@ import org.eclipse.swt.widgets.DirectoryDialog;
 /**
  * Displays a text field and optional buttons to restore the 
  * default value.and browse for a folder.
- * 
- * @author taimoor
- *
  */
 public class BrowseDirectoryDefaultEditor extends BrowseDefaultEditor {
 

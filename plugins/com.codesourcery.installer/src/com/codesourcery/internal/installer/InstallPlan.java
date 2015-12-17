@@ -13,10 +13,14 @@ package com.codesourcery.internal.installer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.osgi.util.NLS;
 
 import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.Installer;
+import com.codesourcery.internal.installer.ui.UIUtils;
 
 /**
  * Default implementation of an install plan.
@@ -28,18 +32,37 @@ public class InstallPlan implements IInstallPlan {
 	private IStatus status;
 	/** Error message */
 	private String errorMessage;
-	/** Installation size */
+	/** Install size */
 	private long size = -1;
+	/** Required installation free space */
+	private long requiredSize = -1;
+	/** Install location */
+	private IPath location;
 	
 	/**
 	 * Constructor
 	 * 
-	 * @param status Plan status
-	 * @param size Installation size
+	 * @param location Install location
+	 * @param requiredSize Required size
 	 */
-	public InstallPlan(IStatus status, long size) {
+	public InstallPlan(IPath location, long requiredSize) {
+		this.location = location;
+		this.requiredSize = requiredSize;
+	}
+	
+	/**
+	 * Constructor
+	 * 
+	 * @param location Install location
+	 * @param status Plan status
+	 * @param size Install size
+	 * @param requiredSize Required installation space
+	 */
+	public InstallPlan(IPath location, IStatus status, long size, long requiredSize) {
+		this.location = location;
 		this.status = status;
 		this.size = size;
+		this.requiredSize = requiredSize;
 
 		// Failed status
 		try {
@@ -75,12 +98,38 @@ public class InstallPlan implements IInstallPlan {
 	
 	@Override
 	public IStatus getStatus() {
+		if ((status == null) || status.isOK()) {
+			// Insufficient space
+			if (getRequiredSize() > getAvailableSpace()) {
+				String warningMsg = NLS.bind(InstallMessages.Error_InsufficientSpace1, 
+						UIUtils.formatBytes(getRequiredSize()), 
+						UIUtils.formatBytes(getAvailableSpace()));
+				return new Status(IStatus.WARNING, Installer.ID, warningMsg);
+			}
+		}
+		
 		return status;
 	}
 	
 	@Override
 	public long getSize() {
 		return size;
+	}
+
+	@Override
+	public long getRequiredSize() {
+		return requiredSize;
+	}
+	
+	@Override
+	public long getAvailableSpace() {
+		if (location != null) {
+			return location.toFile().getUsableSpace();
+		}
+		else {
+			return 0;
+		}
+
 	}
 
 	/**
@@ -101,6 +150,18 @@ public class InstallPlan implements IInstallPlan {
 	
 	@Override
 	public String getErrorMessage() {
-		return errorMessage;
+		String message = "";
+		
+		if (errorMessage != null) {
+			message = errorMessage;
+		}
+		else {
+			IStatus status = getStatus();
+			if (!status.isOK()) {
+				message = status.getMessage();
+			}
+		}
+		
+		return message;
 	}
 }

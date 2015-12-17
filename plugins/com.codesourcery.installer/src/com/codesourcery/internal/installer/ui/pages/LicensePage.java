@@ -18,14 +18,16 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.equinox.p2.metadata.ILicense;
 import org.eclipse.jface.viewers.ArrayContentProvider;
+import org.eclipse.jface.viewers.ColumnLabelProvider;
+import org.eclipse.jface.viewers.ColumnViewerToolTipSupport;
 import org.eclipse.jface.viewers.ISelectionChangedListener;
 import org.eclipse.jface.viewers.IStructuredSelection;
-import org.eclipse.jface.viewers.LabelProvider;
-import org.eclipse.jface.viewers.ListViewer;
 import org.eclipse.jface.viewers.SelectionChangedEvent;
 import org.eclipse.jface.viewers.StructuredSelection;
+import org.eclipse.jface.viewers.TableViewer;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
@@ -34,13 +36,14 @@ import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 
+import com.codesourcery.installer.IInstallComponent;
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LicenseDescriptor;
 import com.codesourcery.installer.console.ConsoleYesNoPrompter;
-import com.codesourcery.installer.ui.IInstallPageConstants;
+import com.codesourcery.installer.ui.IInstallPages;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.RepositoryManager;
 
@@ -49,22 +52,23 @@ import com.codesourcery.internal.installer.RepositoryManager;
  * This page supports console.
  */
 public class LicensePage extends InformationPage implements IInstallConsoleProvider {
-	/** All licenses */
-	private LicenseDescriptor[] allLicenses;
+	/** Available licenses */
+	private LicenseDescriptor[] availableLicenses;
 	/** Fixed licenses */
 	private LicenseDescriptor[] licenses;
 	/** License list */
-	private ListViewer list;
+	private TableViewer list;
 	/** Accept licenses button */
 	private Button acceptLicenseButton;
 	/** Last license count */
 	private int lastLicenseCount = 0;
 	/** Main area */
 	private Composite mainArea;
-	
-	/**
-	 * Members used for retaining selection.
-	 */
+	/** Sash dividing license list from license information */
+	private SashForm sash;
+	/** License information control */
+	private Control licenseInformationControl;
+	/** Members used for retaining selection. */
 	private LicenseDescriptor firstLicense;
 	private IStructuredSelection lastLicenseSelection = StructuredSelection.EMPTY;
 	
@@ -74,7 +78,7 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 	 * @param licenses Array of licenses or <code>null</code>
 	 */
 	public LicensePage(LicenseDescriptor[] licenses) {
-		super (IInstallPageConstants.LICENSE_PAGE, InstallMessages.LicensePageTitle, "");
+		super (IInstallPages.LICENSE_PAGE, InstallMessages.LicensePageTitle, "");
 		
 		this.licenses = licenses;
 		
@@ -95,21 +99,22 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 	}
 	
 	/**
-	 * Returns all licenses, including any from installable units.
+	 * Returns available licenses.  This will include any licenses from files and any licenses from installable units
+	 * for selected components.
 	 * 
-	 * @return All licenses or <code>null</code>
+	 * @return Available licenses or <code>null</code>
 	 */
-	protected LicenseDescriptor[] getAllLicenses() {
-		return allLicenses;
+	protected LicenseDescriptor[] getAvailableLicenses() {
+		return availableLicenses;
 	}
 	
 	/**
-	 * Sets all licenses.
+	 * Sets available licenses.
 	 * 
-	 * @param allLicenses All licenses or <code>null</code>
+	 * @param availableLicenses All licenses or <code>null</code>
 	 */
-	protected void setAllLicenses(LicenseDescriptor[] allLicenses) {
-		this.allLicenses = allLicenses;
+	protected void setAvailableLicenses(LicenseDescriptor[] availableLicenses) {
+		this.availableLicenses = availableLicenses;
 	}
 	
 	@Override
@@ -118,38 +123,38 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 		mainArea = new Composite(parent, SWT.NONE);
 		mainArea.setLayoutData(new GridData(GridData.FILL_BOTH));
 		mainArea.setLayout(new GridLayout());
+
+		// Sash between license list and license information
+		sash = new SashForm(mainArea, SWT.HORIZONTAL);
+		sash.setLayoutData(new GridData(GridData.FILL_BOTH));
 		
 		// License area
-		Composite area = new Composite(mainArea, SWT.NONE);
+		Composite area = new Composite(sash, SWT.NONE);
 		GridLayout layout = new GridLayout(2, false);
 		layout.marginHeight = layout.marginWidth = 0;
 		area.setLayout(layout);
-		area.setLayoutData(new GridData(GridData.FILL_BOTH));
-		
-		// License selection area
-		Composite left = new Composite(area, SWT.NONE);
-		layout = new GridLayout();
-		layout.marginHeight = layout.marginWidth = 0;
-		left.setLayout(layout);
-		GridData gd = new GridData(GridData.FILL_VERTICAL);
-		left.setLayoutData(gd);
-
-		// Create license information area
-		super.createInformationArea(area);
 
 		// License list viewer
-		list = new ListViewer(left, SWT.READ_ONLY | SWT.BORDER | SWT.V_SCROLL | SWT.H_SCROLL);
+		list = new TableViewer(area, SWT.READ_ONLY | SWT.BORDER | SWT.V_SCROLL | SWT.H_SCROLL);
 		list.getControl().setLayoutData(new GridData(GridData.FILL_BOTH));
 		list.setContentProvider(ArrayContentProvider.getInstance());
-		
-		list.setLabelProvider(new LabelProvider() {
+		// Enable tool-tips for viewer
+		ColumnViewerToolTipSupport.enableFor(list);
+		// License list label provider
+		list.setLabelProvider(new ColumnLabelProvider() {
 			@Override
 			public String getText(Object element) {
 				LicenseDescriptor descriptor = (LicenseDescriptor) element;
 				return descriptor.getLicenseName();
 			}
+
+			@Override
+			public String getToolTipText(Object element) {
+				LicenseDescriptor descriptor = (LicenseDescriptor) element;
+				return descriptor.getLicenseName();
+			}
 		});
-		
+		// Update license information on license selection changed
 		list.addSelectionChangedListener(new ISelectionChangedListener() {
 			@Override
 			public void selectionChanged(SelectionChangedEvent event) {
@@ -161,6 +166,12 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 				setInformation(ld.getLicenseText() == null ? "" : ld.getLicenseText());
 			}
 		});
+
+		// Create license information area
+		licenseInformationControl = super.createInformationArea(sash);
+
+		// Set license information area to occupy 2/3 of available horizontal space by default
+		sash.setWeights(new int[] { 1, 3 });
 
 		// License accept button
 		Composite acceptComp = new Composite(mainArea, SWT.NONE);
@@ -181,6 +192,15 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 	 */
 	private Composite getMainArea() {
 		return mainArea;
+	}
+	
+	/**
+	 * Returns the sash form containing the license list and license information.
+	 * 
+	 * @return Sash form
+	 */
+	private SashForm getSash() {
+		return sash;
 	}
 
 	/**
@@ -215,112 +235,117 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 
 	/**
 	 * Updates the licenses
-	 * 
-	 * @param data Install data
 	 */
-	private void updateLicenses(IInstallData data) {
+	private void updateLicenses() {
 		ArrayList<LicenseDescriptor> licenses = new ArrayList<LicenseDescriptor>();
-		
-		// Add fixed licenses
-		LicenseDescriptor[] fixedLicenses = getLicenses();
-		if (fixedLicenses != null) {
-			for (LicenseDescriptor license : fixedLicenses) {
-				// License is enabled?
-				if (license.isEnabled())
-					licenses.add(license);
-			}
-		}
-		
-		// Add IU licenses if enabled
-		if (Installer.getDefault().getInstallManager().getInstallDescription().getLicenseIU() && (data != null)) {
-			ArrayList<IInstallableUnit> toAdd = new ArrayList<IInstallableUnit>();
-			ArrayList<IInstallableUnit> toRemove = new ArrayList<IInstallableUnit>();
-			RepositoryManager.getDefault().getInstallUnits(toAdd, toRemove);
-			for (IInstallableUnit unit : toAdd) {
-				try {
-					Collection<ILicense> iuLicenses = unit.getLicenses(null);
-					for (ILicense iuLicense : iuLicenses) {
-						LicenseDescriptor license = new LicenseDescriptor(iuLicense.getBody(), 
-								unit.getProperty(IInstallableUnit.PROP_NAME, null));
-						
+
+		if ((getLicenses() != null) && (getLicenses().length > 0)) {
+			// Process the license descriptors
+			for (LicenseDescriptor license : getLicenses()) {
+				// License from text file
+				if (license.getUnit() == null) {
+					if ((license.getLicenseText() != null) && !license.getLicenseText().isEmpty()) {
 						licenses.add(license);
 					}
 				}
-				catch (Exception e) {
-					Installer.log(e);
+				// License for installable unit
+				else {
+					IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents(false);
+					for (IInstallComponent component : components) {
+						// Component included in install
+						if (component.getInstall()) {
+							IInstallableUnit unit = component.getInstallUnit();
+							if (unit != null) {
+								if (unit.getId().equals(license.getUnit().getId())) {
+									try {
+										// Add the unit licenses
+										Collection<ILicense> iuLicenses = unit.getLicenses(null);
+										for (ILicense iuLicense : iuLicenses) {
+											LicenseDescriptor licenseDesc = new LicenseDescriptor(iuLicense.getBody(), 
+													(license.getLicenseName() != null) ? license.getLicenseName() : 
+														unit.getProperty(IInstallableUnit.PROP_NAME, null));
+											
+											licenses.add(licenseDesc);
+										}
+									}
+									catch (Exception e) {
+										Installer.log(e);
+									}
+									break;
+								}
+							}
+						}
+					}
 				}
 			}
 		}
 		
 		// Set all licenses
-		setAllLicenses(licenses.toArray(new LicenseDescriptor[licenses.size()]));
+		setAvailableLicenses(licenses.toArray(new LicenseDescriptor[licenses.size()]));
 		
 		if (!isConsoleMode()) {
 			if (!licenses.isEmpty())
 				firstLicense = licenses.get(0);
-			list.setInput(getAllLicenses());
+			list.setInput(getAvailableLicenses());
 		}
 	}
 	
 	@Override
+	public void setVisible(boolean visible) {
+		// Update licenses
+		updateLicenses();
+
+		// No licenses
+		if (getAvailableLicenses().length == 0) {
+			setInformationTitle(InstallMessages.LicensePageNoComponents);
+			showStatus(new IStatus[] { new Status(IStatus.OK, Installer.ID, InstallMessages.ClickNext) });
+			getMainArea().setVisible(false);
+			setPageComplete(true);
+		}
+		// Licenses
+		else {
+			hideStatus();
+			getMainArea().setVisible(true);
+			setPageComplete(acceptLicenseButton.getSelection());
+			
+			list.setSelection(lastLicenseSelection);
+			IStructuredSelection ns = (IStructuredSelection) list.getSelection();
+			if(ns.isEmpty() && firstLicense != null)
+				list.setSelection(new StructuredSelection(firstLicense));
+	
+			int currentLicenseCount = list.getTable().getItemCount();
+			
+			// Check if Item count has been changed
+			if (currentLicenseCount != lastLicenseCount) {
+				// Single license
+				if ( currentLicenseCount == 1) {
+					acceptLicenseButton.setText(InstallMessages.AcceptLicense);
+					setInformationTitle(InstallMessages.LicenseMessageSingleLicense);
+					// Hide license list
+					getSash().setMaximizedControl(licenseInformationControl);
+				}
+				// Multiple licenses
+				else {
+					acceptLicenseButton.setText(InstallMessages.AcceptLicenses);
+					setInformationTitle(InstallMessages.LicenseMessageMultipleLicenses);
+					// Show license list
+					getSash().setMaximizedControl(null);
+				}
+	
+				// Update License count
+				lastLicenseCount = currentLicenseCount;
+			}
+		}
+
+		super.setVisible(visible);
+	}
+
+	@Override
 	public void setActive(IInstallData data) {
 		super.setActive(data);
 
-		// Update licenses
-		updateLicenses(data);
-
-		// Not running in console mode
-		if (!isConsoleMode()) {
-			// No licenses
-			if (getAllLicenses().length == 0) {
-				setInformationTitle(InstallMessages.LicensePageNoComponents);
-				showStatus(new IStatus[] { new Status(IStatus.OK, Installer.ID, InstallMessages.ClickNext) });
-				getMainArea().setVisible(false);
-				setPageComplete(true);
-			}
-			// Licenses
-			else {
-				hideStatus();
-				getMainArea().setVisible(true);
-				setPageComplete(acceptLicenseButton.getSelection());
-				
-				list.setSelection(lastLicenseSelection);
-				IStructuredSelection ns = (IStructuredSelection) list.getSelection();
-				if(ns.isEmpty() && firstLicense != null)
-					list.setSelection(new StructuredSelection(firstLicense));
-		
-				int currentLicenseCount = list.getList().getItemCount();
-				
-				// Check if Item count has been changed
-				if (currentLicenseCount != lastLicenseCount) {
-					Composite comp = list.getControl().getParent();
-					boolean hideList = false;
-					String acceptButtonText = InstallMessages.AcceptLicenses;
-					String pageTitle = InstallMessages.LicenseMessageMultipleLicenses;
-					
-					/* If only one license agreement, change button text
-					 * and hide List
-					 */
-					if ( currentLicenseCount == 1) {
-						acceptButtonText = InstallMessages.AcceptLicense;
-						pageTitle = InstallMessages.LicenseMessageSingleLicense;
-						hideList = true;
-					}
-					
-					// Update Accept button text and Page title
-					setInformationTitle(pageTitle);
-					acceptLicenseButton.setText(acceptButtonText);
-					
-					// Update visibility of list viewer
-					((GridData)comp.getLayoutData()).exclude = hideList;
-					comp.setVisible(!hideList);
-					comp.getParent().layout();
-		
-					// Update License count
-					lastLicenseCount = currentLicenseCount;
-				}
-			}
-		}
+		// Update licenses for console mode
+		updateLicenses();
 	}
 
 	/**
@@ -332,9 +357,7 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 	 */
 	private String getConsoleLicenseAgreements() {
 		StringBuffer licenseInfo = new StringBuffer();
-		for (LicenseDescriptor license : getAllLicenses()) {
-			if (!license.isEnabled())
-				continue;
+		for (LicenseDescriptor license : getAvailableLicenses()) {
 			String licenseText = NLS.bind(InstallMessages.LicensePageLicenseName1, license.getLicenseName(), license.getLicenseText());
 			licenseInfo.append(licenseText);
 		}
@@ -344,6 +367,6 @@ public class LicensePage extends InformationPage implements IInstallConsoleProvi
 	@Override
 	public boolean isSupported() {
 		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
-		return (mode.isInstall() && (!mode.isUpdate() || mode.isPatch()));
+		return mode.isInstall();
 	}
 }

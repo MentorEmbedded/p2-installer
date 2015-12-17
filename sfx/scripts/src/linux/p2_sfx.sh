@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 ########################################################################
 #
 # p2_sfx.sh
@@ -28,6 +28,7 @@ usage ()
     echo "where options include:"
     echo ""
     echo "-? | --help | -help | -h Show this help text"
+    echo "-license=[location]      Location of the license."
     echo "-location=[path]         Use the specified install location."
     echo "-console                 Perform a console installation"
     echo "-silent                  Perform a silent installation using defaults."
@@ -70,55 +71,116 @@ extract_only="false"
 silent="false"
 suppress_errors="true"
 while test $# -ge 1; do
-    if test "$1" = "-x";
+    arg=
+
+    result=`echo $1 | grep '^-x$'`
+    case "$result" in
+        *[!\ ]*)
+            output_dir="$2"
+            if test -z "$output_dir" || test ! -d "$output_dir";
+            then
+               mkdir -p "$output_dir"
+            fi
+            output_dir=$(readlink -e "$output_dir")
+            install_dir_base="$output_dir"
+            extract_only="true"
+            shift
+        ;;
+    esac
+
+    result=`echo $1 | grep '^-silent$'`
+    case "$result" in
+        *[!\ ]*)
+            suppress_errors="false"
+            silent="true"
+            arg="-install.silent"
+            if test -z "$nosplash";
+            then
+                arg="-nosplash $arg"
+                nosplash="true"
+            fi
+        ;;
+    esac
+
+    result=`echo $1 | grep '^-console$'`
+    case "$result" in
+        *[!\ ]*)
+            suppress_errors="false"
+            arg="-install.console"
+            if test -z "$nosplash"
+            then
+                arg="-nosplash $arg"
+                nosplash="true"
+            fi
+        ;;
+    esac
+
+    result=`echo $1 | grep '^-install.silent$'`
+    case "$result" in
+        *[!\ ]*)
+            suppress_errors="false"
+            silent="true"
+            arg="-install.silent"
+            if test -z "$nosplash";
+            then
+                arg="-nosplash $arg"
+                nosplash="true"
+            fi
+        ;;
+    esac
+
+    result=`echo $1 | grep '^-install.console$'`
+    case "$result" in
+        *[!\ ]*)
+            suppress_errors="false"
+            arg="-install.console"
+            if test -z "$nosplash"
+            then
+                arg="-nosplash $arg"
+                nosplash="true"
+            fi
+        ;;
+    esac
+
+    result=`echo $1 | grep '^-nosplash$'`
+    case "$result" in
+        *[!\ ]*)
+            if test -z "$nosplash"
+            then
+                arg="-nosplash"
+                nosplash="true"
+            fi
+        ;;
+    esac
+
+    result=`echo $1 | grep '^-location.*'`
+    case "$result" in
+        *[!\ ]*)
+            arg="-install.location=`echo "$1" | cut -d'=' -f2`"
+        ;;
+    esac
+
+    result=`echo $1 | grep '^-license.*'`
+    case "$result" in
+        *[!\ ]*)
+            arg="-install.license=`echo "$1" | cut -d'=' -f2`"
+        ;;
+    esac
+
+    result=`echo $1 | grep '^-mirror.*'`
+    case "$result" in
+        *[!\ ]*)
+            arg="-install.mirror=`echo "$1" | cut -d'=' -f2`"
+        ;;
+    esac
+
+    if test -z "$arg";
     then
-        output_dir="$2"
-        if test -z "$output_dir" || test ! -d "$output_dir";
-        then
-           mkdir -p "$output_dir"
-        fi
-        output_dir=$(readlink -e "$output_dir")
-        install_dir_base="$output_dir"
-        extract_only="true"
-        shift
-        shift
-    elif test "$1" = "-install.silent" || test "$1" = "-silent";
-    then
-        suppress_errors="false"
-        silent="true"
-        args="-install.silent $args"
-        if test -z "$nosplash";
-        then
-            args="-nosplash $args"
-            nosplash="true"
-        fi
-        shift
-    elif test "$1" = "-install.console" || test "$1" = "-console";
-    then
-        suppress_errors="false"
-        args="-install.console $args"
-        if test -z "$nosplash"
-        then
-            args="-nosplash $args"
-            nosplash="true"
-        fi
-        shift
-    elif test "$1" = "-nosplash";
-    then
-        if test -z "$nosplash"
-        then
-            args="-nosplash $args"
-            nosplash="true"
-        fi
-        shift
-    elif test `awk -v VAR="$1" 'BEGIN { print match(VAR, "location") }'` -gt 0;
-    then
-        args="-install.location=`echo "$1" | cut -d'=' -f2` $args"
-        shift 
+        args="$args $1"
     else
-        args="$1 $args"
-        shift
+        args="$args $arg"
     fi
+    shift
 done
 
 #@PREPROCESS@
@@ -251,14 +313,15 @@ then
 fi
 
 #extract, uncompress, and untar P2 installer
-archive_start_line_number=$(awk '/^__BEGIN_TAR__/ {print NR + 1; exit 0; }' "$this_script")
+archive_start_line_number=$(grep --text -m 1 -n "^__BEGIN_TAR__" "$this_script" | awk -F':' '{print $1+1}')
 
 # Extract payload tar file
 tail -n+$archive_start_line_number "$this_script" | tar x -C "$work_dir"
 
 installer_dir="$work_dir/installer"
 mkdir -p "$installer_dir"
-tar -xzf "$work_dir/$INSTALLER_TAR_FILE" -C "$installer_dir"
+
+tar -xzf "$work_dir/$INSTALLER_TAR_FILE" -C "$installer_dir" 
 rm -f "$work_dir/$INSTALLER_TAR_FILE"
 tar -xf "$work_dir/$REPO_TAR_FILE" -C "$installer_dir"
 rm -f "$work_dir/$REPO_TAR_FILE"

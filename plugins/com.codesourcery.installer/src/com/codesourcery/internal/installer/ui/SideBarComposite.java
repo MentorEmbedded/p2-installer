@@ -24,7 +24,6 @@ import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Composite;
 
 import com.codesourcery.installer.Installer;
-import com.codesourcery.internal.installer.IInstallerImages;
 
 /**
  * Composite that shows a list of steps to be performed,
@@ -34,6 +33,16 @@ import com.codesourcery.internal.installer.IInstallerImages;
 public class SideBarComposite extends Composite {
 	/** Step states */
 	public enum StepState {NONE, ERROR, SUCCESS};
+	/** Bullet empty image */
+	private Image bulletEmpty;
+	/** Bullet error image */
+	private Image bulletError;
+	/** Bullet checked image */
+	private Image bulletChecked;
+	/** Bullet arrow image */
+	private Image bulletArrow;
+	/** Bullet solid image */
+	private Image bulletSolid;
 
 	/**
 	 * Step labels
@@ -57,9 +66,23 @@ public class SideBarComposite extends Composite {
 	 * 
 	 * @param parent Parent
 	 * @param style Style flags
+	 * @param bulletEmpty Empty bullet image
+	 * @param bulletSolid Solit bullet image
+	 * @param bulletChecked Checked bullet image
+	 * @param bulletArrow Arrow bullet image
+	 * @param bulletError Error bullet image
+	 * @param boldCurrent <code>true</code> to bold current step text, <code>false</code> to enlarge current step text.
 	 */
-	public SideBarComposite(Composite parent, int style) {
+	public SideBarComposite(Composite parent, int style, Image bulletEmpty, Image bulletSolid, Image bulletChecked, 
+			Image bulletArrow, Image bulletError, boolean boldCurrent) {
 		super(parent, style);
+
+		this.bulletEmpty = bulletEmpty;
+		this.bulletSolid = bulletSolid;
+		this.bulletChecked = bulletChecked;
+		this.bulletArrow = bulletArrow;
+		this.bulletError = bulletError;
+		
 		GridLayout layout = new GridLayout(1, false);
 		setLayout(layout);
 
@@ -76,7 +99,13 @@ public class SideBarComposite extends Composite {
 
 		// Create bold font
 		FontData[] fontData = getFont().getFontData();
-		fontData[0].setStyle(SWT.BOLD);
+		if (boldCurrent) {
+			fontData[0].setStyle(SWT.BOLD);
+		}
+		else {
+			fontData[0].setHeight(fontData[0].getHeight() + 3);
+		}
+
 		currentFont = new Font(getFont().getDevice(), fontData);
 	}
 
@@ -88,8 +117,8 @@ public class SideBarComposite extends Composite {
 	public void addStep(String stepName) {
 		CLabel stepLabel = new CLabel(stepsArea, SWT.NONE);
 		stepLabel.setText(stepName);
-		stepLabel.setImage(Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY));
-		stepLabel.setLayoutData(new GridData(SWT.BEGINNING, SWT.CENTER, true, true, 1, 1));
+		stepLabel.setImage(bulletEmpty);
+		stepLabel.setLayoutData(new GridData(SWT.BEGINNING, SWT.CENTER, true, false, 1, 1));
 		stepLabel.setData(new Step());
 		stepLabels.add(stepLabel);
 	}
@@ -119,25 +148,25 @@ public class SideBarComposite extends Composite {
 				// Compute widest image
 				int maxImageWidth = 0;
 				Image widestImage = null;
-				if (Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ERROR).getImageData().width > maxImageWidth) {
-					maxImageWidth = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ERROR).getImageData().width;
-					widestImage = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ERROR);
+				if ((bulletError != null) && (bulletError.getImageData().width > maxImageWidth)) {
+					maxImageWidth = bulletError.getImageData().width;
+					widestImage = bulletError;
 				}
-				if (Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_CHECKED).getImageData().width > maxImageWidth) {
-					maxImageWidth = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_CHECKED).getImageData().width;
-					widestImage = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_CHECKED);
+				if ((bulletChecked != null) && (bulletChecked.getImageData().width > maxImageWidth)) {
+					maxImageWidth = bulletChecked.getImageData().width;
+					widestImage = bulletChecked;
 				}
-				if (Installer.getDefault().getImageRegistry().get(IInstallerImages.ARROW_RIGHT).getImageData().width > maxImageWidth) {
-					maxImageWidth = Installer.getDefault().getImageRegistry().get(IInstallerImages.ARROW_RIGHT).getImageData().width;
-					widestImage = Installer.getDefault().getImageRegistry().get(IInstallerImages.ARROW_RIGHT);
+				if ((bulletArrow != null) && (bulletArrow.getImageData().width > maxImageWidth)) {
+					maxImageWidth = bulletArrow.getImageData().width;
+					widestImage = bulletArrow;
 				}
-				if (Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_SOLID).getImageData().width > maxImageWidth) {
-					maxImageWidth = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_SOLID).getImageData().width;
-					widestImage = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_SOLID);
+				if ((bulletSolid != null) && (bulletSolid.getImageData().width > maxImageWidth)) {
+					maxImageWidth = bulletSolid.getImageData().width;
+					widestImage = bulletSolid;
 				}
-				if (Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY).getImageData().width > maxImageWidth) {
-					maxImageWidth = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY).getImageData().width;
-					widestImage = Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY);
+				if ((bulletEmpty != null) && (bulletEmpty.getImageData().width > maxImageWidth)) {
+					maxImageWidth = bulletEmpty.getImageData().width;
+					widestImage = bulletEmpty;
 				}
 
 				// Set attributes to produce widest step
@@ -181,26 +210,27 @@ public class SideBarComposite extends Composite {
 			stepLabel.setForeground(step.isCompleted ? activeColor : inactiveColor);
 			// Step has error
 			if (step.getState() == StepState.ERROR) {
-				stepLabel.setImage(Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ERROR));
+				stepLabel.setImage(bulletError);
 			}
 			// Step is successful
 			else if (step.getState() == StepState.SUCCESS) {
-				stepLabel.setImage(Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_CHECKED));
+				stepLabel.setImage(bulletChecked);
 			}
 			// Step is current
 			else if (step.isCurrent()) {
-				stepLabel.setImage(Installer.getDefault().getImageRegistry().get(IInstallerImages.ARROW_RIGHT));
+				stepLabel.setImage(bulletArrow);
 				stepLabel.setFont(currentFont);
 			}
 			// Step is completed
 			else if (step.isCompleted()) {
-				stepLabel.setImage(Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_SOLID));
+				stepLabel.setImage(bulletSolid);
 			}
 			// Step is not completed
 			else {
-				stepLabel.setImage(Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY));
+				stepLabel.setImage(bulletEmpty);
 			}
 		}
+		stepsArea.layout(true);
 	}
 	
 	/**

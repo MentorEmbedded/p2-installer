@@ -61,11 +61,14 @@ public abstract class BrowseDefaultEditor extends Composite {
 		// Value editor
 		fieldEditor = new Text(this, SWT.BORDER);
 		fieldEditor.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
-		fieldEditor.setText(defaultValue);
-		if (!defaultValue.isEmpty()) {
+		if ((defaultValue != null) && !defaultValue.isEmpty()) {
+			fieldEditor.setText(defaultValue);
 			// Scroll to end of location
-			int end = defaultValue.length() - 1;
+			int end = defaultValue.length();
 			fieldEditor.setSelection(end, end);
+			if (defaultValue != null) {
+				setText(defaultValue);
+			}
 		}
 		
 		// Button area
@@ -177,6 +180,15 @@ public abstract class BrowseDefaultEditor extends Composite {
 	 */
 	public String getBrowseMessage() {
 		return browseMessage;
+	}
+	
+	/**
+	 * Sets the default value.
+	 * 
+	 * @param defaultValue Default value or <code>null</code>
+	 */
+	public void setDefaultValue(String defaultValue) {
+		this.defaultValue = defaultValue;
 	}
 	
 	/**

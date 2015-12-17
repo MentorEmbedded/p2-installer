@@ -3,10 +3,10 @@
 <schema targetNamespace="com.codesourcery.installer" xmlns="http://www.w3.org/2001/XMLSchema">
 <annotation>
       <appInfo>
-         <meta.schema plugin="com.codesourcery.installer" id="verifiers" name="Installer verifiers"/>
+         <meta.schema plugin="com.codesourcery.installer" id="platformActionsProvider" name="Installer Platform Actions"/>
       </appInfo>
       <documentation>
-         This extension point adds verifiers that will be called by the installer.  Verifiers must provide a class that implements the com.codesourcery.installer.IInstallVerifier interface.
+         This extension point allows providing platform dependent actions from fragments.
       </documentation>
    </annotation>
 
@@ -18,7 +18,7 @@
       </annotation>
       <complexType>
          <sequence>
-            <element ref="verifier" minOccurs="1" maxOccurs="unbounded"/>
+            <element ref="actionsProvider"/>
          </sequence>
          <attribute name="point" type="string" use="required">
             <annotation>
@@ -34,63 +34,69 @@
                </documentation>
             </annotation>
          </attribute>
-      </complexType>
-   </element>
-
-   <element name="verifier">
-      <complexType>
-         <attribute name="id" type="string">
-            <annotation>
-               <documentation>
-                  Verifier identifier
-               </documentation>
-            </annotation>
-         </attribute>
-         <attribute name="class" type="string" use="required">
+         <attribute name="name" type="string">
             <annotation>
                <documentation>
                   
                </documentation>
                <appInfo>
-                  <meta.attribute kind="java" basedOn=":com.codesourcery.installer.IInstallVerifier"/>
+                  <meta.attribute translatable="true"/>
                </appInfo>
             </annotation>
          </attribute>
       </complexType>
    </element>
 
+   <element name="actionsProvider">
+      <complexType>
+         <attribute name="class" type="string" use="required">
+            <annotation>
+               <documentation>
+                  
+               </documentation>
+               <appInfo>
+                  <meta.attribute kind="java" basedOn=":com.codesourcery.installer.IInstallPlatformActions"/>
+               </appInfo>
+            </annotation>
+         </attribute>
+      </complexType>
+   </element>
+
+   <annotation>
+      <appInfo>
+         <meta.section type="since"/>
+      </appInfo>
+      <documentation>
+         [Enter the first release in which this extension point appears.]
+      </documentation>
+   </annotation>
 
    <annotation>
       <appInfo>
          <meta.section type="examples"/>
       </appInfo>
       <documentation>
-         &lt;extension
-  point=&quot;com.codesourcery.installer.verifiers&quot;&gt;
-  &lt;verifier
-    class=&quot;com.codesourcery.installer.codebench.CodeBenchInstallVerifier&quot;
-    id=&quot;com.codesourcery.installer.installVerifier&quot;&gt;
-  &lt;/verifier&gt;
-&lt;/extension&gt;
-
+         [Enter extension point usage example here.]
       </documentation>
    </annotation>
-
-
 
    <annotation>
       <appInfo>
-         <meta.section type="copyright"/>
+         <meta.section type="apiinfo"/>
       </appInfo>
       <documentation>
-         Copyright (c) 2014 Mentor Graphics
-                 
-PROPRIETARY RIGHTS of Mentor Graphics are involved in the
-subject matter of this material.  All manufacturing, reproduction,
-use, and sales rights pertaining to this subject matter are governed
-by the license agreement.  The recipient of this software implicitly
-accepts the terms of the license.
+         [Enter API information here.]
       </documentation>
    </annotation>
+
+   <annotation>
+      <appInfo>
+         <meta.section type="implementation"/>
+      </appInfo>
+      <documentation>
+         [Enter information about supplied implementation of this extension point.]
+      </documentation>
+   </annotation>
+
 
 </schema>

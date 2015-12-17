@@ -64,6 +64,13 @@ p2_sfx_linux_sfx_script_process()
     : # null statement
 }
 
+# The following function allows the user to perform post processing 
+# of the bin file 
+p2_sfx_linux_sfx_script_postprocess()
+{
+    : # null statement
+}
+
 p2_sfx_linux_build()
 {
     local installer
@@ -154,7 +161,7 @@ p2_sfx_linux_build()
 
     # Create the prefix script 
     cat > $sfx_script_prefix <<EOF
-#!/bin/sh
+#!/bin/bash
 # This number provides a rough estimate and isn't intended to be exact.
 ARCHIVE_BYTES=$installer_needed_bytes
 INSTALLER_TAR_FILE=$(basename "$payload_installer_zip_file")
@@ -167,6 +174,9 @@ EOF
     p2_sfx_linux_sfx_script_process
 
     cat "$sfx_script_prefix" "$sfx_script" "$payload_tar_file" > "$output"
+
+    p2_sfx_linux_sfx_script_postprocess
+
     chmod a+x "$output"
 
     popd > /dev/null
@@ -197,12 +207,17 @@ p2_sfx_linux_usage() {
   echo "--data-dir [name of installer data directory; optional. Uses current default name if not specified (.p2_installer)]"
   echo "--output-file [path and file name of generated sfx; required]"
   echo "--silent [Turn off messages from this script; optional]"
+  echo "--help-url [URL to print in optional help messsage ]"
 }
 
 p2_sfx_linux_main()
 {
     while test "$#" -ge 1; do
         case "$1" in
+        --help-url)
+          shift
+          help_url="$1";
+          ;;
         --installer-dir)
           shift
           installer_dir="$1";

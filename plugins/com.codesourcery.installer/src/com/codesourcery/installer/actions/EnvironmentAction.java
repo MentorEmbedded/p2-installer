@@ -37,9 +37,14 @@ import org.w3c.dom.NodeList;
 import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.Installer;
+import com.codesourcery.internal.installer.FileUtils;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.InstallUtils;
 
+/**
+ * An action that can be used to replace, prepend, or append values to system
+ * environment variables.
+ */
 public class EnvironmentAction extends AbstractInstallAction {
 	/** Enivornment variable operations */
 	public enum EnvironmentOperation {
@@ -65,6 +70,7 @@ public class EnvironmentAction extends AbstractInstallAction {
 	
 	/** Windows user environment registry key */
 	private static final String REG_USER_ENVIRONMENT = "HKEY_CURRENT_USER\\Environment";
+
 	/** Profile file names. */  
 	private static final String PROFILE_FILENAMES[] = {
 		".bash_profile",
@@ -76,6 +82,12 @@ public class EnvironmentAction extends AbstractInstallAction {
 
 	/** Environment variables */
 	private ArrayList<EnvironmentVariable> environmentVariables = new ArrayList<EnvironmentVariable>();
+	
+	/** Needs reset or reLogin */
+	private boolean requiresResetOrRelogin = false;
+	
+	/** Default system environment updation message timeout */
+	private static final int UPDATE_ENVIRONMENT_MESSAGE_TIMEOUT = 1500;
 
 	/**
 	 * Constructor
@@ -83,7 +95,7 @@ public class EnvironmentAction extends AbstractInstallAction {
 	public EnvironmentAction() {
 		super(ID);
 	}
-
+	
 	/**
 	 * Reads a Windows environment variable.
 	 * Only supported on the Windows platform.
@@ -95,6 +107,66 @@ public class EnvironmentAction extends AbstractInstallAction {
 	 */
 	public static String readWindowsEnvironmentVariable(String variableName) throws UnsupportedOperationException, CoreException {
 		return Installer.getDefault().getInstallPlatform().getWindowsRegistryValue(REG_USER_ENVIRONMENT, variableName);	
+	}
+
+	/**
+	 * Checks if an environment variable currently exists and/or contains
+	 * a value.
+	 * 
+	 * @param variableName Variable name
+	 * @param value Value to check for or <code>null</code> to just check if
+	 * the variable exists.
+	 * @param separator Separator or <code>null</code>
+	 * @return <code>true</code> if variable exists and/or contains the specified value
+	 * @throws CoreException on failure to read the environment
+	 */
+	public static boolean checkEnvironmentVariable(String variableName, String value, String separator) throws CoreException {
+		boolean exists = false;
+		try {
+			String currentValue = null;
+			// Read current environment variable
+			if (Installer.isWindows()) {
+				try {
+					currentValue = readWindowsEnvironmentVariable(variableName);
+				} catch (UnsupportedOperationException e) {
+					Installer.log(e.getMessage());
+				} 
+			}
+			else if (Installer.isLinux()) {
+				currentValue = System.getenv(variableName);
+			}
+	
+			// Environment variable exists
+			if (currentValue != null) {
+				// Check if variable contains value
+				if (value != null) {
+					
+					String[] parts;
+					if (separator != null) {
+						parts = InstallUtils.getArrayFromString(value, separator);
+					}
+					else {
+						parts = new String[] { value };
+					}
+					boolean allFound = true;
+					for (String part : parts) {
+						if (!currentValue.contains(part)) {
+							allFound = false;
+							break;
+						}
+					}
+					exists = allFound;
+				}
+				else {
+					exists = true;
+				}
+			}
+		}
+		catch (Exception e) {
+			Installer.log(e);
+		}
+		
+		return exists;
 	}
 	
 	/**
@@ -210,10 +282,16 @@ public class EnvironmentAction extends AbstractInstallAction {
 				if (environmentVariable.getOperation() == EnvironmentOperation.APPEND) {
 					appendValues(valuesBuffer, environmentVariable.getValue(), environmentVariable.getDelimiter());
 				}
-				
+
 				// Set new variable value
 				Installer.getDefault().getInstallPlatform().setWindowsRegistryValue(REG_USER_ENVIRONMENT, environmentVariable.getName(), valuesBuffer.toString());
+				// Update Windows system environment
+				String result = Installer.getDefault().getInstallPlatform().updateWindowsSystemEnvironment(UPDATE_ENVIRONMENT_MESSAGE_TIMEOUT);
+				// Set reboot if broadcasting environment change step failed.
+				if (result != null && !result.isEmpty())
+					setNeedsResetOrRelogin(true);
 			}
+			
 			// Uninstall - remove variable value (prefix,append) or remove variable (replace)
 			else {
 				// Remove values
@@ -238,6 +316,8 @@ public class EnvironmentAction extends AbstractInstallAction {
 					
 					// Set new variable value
 					Installer.getDefault().getInstallPlatform().setWindowsRegistryValue(REG_USER_ENVIRONMENT, environmentVariable.getName(), valuesBuffer.toString());
+					// Update Windows system environment
+					Installer.getDefault().getInstallPlatform().updateWindowsSystemEnvironment(UPDATE_ENVIRONMENT_MESSAGE_TIMEOUT);
 				}
 				// Remove variable
 				else {
@@ -313,7 +393,7 @@ public class EnvironmentAction extends AbstractInstallAction {
 
 			// Make backup of .profile
 			try {
-				org.apache.commons.io.FileUtils.copyFile(profileFile, backupFile);
+				FileUtils.copyFile(profileFile.toPath(), backupFile.toPath(), true);
 			} catch (IOException e) {
 				Installer.fail(InstallMessages.Error_FailedToBackupProfile, e);
 			}
@@ -386,6 +466,8 @@ public class EnvironmentAction extends AbstractInstallAction {
 					}
 				}
 			}
+			
+			setNeedsResetOrRelogin(true);
 		}
 		// Uninstall
 		else {
@@ -433,7 +515,7 @@ public class EnvironmentAction extends AbstractInstallAction {
 
 			// Copy new profile
 			try {
-				org.apache.commons.io.FileUtils.copyFile(backupFile, profileFile);
+				FileUtils.copyFile(backupFile.toPath(), profileFile.toPath(), true);
 			} catch (IOException e) {
 				Installer.fail(InstallMessages.Error_FailedToUpdateProfile, e);
 			}
@@ -497,6 +579,22 @@ public class EnvironmentAction extends AbstractInstallAction {
 		}
 	}
 	
+	/**
+	 * Sets whether restart or re-login required for action
+	 * 
+	 * @param value <code>true</code> if restart or re-login is
+	 * required 
+	 */
+	public void setNeedsResetOrRelogin(boolean value) {
+		this.requiresResetOrRelogin = value;
+	}
+
+	
+	@Override
+	public boolean needsRestartOrRelogin() {
+		return this.requiresResetOrRelogin;
+	}
+
 	/**
 	 * Environment variable
 	 */

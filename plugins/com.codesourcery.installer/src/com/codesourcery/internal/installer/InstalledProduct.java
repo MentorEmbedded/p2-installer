@@ -30,6 +30,8 @@ public class InstalledProduct implements IInstalledProduct {
 	private Version version;
 	/** Product installed location */
 	private IPath installLocation;
+	/** Product category */
+	private String category;
 	
 	/**
 	 * Constructor
@@ -38,13 +40,15 @@ public class InstalledProduct implements IInstalledProduct {
 	 * @param name Product name
 	 * @param version Product version
 	 * @param installLocation Product install location
+	 * @param category or <code>null</code>
 	 */
-	public InstalledProduct(String id, String name, String version, IPath installLocation) {
+	public InstalledProduct(String id, String name, String version, IPath installLocation, String category) {
 		this.id = id;
 		this.name = name;
 		this.versionText = version;
 		this.installLocation = installLocation;
 		this.version = InstallUtils.createVersion(version);
+		this.category = category;
 	}
 
 	@Override
@@ -66,6 +70,11 @@ public class InstalledProduct implements IInstalledProduct {
 	@Override
 	public Version getVersion() {
 		return version;
+	}
+
+	@Override
+	public String getCategory() {
+		return category;
 	}
 
 	@Override

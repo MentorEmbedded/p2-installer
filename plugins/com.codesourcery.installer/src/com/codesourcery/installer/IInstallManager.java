@@ -21,10 +21,42 @@ public interface IInstallManager {
 	 * This method also will adjust the install mode if there is an existing
 	 * installation at the location.
 	 * 
+	 * This method does nothing if {@link #setMirrorLocation(IPath, IProgressMonitor)} has been called.
+	 * 
 	 * @param path Install location
+	 * @param monitor Progress monitor or <code>null</code>
 	 * @throws CoreException on failure
+	 * @see #setMirrorLocation(IPath, IProgressMonitor)
 	 */
-	public void setInstallLocation(IPath path) throws CoreException;
+	public void setInstallLocation(IPath path, IProgressMonitor monitor) throws CoreException;
+	
+	/**
+	 * Sets the location to create a mirror repository.
+	 * 
+	 * This method does nothing if {@link #setInstallLocation(IPath, IProgressMonitor)} has been called.
+	 * 
+	 * @param path
+	 * @param monitor
+	 * @throws CoreException
+	 * @see {@link #setInstallLocation(IPath, IProgressMonitor)}
+	 */
+	public void setMirrorLocation(IPath path, IProgressMonitor monitor) throws CoreException;
+	
+	/**
+	 * Sets the directory for a source P2 repository to use for installation.  Only install components present
+	 * in the repository will be available for installation.
+	 * 
+	 * @param path Path to repository directory
+	 * @param CoreException if the directory is empty or made with a different installer
+	 */
+	public void setSourceLocation(IPath path) throws CoreException;
+	
+	/**
+	 * Returns the install data.
+	 * 
+	 * @return Install data or <code>null</code> for an uninstallation.
+	 */
+	public IInstallData getInstallData();
 	
 	/**
 	 * Returns the install location.
@@ -75,11 +107,10 @@ public interface IInstallManager {
 	/**
 	 * Performs the installation.
 	 * 
-	 * @param installData Install data
 	 * @param monitor Progress monitor
 	 * @throws CoreException on failure
 	 */
-	public void install(IInstallData installData, IProgressMonitor monitor) throws CoreException;
+	public void install(IProgressMonitor monitor) throws CoreException;
 
 	/**
 	 * Performs the uninstallation.
@@ -98,6 +129,14 @@ public interface IInstallManager {
 	 * @throws CoreException on failure
 	 */
 	public void launch(LaunchItem item) throws CoreException;
+	
+	/**
+	 * Determine if launch item is available on file system
+	 * 
+	 * @param item Launch item
+	 * @return <code>true</code> or <code>false</code>
+	 */
+	public boolean isLaunchItemAvailable(LaunchItem item);
 	
 	/**
 	 * Returns the registered install wizard pages.
@@ -127,9 +166,10 @@ public interface IInstallManager {
 	 * displayed.
 	 * 
 	 * @param product Installed product or <code>null</code>
+	 * @param monitor Progress monitor
 	 * @throws CoreException on failure
 	 */
-	public void setInstalledProduct(IInstalledProduct product) throws CoreException;
+	public void setInstalledProduct(IInstalledProduct product, IProgressMonitor monitor) throws CoreException;
 	
 	/**
 	 * Returns an installed product by identifier.
@@ -155,7 +195,17 @@ public interface IInstallManager {
 	 * at different locations
 	 * @return Installed products
 	 */
-	public IInstalledProduct[] getInstalledProducts(IProductRange[] range, boolean uniqueLocations);
+	public IInstalledProduct[] getInstalledProductsByRange(IProductRange[] range, boolean uniqueLocations);
+	
+	/**
+	 * Returns all installed products that match a category.
+	 * 
+	 * @param category Category
+	 * @param uniqueLocations <code>true</code> to return only products installed
+	 * at different locations.
+	 * @return Installed products
+	 */
+	public IInstalledProduct[] getInstalledProductsByCategory(String category, boolean uniqueLocations);
 	
 	/**
 	 * Returns the existing product in the install location.
@@ -164,4 +214,19 @@ public interface IInstallManager {
 	 * @return Existing product or <code>null</code>
 	 */
 	public IInstallProduct getExistingProduct(IInstallManifest manifest);
+	
+	/**
+	 * Adds a new install verifier.  The verifier will be called to validate install information.
+	 * This method does nothing if the verifier has already been added.
+	 * 
+	 * @param verifier Verifier to add
+	 */
+	public void addInstallVerifier(IInstallVerifier verifier);
+	
+	/**
+	 * Removes a install verifier.
+	 * 
+	 * @param verifier Verifier to remove
+	 */
+	public void removeInstallVerifier(IInstallVerifier verifier);
 }

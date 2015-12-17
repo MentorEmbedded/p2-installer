@@ -101,4 +101,10 @@ public abstract class AbstractInstallAction implements IInstallAction {
 		// Default runs during install phase
 		return InstallPhase.INSTALL;
 	}
+	
+	@Override
+	public boolean needsRestartOrRelogin() {
+		// Default does not require restart or re-login. 
+		return false;
+	}
 }

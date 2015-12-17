@@ -133,7 +133,10 @@ public class InformationPage extends InstallWizardPage {
 			informationTitleLabel.setText(getInformationTitle());
 		}
 		
-		return createInformationArea(area);
+		// Create information area
+		createInformationArea(area);
+		
+		return area;
 	}
 	
 	/**
@@ -169,12 +172,11 @@ public class InformationPage extends InstallWizardPage {
 		// Information area
 		informationLabel = new FormattedLabel(area, flags);
 		GridData data = new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1);
-		data.heightHint = convertHeightInCharsToPixels(DEFAULT_HEIGHT);
 		informationLabel.setLayoutData(data);
 		informationLabel.setText(information);
 		if (isScrollable())
 			informationLabel.setEnabled(true);
 
-		return area;
+		return informationLabel;
 	}
 }

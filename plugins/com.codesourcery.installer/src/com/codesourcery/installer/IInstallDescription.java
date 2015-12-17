@@ -10,7 +10,7 @@
  *******************************************************************************/
 package com.codesourcery.installer;
 
-import java.net.URI;
+import java.util.List;
 import java.util.Map;
 
 import org.eclipse.core.runtime.IPath;
@@ -25,6 +25,98 @@ import org.eclipse.equinox.p2.metadata.Version;
  * property values.
  */
 public interface IInstallDescription {
+	/**
+	 * Mirror mode 
+	 */
+	public enum MirrorMode {
+		/** Don't mirror install */
+		NONE,
+		/** Mirror all repositories */
+		ALL,
+		/** Mirror only if remote repositories are specified */
+		REMOTE_ONLY
+	}
+	
+	/**
+	 * Wizard navigation
+	 */
+	public enum WizardNavigation {
+		/** No navigation */
+		NONE("none"),
+		/** Top navigation */
+		TOP("top"),
+		/** Left navigation */
+		LEFT("left"),
+		/** Left navigation (minimal scheme) */
+		LEFT_MINIMAL("left_minimal");
+		
+		/** Navigation name */
+		private final String name;
+		
+		/**
+		 * Constructs a wizard navigation.
+		 * 
+		 * @param name Name
+		 */
+		private WizardNavigation(String name) {
+			this.name = name;
+		}
+		
+		/**
+		 * Returns the wizard navigation corresponding to a name.
+		 * 
+		 * @param text Name
+		 * @return Value or <code>null</code>
+		 */
+		public static WizardNavigation fromString(String text) {
+			WizardNavigation v = WizardNavigation.NONE;
+			for (WizardNavigation value : values()) {
+				if (value.name.equals(text)) {
+					v = value;
+					break;
+				}
+			}
+			
+			return v;
+		}
+	}
+	
+	/** Identifier of the default repository mirror */
+	public static final String DEFAULT_MIRROR = "default";
+	
+	/** Repositories mirror location property */
+	public static final String PROP_REPOS_MIRROR = "eclipse.p2.repos.mirror";//$NON-NLS-1$
+	
+	/** Existing version of product property */
+	public static final String PROP_EXISTING_VERSION = "eclipse.p2.product.existingVersion";//$NON-NLS-1$
+
+	// Text constants
+	public static final String TEXT_INSTALL_ADDENDUM = "install.addendum";
+	public static final String TEXT_INFORMATION = "information";
+	public static final String TEXT_CATEGORY_INSTALL = "categoryInstall";
+	public static final String TEXT_EXISTING_INSTALL = "existingInstall";
+	public static final String TEXT_WELCOME = "welcome";
+	public static final String TEXT_UNINSTALL_ADDENDUM = "uninstall.addendum";
+	public static final String TEXT_PROGRESS_MIRRORING = "progress.mirroring";
+	public static final String TEXT_INSTALL_FOLDER = "installFolder";
+	public static final String TEXT_MIRROR_PAGE_MESSAGE = "mirrorPage.message";
+	public static final String TEXT_MIRROR_PAGE_SECTION_INSTALL = "mirrorPage.section.install";
+	public static final String TEXT_MIRROR_PAGE_INSTALL = "mirrorPage.install";
+	public static final String TEXT_MIRROR_PAGE_SECTION_SAVE = "mirrorPage.section.save";
+	public static final String TEXT_MIRROR_PAGE_SAVE = "mirrorPage.save";
+	public static final String TEXT_MIRROR_PAGE_LOAD = "mirrorPage.load";
+	public static final String TEXT_MIRROR_PAGE_DEFAULT_DIRECTORY = "mirrorPage.defaultDirectory";
+	public static final String TEXT_PROGRESS_PAGE_NAME_INSTALLING = "progressPage.name.installing";
+	public static final String TEXT_PROGRESS_PAGE_NAME_MIRRORING = "progressPage.name.mirroring";
+	public static final String TEXT_PROGRESS_PAGE_MESSAGE_INSTALLING = "progressPage.message.installing";
+	public static final String TEXT_PROGRESS_PAGE_MESSAGE_MIRRORING = "progressPage.message.mirroring";
+	public static final String TEXT_RESULT_INSTALL = "result.install";
+	public static final String TEXT_RESULT_MIRROR = "result.mirror";
+	public static final String TEXT_FINISH_INSTALL = "finish.install";
+	public static final String TEXT_FINISH_MIRROR = "finish.mirror";
+	public static final String TEXT_SHORTCUTS_PAGE_MESSAGE = "shortcutsPage.message";
+	public static final String TEXT_PATHS_PAGE_MESSAGE = "pathsPage.message";
+	
 	/**
 	 * Sets an install property.
 	 * 
@@ -41,7 +133,44 @@ public interface IInstallDescription {
 	 * available.
 	 */
 	public String getProperty(String name);
+	
+	/**
+	 * Returns all properties with names that start with a given prefix.
+	 * The prefix will be removed from the property names.
+	 * 
+	 * @param prefix Property name prefix
+	 * @return Map of property names (with prefix removed) to property values.  This map can be modified.
+	 */
+	public Map<String, String> getProperties(String prefix);
 
+	/**
+	 * Reads indexed property values.  The format of the property names should
+	 * be:
+	 *   <prefix>.0=
+	 *   <prefix>.1=
+	 *   ...
+	 * 
+	 * @param prefix Property name prefix
+	 * @return Property value or <code>null</code> if property is not found
+	 */
+	public String[] getIndexedProperties(String prefix);
+	
+	/**
+	 * Returns all properties and their values whose name starts with a specified prefix.
+	 * Example:
+	 *   my.prop.a = 1
+	 *   my.prop.b = 2
+	 *   my.prop = 3
+	 *   
+	 *   <code>getPrefixedProperties("my.prop")</code> will return a map with
+	 *   <code>my.prop=3,my.prop.a=1, my.prop.b=2</code>
+	 *   The map is ordered so that the default property ("my.prop") always appears first if it is available.
+	 * 
+	 * @param prefx Property name prefix
+	 * @return Map of property names to property values
+	 */
+	public Map<String, String> getPrefixedProperties(String prefx);
+	
 	/**
 	 * Sets the title displayed in the installer window title area.
 	 * 
@@ -111,78 +240,15 @@ public interface IInstallDescription {
 	 * @return Environment paths or <code>null</code>
 	 */
 	public String[] getEnvironmentPaths();
-	
-	/**
-	 * Sets the meta-data repositories.
-	 * 
-	 * @param value Repositories
-	 */
-	public void setMetadataRepositories(URI[] value);
 
 	/**
-	 * Returns the locations of the meta-data repositories to install from
+	 * Returns all repository locations.  If the installer repository location properties 
+	 * (<code>eclipse.p2.metadata</code> and <code>eclipse.p2.artifacts</code>) are expressed in terms of the 
+	 * <code>${eclipse.p2.repos.mirror}</code> property and mirrors are defined then a location will be returned for each.
 	 * 
-	 * @return a list of meta-data repository URLs
+	 * @return Repository locations
 	 */
-	public URI[] getMetadataRepositories();
-
-	/**
-	 * Sets the artifact repositories.
-	 * 
-	 * @param value Repositories
-	 */
-	public void setArtifactRepositories(URI[] value);
-	
-	/**
-	 * Returns the locations of the artifact repositories to install from
-	 * 
-	 * @return a list of artifact repository URLs
-	 */
-	public URI[] getArtifactRepositories();
-	
-	/**
-	 * Returns the locations any add-on repositories to query for
-	 * additional components.
-	 * 
-	 * @return Add-on repository locations or <code>null</code>
-	 */
-	public URI[] getAddonRepositories();
-	
-	/**
-	 * Sets the locations of add-on repositories to query for additional
-	 * components.
-	 * 
-	 * @param repositories Add-on repositories
-	 */
-	public void setAddonRepositories(URI[] repositories);
-	
-	/**
-	 * Sets the add-ons description.
-	 * 
-	 * @param addonDescription Add-ons description
-	 */
-	public void setAddonDescription(String addonDescription);
-	
-	/**
-	 * Returns the description for add-ons.
-	 * 
-	 * @return Add-ons description or <code>null</code>
-	 */
-	public String getAddonDescription();
-
-	/**
-	 * Sets if add-ons require a login.
-	 * 
-	 * @param requiresLogin <code>true</code> if add-ons require a log-in
-	 */
-	public void setAddonsRequireLogin(boolean requiresLogin);
-	
-	/**
-	 * Returns if add-ons require a login.
-	 * 
-	 * @return <code>true</code> if add-ons require a login
-	 */
-	public boolean getAddonsRequireLogin();
+	public List<IRepositoryLocation> getRepositoryLocations();
 	
 	/**
 	 * Sets the update site locations.
@@ -211,6 +277,21 @@ public interface IInstallDescription {
 	 * @return a local file system location
 	 */
 	public IPath getInstallLocation();
+	
+	/**
+	 * Sets if installation require install location to be empty.
+	 * <code>true</code> if installation requires empty directory.
+	 * 
+	 * @param requireEmptyCheck
+	 */
+	public void setRequireEmptyInstallDirectory(boolean requireEmptyCheck);
+	
+	/**
+	 * Returns if installation requires empty directory.
+	 * 
+	 * @return <code>true</code> if installation requires empty directory
+	 */
+	public boolean getRequireEmptyInstallDirectory();
 	
 	/**
 	 * Sets the root install location.
@@ -270,6 +351,22 @@ public interface IInstallDescription {
 	public String getProductName();
 	
 	/**
+	 * Sets the product category.  If any products with the same category are
+	 * installed, their locations will be offered as choice for the destination
+	 * for this installation.
+	 * 
+	 * @param category Category
+	 */
+	public void setProductCategory(String category);
+	
+	/**
+	 * Returns the product category.
+	 * 
+	 * @return Category or <code>null</code>
+	 */
+	public String getProductCategory();
+	
+	/**
 	 * Sets the product vendor.
 	 * 
 	 * @param value Vendor
@@ -317,6 +414,32 @@ public interface IInstallDescription {
 	 * @return Help URL or <code>null</code>.
 	 */
 	public String getProductHelp();
+
+	/**
+	 * Set the name of the product to be used during uninstall.
+	 * 
+	 * @param value the new uninstall name of the product
+	 */
+	public void setProductUninstallName(String value);
+	
+	/**
+	 * Returns the name of the product to be used during uninstall.
+	 * 
+	 * @return the uninstall name of the product
+	 */
+	public String getProductUninstallName();
+
+	/**
+	 * Sets whether a root IU will be created for the product.
+	 * 
+	 * @param root <code>true</code> to create root IU
+	 */
+	public void setProductRoot(boolean root);
+	
+	/**
+	 * @return <code>true</code> if root IU will be created for the product.
+	 */
+	public boolean getProductRoot();
 	
 	/**
 	 * Sets the profile name.
@@ -350,7 +473,7 @@ public interface IInstallDescription {
 	 * @return <code>true</code> if profile should be removed
 	 */
 	public boolean getRemoveProfile();
-
+	
 	/**
 	 * Sets the product licenses
 	 * 
@@ -366,34 +489,6 @@ public interface IInstallDescription {
 	 */
 	public LicenseDescriptor[] getLicenses();
 	
-	/**
-	 * Sets if license information for installable units will be displayed.
-	 * 
-	 * @param value <code>true</code> to show IU license information
-	 */
-	public void setLicenseIU(boolean value);
-	
-	/**
-	 * Returns if license information for installable units will be displayed.
-	 * 
-	 * @return <code>true</code> if IU license information will be displayed
-	 */
-	public boolean getLicenseIU();
-
-	/**
-	 * Sets the product information text.
-	 * 
-	 * @param value Information text or <code>null</code>.
-	 */
-	public void setInformationText(String value);
-	
-	/**
-	 * Returns the product information text.
-	 * 
-	 * @return Information text or <code>null</code>.
-	 */
-	public String getInformationText();
-
 	/**
 	 * Sets the uninstall file and directory locations.
 	 * 
@@ -474,6 +569,22 @@ public interface IInstallDescription {
 	public IVersionedId[] getDefaultOptionalRoots();
 
 	/**
+	 * Sets the installable units that should be expanded in the wizard by
+	 * default.  Only category installable units can be expanded.
+	 * 
+	 * @param expandedRoots Expanded roots
+	 */
+	public void setWizardExpandedRoots(IVersionedId[] expandedRoots);
+	
+	/**
+	 * Returns the installable units that should be expanded in the wizard by 
+	 * default.
+	 * 
+	 * @return Expanded units
+	 */
+	public IVersionedId[] getWizardExpandedRoots();
+
+	/**
 	 * Sets the short-cut links.
 	 * 
 	 * @param value Links
@@ -502,6 +613,20 @@ public interface IInstallDescription {
 	public IPath getLinksLocation();
 	
 	/**
+	 * Sets wizard pages that are excluded.
+	 * 
+	 * @param wizardPages Excluded wizard pages or <code>null</code>
+	 */
+	public void setWizardPagesExcluded(String[] wizardPages);
+	
+	/**
+	 * Returns wizard pages that are excluded.
+	 * 
+	 * @return Excluded wizard pages or <code>null</code>
+	 */
+	public String[] getWizardPagesExcluded();
+	
+	/**
 	 * Sets the wizard pages to display first.
 	 * 
 	 * @param wizardPages Wizard pages or <code>null</code> to use the default
@@ -515,6 +640,26 @@ public interface IInstallDescription {
 	 * @return Wizard pages or <code>null</code> for default order.
 	 */
 	public String[] getWizardPagesOrder();
+	
+	/**
+	 * Sets the install size format specification.  The following can be used 
+	 * in the specification:
+	 * <ul>
+	 * <li>{0} - Size of the installation</li>
+	 * <li>{1} - Size required during installation</li>
+	 * <li>{2} - Useable free space on installation location</li>
+	 * </ul>
+	 * 
+	 * @param format Size format
+	 */
+	public void setInstallSizeFormat(String format);
+	
+	/**
+	 * Returns the install size format specification.
+	 * 
+	 * @return Size format
+	 */
+	public String getInstallSizeFormat();
 	
 	/**
 	 * Sets the regular expression find and replace regular expressions to apply to
@@ -563,35 +708,44 @@ public interface IInstallDescription {
 	/**
 	 * Sets visibility of components version on components page
 	 * 
-	 * @param hideComponentsVersion <code>true</code> to hide components version
+	 * @param showVersion <code>true</code> to display component versions
 	 */
-	public void setHideComponentsVersion(boolean hideComponentsVersion);
+	public void setShowComponentVersions(boolean showVersion);
 
 	/**
 	 * Returns if components version should be hidden.
 	 * 
-	 * @return <code>true</code> to hide components version
+	 * @return <code>true</code> if component versions will be displayed
 	 */
-	public boolean getHideComponentsVersion();
+	public boolean getShowComponentVersions();
+	
+	/**
+	 * Sets if optional components should be shown before required components.
+	 * 
+	 * @param showOptional <code>true</code> to show optional components first.
+	 */
+	public void setShowOptionalComponentsFirst(boolean showOptional);
+	
+	/**
+	 * Returns if optional components should be shown before required components.
+	 * 
+	 * @return <code>true</code> to show optional components first.
+	 */
+	public boolean getShowOptionalComponentsFirst();
 	
 	/**
 	 * Sets the install wizard page navigation.
-	 * <ul>
-	 * <li>SWT.NONE</li>
-	 * <li>SWT.TOP</li>
-	 * <li>SWT.LEFT</li>
-	 * </ul>
 	 * 
 	 * @param navigation Page navigation
 	 */
-	public void setPageNavigation(int pageNavigation);
+	public void setPageNavigation(WizardNavigation pageNavigation);
 	
 	/**
 	 * Returns the install wizard page navigation.
 	 * 
 	 * @return Page navigation
 	 */
-	public int getPageNavigation();
+	public WizardNavigation getPageNavigation();
 	
 	/**
 	 * Sets the install wizard page titles.
@@ -634,20 +788,6 @@ public interface IInstallDescription {
 	 * @return Product range or <code>null</code>
 	 */
 	public IProductRange[] getRequires();
-	
-	/**
-	 * Sets the text to display on the Welcome page of the installation wizard.
-	 * 
-	 * @param welcomeText Welcome text or <code>null</code> for default text
-	 */
-	public void setWelcomeText(String welcomeText);
-
-	/**
-	 * Returns the text to display on the Welcome page.
-	 * 
-	 * @return Welcome text or <code>null</code> for default text
-	 */
-	public String getWelcomeText();
 	
 	/**
 	 * Sets the find/replace regular expressions to apply to missing requirement
@@ -712,4 +852,177 @@ public interface IInstallDescription {
 	 * data directory passed on command line or default data directory.
 	 */
 	public IPath getDataLocation();
+	
+	/**
+	 * Sets the uninstall mode.
+	 * 
+	 * @param mode Uninstall mode
+	 */
+	public void setUninstallMode(UninstallMode mode);
+	
+	/**
+	 * Returns the uninstall mode.
+	 * 
+	 * @return Uninstall mode or <code>null</code> if no uninstaller will be
+	 * included in the installation
+	 */
+	public UninstallMode getUninstallMode();
+
+	/**
+	 * Sets whether an ordered planner will be used during provisioning.  The
+	 * ordered planner will ensure that IU's are provisioned in an order
+	 * according to their dependencies.
+	 *  
+	 * @param ordered <code>true</code> to use ordered planner,
+	 * <code>false</code> to use the default planner.
+	 */
+	public void setOrderPlanner(boolean ordered);
+	
+	/**
+	 * Returns whether an ordered planner will be used during provisioning.  The
+	 * ordered planner will ensure that IU's are provisioned in an order
+	 * according to their dependencies.
+	 * 
+	 * @return <code>true<code> if the ordered planner will be used
+	 * <code>false</code> if the default planner will be used.
+	 */
+	public boolean getOrderPlanner();
+	
+	/**
+	 * Sets install constraints.
+	 * 
+	 * @param constraints Constraints or <code>null</code>
+	 */
+	public void setInstallConstraints(IInstallConstraint[] constraints);
+	
+	/**
+	 * Returns install constraints.
+	 * 
+	 * @return Constraints or <code>null</code>
+	 */
+	public IInstallConstraint[] getInstallConstraints();
+	
+	/**
+	 * Sets if the installer supports product upgrades.
+	 * 
+	 * @param supportsUpgrade <code>true</code> if supports upgrades
+	 */
+	public void setSupportsUpgrade(boolean supportsUpgrade);
+	
+	/**
+	 * Returns if the installer supports product upgrades.
+	 * 
+	 * @return <code>true</code> if supports upgrades
+	 */
+	public boolean getSupportsUpgrade();
+	
+	/**
+	 * Sets if the installer supports product updates.
+	 * 
+	 * @param supportsUpdate <code>true</code> if supports updates
+	 */
+	public void setSupportsUpdate(boolean supportsUpdate);
+	
+	/**
+	 * Returns if the installer supports product updates.
+	 * 
+	 * @return <code>true</code> if supports updates
+	 */
+	public boolean getSupportsUpdate();
+	
+	/**
+	 * Sets the actions that should be excluded.
+	 * 
+	 * @param actions Action identifiers or <code>null</code>
+	 */
+	public void setExcludedActions(String[] actions);
+	
+	/**
+	 * Returns the actions that should be excluded.
+	 * 
+	 * @return Identifiers of actions that should be excluded or 
+	 * <code>null</code>
+	 */
+	public String[] getExcludedActions();
+	
+	/**
+	 * Sets install data defaults.
+	 * 
+	 * @param properties Properties
+	 */
+	public void setInstallDataDefaults(Map<String, String> properties);
+	
+	/**
+	 * Returns install data defaults.
+	 * 
+	 * @return Properties
+	 */
+	public Map<String, String> getInstallDataDefaults();
+	
+	/**
+	 * Sets the minimum version of the product that can be upgraded.
+	 * 
+	 * @param version Minimum version or <code>null</code>
+	 */
+	public void setMinimumUpgradeVersion(Version version);
+	
+	/**
+	 * Returns the minimum version of the product that can be upgraded.
+	 * 
+	 * @return Minimum version or <code>null</code>
+	 */
+	public Version getMinimumUpgradeVersion();
+	
+	/**
+	 * Sets installer text.  If no installer text is set, default text will be used.
+	 * 
+	 * @param id Identifier of text
+	 * @param text Installer text or <code>null</code>
+	 */
+	public void setText(String id, String text);
+	
+	/**
+	 * Returns installer text.
+	 * 
+	 * @param id Identifier of text property
+	 * @param message Message to use if property is not available or <code>null</code>
+	 * @return Installer text or <code>null</code>
+	 */
+	public String getText(String id, String message);
+	
+	/**
+	 * Sets the mirror mode.
+	 * 
+	 * @param mirrorMode Mirror mode
+	 */
+	public void setMirrorMode(MirrorMode mirrorMode);
+	
+	/**
+	 * @return The mirror mode
+	 */
+	public MirrorMode getMirrorMode();
+
+	/**
+	 * Sets the network time-out value.
+	 * 
+	 * @param timeout Time-out in milliseconds or <code>-1</code>.
+	 */
+	public void setNetworkTimeout(int timeout);
+	
+	/**
+	 * @return The network time-out or <code>-1</code>.
+	 */
+	public int getNetworkTimeout();
+	
+	/**
+	 * Sets the network retries value.
+	 * 
+	 * @param retries Number of times to retry or <code>-1</code>.
+	 */
+	public void setNetworkRetry(int retries);
+
+	/**
+	 * @return The number of tiems to retry network or <code>-1</code>.
+	 */
+	public int getNetworkRetry();
 }

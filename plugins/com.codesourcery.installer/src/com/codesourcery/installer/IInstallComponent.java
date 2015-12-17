@@ -8,7 +8,7 @@
  *  Contributors:
  *     Mentor Graphics - initial API and implementation
  *******************************************************************************/
-package com.codesourcery.installer.ui;
+package com.codesourcery.installer;
 
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 
@@ -16,9 +16,6 @@ import org.eclipse.equinox.p2.metadata.IInstallableUnit;
  * A component that can be installed.
  */
 public interface IInstallComponent {
-	/** Property indicating that component is an add-on */
-	public static final String PROPERTY_ADDON = "addon";
-	
 	/**
 	 * Returns the name of the component.
 	 * 
@@ -48,13 +45,6 @@ public interface IInstallComponent {
 	 */
 	public IInstallableUnit getInstalledUnit();
 
-	/**
-	 * Returns other components that this component must be installed with.
-	 * 
-	 * @return Required components or <code>null</code>
-	 */
-	public IInstallComponent[] getRequiredComponents();
-	
 	/**
 	 * Returns if this component is optional.
 	 * 
@@ -97,6 +87,36 @@ public interface IInstallComponent {
 	 * @return <code>true</code> if included
 	 */
 	public boolean isIncluded();
+
+	/**
+	 * Returns the parent component.
+	 * 
+	 * @return Parent component or <code>null</code>
+	 */
+	public IInstallComponent getParent();
+	
+	/**
+	 * Returns if the install component corresponds to a category installable
+	 * unit and contains other install components.
+	 * 
+	 * @return <code>true</code> if component contains other compoennts
+	 */
+	public boolean hasMembers();
+	
+	/**
+	 * Returns the member install components.
+	 * 
+	 * @return Components
+	 */
+	public IInstallComponent[] getMembers();
+	
+	/**
+	 * Returns if this component is a member of another component.
+	 * 
+	 * @param component Component
+	 * @return <code>true</code> if member
+	 */
+	public boolean isMemberOf(IInstallComponent component);
 	
 	/**
 	 * Sets a component property value.

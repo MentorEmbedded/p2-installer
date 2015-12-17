@@ -15,14 +15,20 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
 
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.osgi.util.NLS;
 
 import com.codesourcery.installer.IInstallConsoleProvider;
+import com.codesourcery.installer.IInstallData;
+import com.codesourcery.installer.IInstallDescription;
+import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.IInstallWizardPage;
 import com.codesourcery.installer.Installer;
+import com.codesourcery.installer.ui.InstallWizardPage;
 import com.codesourcery.internal.installer.ui.pages.ProductsPage;
 import com.codesourcery.internal.installer.ui.pages.SummaryPage;
 
@@ -68,13 +74,29 @@ public class ConsoleInstallOperation extends InstallOperation {
 	/**
 	 * Returns the progress monitor to use for operations.
 	 * 
-	 * @param installing <code>true</code> if installing, <code>false</code> if
-	 * uninstalling
+	 * @param installMode Install mode
 	 * @return Progress monitor
 	 */
-	private IProgressMonitor getProgressMonitor(boolean installing) {
-		progressMonitor.setInstalling(installing);
+	private IProgressMonitor getProgressMonitor(IInstallMode installMode) {
+		progressMonitor.setInstallMode(installMode);
 		return progressMonitor;
+	}
+	
+	/**
+	 * Reads input from the console.
+	 * 
+	 * @param reader Console reader
+	 * @return Console input or <code>null</code>
+	 * @throws IllegalArgumentException if installation is cancelled
+	 * @throws IOException on failure
+	 */
+	private String readConsole(BufferedReader reader) throws IllegalArgumentException, IOException {
+		String input = reader.readLine();
+		if ((input != null) && input.trim().toLowerCase().equals("exit")) {
+			throw new IllegalArgumentException(InstallMessages.SetupCancelled);
+		}
+		
+		return input;
 	}
 	
 	/**
@@ -82,9 +104,10 @@ public class ConsoleInstallOperation extends InstallOperation {
 	 * than the maximum allowed, the printing will be paginated.
 	 * 
 	 * @param text Text to print
+	 * @throws IllegalArgumentException if installation is cancelled
 	 * @throws IOException on failure
 	 */
-	private void printConsole(String text) throws IOException {
+	private void printConsole(String text) throws IllegalArgumentException, IOException {
 		BufferedReader consoleReader = null;
 		BufferedReader responseReader = null;
 		try {
@@ -103,7 +126,7 @@ public class ConsoleInstallOperation extends InstallOperation {
 					System.out.println(EOL);
 					System.out.println(InstallMessages.ConsolePressEnter);
 					output = new StringBuilder();
-					consoleReader.readLine();
+					readConsole(consoleReader);
 				}
 			}
 			System.out.print(output.toString());
@@ -118,12 +141,10 @@ public class ConsoleInstallOperation extends InstallOperation {
 	@Override
 	public void run() {
 		IStatus status = Status.OK_STATUS;
+		boolean firstPage = true;
 		try {
-			// Installation data
-			InstallData installData = new InstallData();
-
-			// Loop through the install pages
 			IInstallWizardPage[] wizardPages = Installer.getDefault().getInstallManager().getWizardPages();
+			IInstallData installData = Installer.getDefault().getInstallManager().getInstallData();
 			
 			// Add summary page
 			IInstallWizardPage[] pages = new IInstallWizardPage[wizardPages.length + 2];
@@ -148,6 +169,11 @@ public class ConsoleInstallOperation extends InstallOperation {
 					IInstallConsoleProvider consolePage = (IInstallConsoleProvider)page;
 					// Get initial page text
 					String response = consolePage.getConsoleResponse(null);
+					// If this is the first page, print the exit prompt
+					if (firstPage) {
+						firstPage = false;
+						response = InstallMessages.ConsoleExitPrompt + response;
+					}
 					
 					while (response != null) {
 						printConsole(EOL);
@@ -157,38 +183,85 @@ public class ConsoleInstallOperation extends InstallOperation {
 						// Console input reader
 						BufferedReader consoleReader = new BufferedReader(new InputStreamReader(System.in));
 						// Get input
-						String input = consoleReader.readLine();
+						String input = readConsole(consoleReader);
 						if (input == null)
 							break;
 						// Get page next response
 						response = consolePage.getConsoleResponse(input);
+						// Save page data
+						if (response == null) {
+							try {
+								page.saveInstallData(installData);
+							}
+							catch (CoreException e) {
+								printConsole(e.getStatus().getMessage());
+								// Start page over
+								response = consolePage.getConsoleResponse(null);
+							}
+						}
 					}
-					// Save page data
-					page.saveInstallData(installData);
 				}
 			}
 			
+			IInstallMode installMode = Installer.getDefault().getInstallManager().getInstallMode();
+			
 			// Install
-			if (Installer.getDefault().getInstallManager().getInstallMode().isInstall()) {
-				Installer.getDefault().getInstallManager().install(installData, getProgressMonitor(true));
+			if (installMode.isInstall()) {
+				Installer.getDefault().getInstallManager().install(getProgressMonitor(installMode));
+
+				try {
+					printConsole(EOL);
+					// Mirror
+					if (Installer.getDefault().getInstallManager().getInstallMode().isMirror()) {
+						printConsole(NLS.bind(InstallMessages.ConsoleMirrorComplete0, getInstallManager().getInstallDescription().getProductName()));
+					}
+					// Install
+					else {
+						printConsole(NLS.bind(InstallMessages.ConsoleInstallationComplete0, getInstallManager().getInstallDescription().getProductName()));
+					}
+					String installText = getInstallManager().getInstallDescription().getText(IInstallDescription.TEXT_INSTALL_ADDENDUM, null);
+					if (installText != null) {
+						printConsole(EOL);
+						printConsole(InstallWizardPage.formatConsoleMessage(installText));
+					}
+				}
+				catch (Exception e) {
+					Installer.log(e);
+				}
 			}
 			// Uninstall
 			else {
 				IInstallProduct[] products = productsPage.getSelectedProducts();
 				if (products.length > 0) {
-					Installer.getDefault().getInstallManager().uninstall(products, getProgressMonitor(false));
+					Installer.getDefault().getInstallManager().uninstall(products, getProgressMonitor(installMode));
+					
+					printConsole(EOL);
+					printConsole(InstallMessages.ConsoleUninstallationComplete);
+					try {
+						for (IInstallProduct product : products) {
+							String uninstallText = product.getProperty(IInstallProduct.PROPERTY_UNINSTALL_TEXT);
+							if (uninstallText != null) {
+								printConsole(InstallWizardPage.formatConsoleMessage(uninstallText));
+							}
+						}
+					}
+					catch (Exception e) {
+						Installer.log(e);;
+					}
 				}
 			}
 		}
 		// Install aborted
 		catch (IllegalArgumentException e) {
 			status = new Status(IStatus.CANCEL, Installer.ID, 0, e.getLocalizedMessage(), null);
-			System.out.println(e.getMessage());
+			showError(e.getMessage());
+			cleanupInstallation();
 		}
 		catch (Exception e) {
 			status = new Status(IStatus.ERROR, Installer.ID, 0, e.getLocalizedMessage(), e);
 			Installer.log(e);
-			System.err.println(e.getLocalizedMessage());
+			showError(e.getLocalizedMessage());
+			cleanupInstallation();
 		}
 		
 		// Write status
@@ -200,7 +273,7 @@ public class ConsoleInstallOperation extends InstallOperation {
 	 */
 	class ConsoleProgressMonitor implements IProgressMonitor {
 		private boolean canceled;
-		private boolean installing;
+		private IInstallMode installMode;
 		
 		/**
 		 * Constructor
@@ -209,28 +282,25 @@ public class ConsoleInstallOperation extends InstallOperation {
 		}
 
 		/**
-		 * Sets installing or uninstalling.
+		 * Sets the install mode.
 		 * 
-		 * @param installing <code>true</code> if installing, <code>false</code>
-		 * if uninstalling.
+		 * @param installMode Install mode
 		 */
-		public void setInstalling(boolean installing) {
-			this.installing = installing;
+		public void setInstallMode(IInstallMode installMode) {
+			this.installMode = installMode;
 		}
 		
 		/**
-		 * Returns if installing.
-		 * 
-		 * @return <code>true</code> if installing
+		 * @return The install mode.
 		 */
-		private boolean isInstalling() {
-			return installing;
+		private IInstallMode getInstallMode() {
+			return installMode;
 		}
 		
 		@Override
 		public void beginTask(String name, int totalWork) {
-			System.out.print(isInstalling() ? 
-				InstallMessages.ConsoleInstalling : 
+			System.out.print(getInstallMode().isInstall() ? 
+				(getInstallMode().isMirror() ? InstallMessages.ConsoleSaving : InstallMessages.ConsoleInstalling) : 
 				InstallMessages.ConsoleUninstalling);
 		}
 
@@ -241,6 +311,8 @@ public class ConsoleInstallOperation extends InstallOperation {
 
 		@Override
 		public void internalWorked(double work) {
+			// Append progress tick
+			System.out.print('.');
 		}
 
 		@Override
@@ -255,18 +327,19 @@ public class ConsoleInstallOperation extends InstallOperation {
 
 		@Override
 		public void setTaskName(String name) {
-			Installer.log(name);
 		}
 
 		@Override
 		public void subTask(String name) {
-			Installer.log(name);
 		}
 
 		@Override
 		public void worked(int work) {
-			// Append progress tick
-			System.out.print('.');
 		}
+	}
+
+	@Override
+	public void showError(String message) {
+		System.err.println(message);
 	}
 }

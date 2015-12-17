@@ -18,14 +18,22 @@ public interface IInstallerImages {
 	public static final String TITLE_ICON = "TITLE_ICON"; //$NON-NLS-1$
 	/** Empty bullet */
 	public static final String BULLET_EMPTY = "BULLET_EMPTY"; //$NON-NLS-1$
+	/** Empty bullet 2 */
+	public static final String BULLET_EMPTY2 = "BULLET_EMPTY2"; //$NON-NLS-1$
 	/** Solid bullet */
 	public static final String BULLET_SOLID = "BULLET_SOLID"; //$NON-NLS-1$
 	/** Error bullet */
 	public static final String BULLET_ERROR = "BULLET_ERROR"; //$NON-NLS-1$
+	/** Error bullet 2 */
+	public static final String BULLET_ERROR2 = "BULLET_ERROR2"; //$NON-NLS-1$
 	/** Checked bullet */
 	public static final String BULLET_CHECKED = "BULLET_CHECKED"; //$NON-NLS-1$
+	/** Checked bullet 2 */
+	public static final String BULLET_CHECKED2 = "BULLET_CHECKED2"; //$NON-NLS-1$
 	/** Arrow pointing right */
-	public static final String ARROW_RIGHT = "ARROW_RIGHT"; //$NON-NLS-1$
+	public static final String BULLET_ARROW = "BULLET_ARROW"; //$NON-NLS-1$
+	/** Arrow pointing right 2 */
+	public static final String BULLET_ARROW2 = "BULLET_ARROW2"; //$NON-NLS-1$
 	/** Image for page banner */
 	public static final String PAGE_BANNER = "PAGE_BANNER"; //$NON-NLS-1$
 	/** Component */ 
@@ -89,4 +97,15 @@ public interface IInstallerImages {
 	public static final String UPDATE_INSTALL = "UPDATE_INSTALL"; //$NON-NLS-1$
 	/** Update uninstall image */
 	public static final String UPDATE_REMOVE = "UPDATE_REMOVE"; //$NON-NLS-1$
+
+	/** Tree collapse image */
+	public static final String TREE_COLLAPSE = "TREE_COLLAPSE";
+	/** Tree expand image */
+	public static final String TREE_EXPAND = "TREE_EXPAND";
+	/** Tree no-check image */
+	public static final String TREE_NOCHECK = "TREE_NOCHECK";
+	/** Tree checked image */
+	public static final String TREE_CHECKED = "TREE_CHECKED";
+	/** Tree un-checked image */
+	public static final String TREE_UNCHECKED = "TREE_UNCHECKED";
 }

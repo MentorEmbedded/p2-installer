@@ -33,4 +33,11 @@ p2_sfx_linux_sfx_script_process()
 
 }
 
+# The following function allows the user to perform post processing 
+# of the bin file
+p2_sfx_linux_sfx_script_postprocess()
+{
+    : # null statement
+}
+
 p2_sfx_linux_main $@ --script-dir "$path_to_internal_script"

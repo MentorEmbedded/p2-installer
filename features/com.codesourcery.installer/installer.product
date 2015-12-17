@@ -14,7 +14,9 @@
    </configIni>
 
    <launcherArgs>
-      <vmArgs>-Xmx512m</vmArgs>
+      <vmArgs>-Xms40m
+-Xmx1024m
+      </vmArgs>
    </launcherArgs>
 
    <windowImages i16="/com.codesourcery.installer/icons/csl-16x16-32bit.png" i32="/com.codesourcery.installer/icons/csl-32x32-32bit.png" i48="/com.codesourcery.installer/icons/csl-48x48-32bit.png" i64="/com.codesourcery.installer/icons/csl-64x64-32bit.png" i128="/com.codesourcery.installer/icons/csl-128x128-32bit.png"/>

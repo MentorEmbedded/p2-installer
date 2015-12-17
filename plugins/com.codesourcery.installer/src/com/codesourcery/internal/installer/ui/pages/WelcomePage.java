@@ -38,11 +38,13 @@ public class WelcomePage extends InformationPage implements IInstallConsoleProvi
 		
 		// Set welcome information
 		String welcomeMessage = (welcomeText != null) ? welcomeText : NLS.bind(InstallMessages.welcomeMessage0, productName );
-		setInformation(welcomeMessage);
 		// Console message
-		consoleMessage = NLS.bind(InstallMessages.welcomeMessageConsole0, productName);
-	}
+		consoleMessage = formatConsoleMessage(welcomeMessage);
+		consoleMessage += "\n\n" + InstallMessages.ConsolePressEnterToContinue;
 
+		setInformation(welcomeMessage);
+	}
+	
 	@Override
 	public String getConsoleResponse(String input) throws IllegalArgumentException {
 		if ((input == null) || (input.length() > 0)) {

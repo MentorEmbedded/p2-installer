@@ -10,6 +10,8 @@
  *******************************************************************************/
 package com.codesourcery.installer;
 
+import java.util.Map;
+
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 
 
@@ -25,6 +27,16 @@ public abstract class AbstractInstallModule implements IInstallModule {
 	public void init(IInstallDescription installDescription) {
 		this.installDescription = installDescription;
 	}
+	
+	@Override
+	public void initAgent(IProvisioningAgent agent) {
+		// Base does nothing
+	}
+
+	@Override
+	public void setDataDefaults(IInstallData data) {
+		// Base does nothing
+	}
 
 	@Override
 	public IInstallWizardPage[] getInstallPages(IInstallMode installMode) {
@@ -37,6 +49,10 @@ public abstract class AbstractInstallModule implements IInstallModule {
 		return null;
 	}
 	
+	@Override
+	public void setEnvironmentVariables(Map<String, String> environmentVariables) {
+	}
+
 	/**
 	 * Returns the install description.
 	 * 

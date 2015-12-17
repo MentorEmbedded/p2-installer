@@ -59,7 +59,7 @@
 # All errors are fatal
 set -e
 
-# The following variables must matcth the cooresponding values 
+# The following variables must match the cooresponding values 
 # in p2_sfx.h
 p2_sfx_unix_base_path=@UNIX_BASE_PATH@ #define UNIX_BASE_PATH
 p2_sfx_windows_base_path=@WINDOWS_BASE_PATH@ #define WINDOWS_BASE_PATH
@@ -312,6 +312,13 @@ p2_sfx_windows_create_manifest()
     exit 1
 }
 
+# p2_sfx_windows_append_marker_string - Default implementation. Can be 
+# used to append a marker string to the output exe before it is signed
+p2_sfx_windows_append_marker_string()
+{
+    : # null command
+}
+
 # p2_sfx_windows_sign_output_file - Default implementation. Can be replaced 
 # with code to sign the output file.
 p2_sfx_windows_sign_output_file()
@@ -363,43 +370,62 @@ p2_sfx_windows_build()
 
     # Begin the creation of the generated files
     echo "#include \"p2_sfx.h\"" > "$GENERATED_C_FILE"
-    echo ".section .rodata" > "$GENERATED_ASM_FILE"
     echo "" >> "$GENERATED_C_FILE"
 
-    p2_sfx_windows_add_installer_definitions 
-    p2_sfx_windows_add_unzip_definitions 
-    p2_sfx_windows_add_repo_definitions 
+    if test -z "$create_as_zip"
+    then
+        echo ".section .rodata" > "$GENERATED_ASM_FILE"
+        p2_sfx_windows_add_installer_definitions 
+        p2_sfx_windows_add_unzip_definitions 
+        p2_sfx_windows_add_repo_definitions 
 
-    echo "int P2_SFX_NUM_BUNDLES=3;" >> "$GENERATED_C_FILE"
-    echo "" >> "$GENERATED_C_FILE"
-    echo "P2_SFX_FILE_BUNDLE bundles[] =" >> "$GENERATED_C_FILE"
-    echo "{" >> "$GENERATED_C_FILE"
-    p2_sfx_windows_add_installer_bundle 
-    p2_sfx_windows_add_unzip_bundle
-    p2_sfx_windows_add_repo_bundle 
-    echo "};" >> "$GENERATED_C_FILE"
+        echo "int P2_SFX_NUM_BUNDLES=3;" >> "$GENERATED_C_FILE"
+        echo "" >> "$GENERATED_C_FILE"
+        echo "P2_SFX_FILE_BUNDLE bundles[] =" >> "$GENERATED_C_FILE"
+        echo "{" >> "$GENERATED_C_FILE"
+        p2_sfx_windows_add_installer_bundle 
+        p2_sfx_windows_add_unzip_bundle
+        p2_sfx_windows_add_repo_bundle 
+        echo "};" >> "$GENERATED_C_FILE"
+
+        # Create source file for splash bitmap
+        p2_sfx_windows_create_splash_bmp
+
+        chmod a+r "$GENERATED_ASM_FILE"
+        generatedAsmObject=${GENERATED_ASM_FILE%.*}.o
+        $compiler_for_host -c "$GENERATED_ASM_FILE" -o "$generatedAsmObject"
+        splashObject=${splash_file%.*}.o
+        $compiler_for_host -c "$splash_file" -o "$splashObject"
+    else
+        echo "#include <stdio.h>" >> "$GENERATED_C_FILE"
+        echo "int P2_SFX_NUM_BUNDLES=0;" >> "$GENERATED_C_FILE"
+        echo "P2_SFX_FILE_BUNDLE bundles[] = {};" >> "$GENERATED_C_FILE"
+        echo "unsigned char splash_bmp = 0;" >> "$GENERATED_C_FILE"
+
+        p2_sfx_windows_sign_internal_exes
+
+        #fix up output name
+        zipfilebasename=`basename $output`
+        zipfilebasename="${zipfilebasename%.*}"
+        zipfiledirname=`dirname $output`
+        output="$scratch/$zipfilebasename".exe
+    fi
 
     chmod a+r "$GENERATED_C_FILE"
-    chmod a+r "$GENERATED_ASM_FILE"
-
-    # Create source file for splash bitmap
-    p2_sfx_windows_create_splash_bmp
 
     # Compile definitions
     if test ! -z "$data_dir"
     then
-        COMPILE_DEFS="-DLOG_DIRECTORY=\"$data_dir\""
+        COMPILE_DEFS="-DLOG_DIRECTORY=\"$data_dir\" $VSI_EXTRA_DEFS"
     else
         COMPILE_DEFS=""
     fi
     echo $COMPILE_DEFS
-
-    $compiler_for_host -c "$GENERATED_ASM_FILE" -o ${GENERATED_ASM_FILE%.*}.o
+   
     $compiler_for_host -c "$GENERATED_C_FILE" -I"$script_dir"/../../../src/windows -o ${GENERATED_C_FILE%.*}.o
     $compiler_for_host -c "$core_c_file" $COMPILE_DEFS -I"$core_c_include_dir" -o "$core_c_object"
-    $compiler_for_host -c "$splash_file" -o ${splash_file%.*}.o
 
-    CLEANUP_LIST="$CLEANUP_LIST ${GENERATED_ASM_FILE%.*}.o ${GENERATED_C_FILE%.*}.o ${splash_file%.*}.o"
+    CLEANUP_LIST="$CLEANUP_LIST "$generatedAsmObject" ${GENERATED_C_FILE%.*}.o ${splash_file%.*}.o"
 
     #Create_manifest_file
     p2_sfx_windows_create_manifest
@@ -410,13 +436,47 @@ p2_sfx_windows_build()
     
     # Link everything together
     tmp_output="$scratch"/tmp.exe
-    $compiler_for_host -mwindows -o "$tmp_output" /${GENERATED_C_FILE%.*}.o "$core_c_object" ${GENERATED_ASM_FILE%.*}.o  ${splash_file%.*}.o ${rc_file%.*}.res
+    if test -z "$create_as_zip"
+    then
+        $compiler_for_host -mwindows -o "$tmp_output" /${GENERATED_C_FILE%.*}.o "$core_c_object" "$generatedAsmObject"  "$splashObject" ${rc_file%.*}.res
+    else
+        $compiler_for_host -mwindows -o "$tmp_output" /${GENERATED_C_FILE%.*}.o "$core_c_object" ${rc_file%.*}.res
+    fi
+
+    p2_sfx_windows_append_marker_string
     p2_sfx_windows_sign_output_file
+
     rm -f "$tmp_output"
+
     chmod a+x $output
     for item in "$CLEANUP_LIST"; do
         rm -f ${item}
     done
+
+    if test ! -z "$create_as_zip"
+    then
+        scratch_installer="$scratch"/installer/.data
+        mkdir -p "$scratch_installer"
+        cp -R "$installer"/* "$scratch_installer"
+        mv "$output" "$scratch"/installer
+
+        #unzip jre
+        unzip -o -q "$scratch_installer"/repos/repo-jre-1.7.0.zip -d "$scratch_installer"/jre
+        mv "$scratch_installer"/jre/install.zip "$scratch_installer"
+        unzip -o -q "$scratch_installer"/install.zip -d "$scratch_installer"
+        rm -f "$scratch_installer"/install.zip
+
+        if -f "$zipfiledirname/$zipfilebasename".zip
+        then
+            rm -f "$zipfiledirname/$zipfilebasename".zip
+        fi
+        
+        #create zip file
+        cd "$scratch" 
+        zip -r "$zipfiledirname/$zipfilebasename".zip installer
+        rm -fr "$scratch"/installer
+        rm -f "$scratch"/installer.zip
+    fi
 }
 
 p2_sfx_windows_usage() {
@@ -429,6 +489,7 @@ p2_sfx_windows_usage() {
   echo "--compiler [path to windows compiler; required]"
   echo "--resource-compiler [path to windows resource compiler; required]"
   echo "--silent [Turn off messages from this script; optional]"
+  echo "--create-as-zip [Create installer as zip file instead of SFX]"
 }
 
 p2_sfx_windows_main()
@@ -455,17 +516,19 @@ p2_sfx_windows_main()
           shift
           resource_compiler="$1"
           ;;
-       --script-dir)
-         shift
-         script_dir="$1";
-         ;;
-       --data-dir)
-         shift
-         data_dir="$1";
-         ;;
-        --silent)
+        --script-dir)
           shift
+          script_dir="$1";
+          ;;
+        --data-dir)
+          shift
+          data_dir="$1";
+          ;;
+        --silent)
           silent="true";
+          ;;
+        --create-as-zip)
+          create_as_zip="true";
           ;;
         *)
           echo "Unknown argument $1"

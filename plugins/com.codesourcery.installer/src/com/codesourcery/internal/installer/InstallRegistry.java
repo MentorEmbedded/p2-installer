@@ -52,6 +52,8 @@ public class InstallRegistry {
 	private static final String ATTRIBUTE_NAME = "name";
 	/** Location attribute */
 	private static final String ATTRIBUTE_LOCATION = "location";
+	/** Category attribute */
+	private static final String ATTRIBUTE_CATEGORY = "category";
 	/** Installed products */
 	private ArrayList<IInstalledProduct> products = new ArrayList<IInstalledProduct>();
 
@@ -94,6 +96,12 @@ public class InstallRegistry {
 				productElement.setAttribute(ATTRIBUTE_VERSION, product.getVersionText());
 				// Product location
 				productElement.setAttribute(ATTRIBUTE_LOCATION, product.getInstallLocation().toOSString());
+				// Product location
+				productElement.setAttribute(ATTRIBUTE_LOCATION, product.getInstallLocation().toOSString());
+				// Product category
+				if (product.getCategory() != null) {
+					productElement.setAttribute(ATTRIBUTE_CATEGORY, product.getCategory());
+				}
 				
 				productsElement.appendChild(productElement);
 			}
@@ -141,7 +149,8 @@ public class InstallRegistry {
 								productElement.getAttribute(ATTRIBUTE_ID),
 								productElement.getAttribute(ATTRIBUTE_NAME),
 								productElement.getAttribute(ATTRIBUTE_VERSION),
-								productLocation);
+								productLocation,
+								productElement.getAttribute(ATTRIBUTE_CATEGORY));
 						products.add(product);
 					}
 				}

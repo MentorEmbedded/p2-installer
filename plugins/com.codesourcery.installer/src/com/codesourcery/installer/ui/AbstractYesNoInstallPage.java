@@ -10,6 +10,7 @@
  *******************************************************************************/
 package com.codesourcery.installer.ui;
 
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -39,14 +40,14 @@ IInstallSummaryProvider, IInstallConsoleProvider {
 	private String yesMessage;
 	/** Yes summary */
 	private String yesSummary;
+	/** Yes button */
+	private Button yesButton;
 	/** No message */
 	private String noMessage;
 	/** No summary */
 	private String noSummary;
-	/** Default value */
-	private boolean defaultValue;
-	/** Current chosen value */
-	private boolean value;
+	/** No button */
+	private Button noButton;
 	/** Name of property to store chosen value */
 	private String propertyName;
 	/** Console prompt message */
@@ -68,12 +69,11 @@ IInstallSummaryProvider, IInstallConsoleProvider {
 	 * support console interaction
 	 * @param propertyName Name of property to store chosen value in 
 	 * <code>IInstallData</code>
-	 * @param defaultValue Default value
 	 */
 	protected AbstractYesNoInstallPage(String pageName, String title, 
 			String messageLabel, String yesMessage, String noMessage,
 			String yesSummary, String noSummary, String consolePrompt, 
-			String propertyName, boolean defaultValue) {
+			String propertyName) {
 		super(pageName, title);
 		
 		this.messageLabel = messageLabel;
@@ -83,7 +83,6 @@ IInstallSummaryProvider, IInstallConsoleProvider {
 		this.noSummary = noSummary;
 		this.consolePrompt = consolePrompt;
 		this.propertyName = propertyName;
-		this.value = this.defaultValue = defaultValue;
 	}
 
 	/**
@@ -150,21 +149,12 @@ IInstallSummaryProvider, IInstallConsoleProvider {
 	}
 	
 	/**
-	 * Returns the default value.
-	 * 
-	 * @return Default value
-	 */
-	protected boolean getDefaultValue() {
-		return defaultValue;
-	}
-	
-	/**
 	 * Returns the chosen value.
 	 * 
 	 * @return Chosen value
 	 */
 	protected boolean getValue() {
-		return value;
+		return getInstallData().getBooleanProperty(getPropertyName());
 	}
 	
 	/**
@@ -173,7 +163,7 @@ IInstallSummaryProvider, IInstallConsoleProvider {
 	 * @param value Chosen value
 	 */
 	protected void setValue(boolean value) {
-		this.value = value;
+		getInstallData().setProperty(getPropertyName(), value);
 	}
 
 	@Override
@@ -193,7 +183,7 @@ IInstallSummaryProvider, IInstallConsoleProvider {
 		spacing.setLayoutData(new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1));
 		
 		// No button
-		Button noButton = new Button(area, SWT.RADIO);
+		noButton = new Button(area, SWT.RADIO);
 		data = new GridData(SWT.BEGINNING, SWT.BEGINNING, false, false, 1, 1);
 		data.horizontalIndent = getDefaultIndent();
 		noButton.setLayoutData(data);
@@ -202,12 +192,14 @@ IInstallSummaryProvider, IInstallConsoleProvider {
 		noButton.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(SelectionEvent e) {
-				setValue(false);
+				if (noButton.getSelection()) {
+					setValue(false);
+				}
 			}
 		});
 		
 		// Yes button
-		Button yesButton = new Button(area, SWT.RADIO);
+		yesButton = new Button(area, SWT.RADIO);
 		data = new GridData(SWT.BEGINNING, SWT.BEGINNING, false, false, 1, 1);
 		data.horizontalIndent = getDefaultIndent();
 		yesButton.setLayoutData(data);
@@ -216,17 +208,31 @@ IInstallSummaryProvider, IInstallConsoleProvider {
 		yesButton.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(SelectionEvent e) {
-				setValue(true);
+				if (yesButton.getSelection()) {
+					setValue(true);
+				}
 			}
 		});
 
 		return area;
 	}
 
+	
+	
 	@Override
-	public void saveInstallData(IInstallData data) {
+	public void setActive(IInstallData data) {
+		super.setActive(data);
+		
+		if (!isConsoleMode()) {
+			noButton.setSelection(!getValue());
+			yesButton.setSelection(getValue());
+		}
+	}
+
+	@Override
+	public void saveInstallData(IInstallData data) throws CoreException {
 		// Save value in property
-		data.setProperty(getPropertyName(), new Boolean(getValue()));
+		data.setProperty(getPropertyName(), getValue());
 	}
 	
 	@Override
@@ -235,7 +241,7 @@ IInstallSummaryProvider, IInstallConsoleProvider {
 		String response = null;
 		// Show console prompt
 		if (getConsolePrompt() != null) {
-			ConsoleYesNoPrompter prompt = new ConsoleYesNoPrompter(removeFormatting(getMessageLabel()), 
+			ConsoleYesNoPrompter prompt = new ConsoleYesNoPrompter(formatConsoleMessage(getMessageLabel()), 
 					getConsolePrompt(), true);
 			response = prompt.getConsoleResponse(input);
 			if (response == null) {

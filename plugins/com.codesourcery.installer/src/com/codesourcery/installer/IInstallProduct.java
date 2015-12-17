@@ -10,6 +10,8 @@
  *******************************************************************************/
 package com.codesourcery.installer;
 
+import java.util.Map;
+
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.equinox.p2.metadata.IVersionedId;
 import org.eclipse.equinox.p2.metadata.Version;
@@ -18,6 +20,40 @@ import org.eclipse.equinox.p2.metadata.Version;
  * Provides information for a manifest installed product.
  */
 public interface IInstallProduct {
+	/** Property indicating product install directories will be removed on uninstall */
+	public final static String PROPERTY_REMOVE_DIRS = "removeDirectories";
+	/** 
+	 * Property indicating whether this product will be shown in the uninstaller.
+	 */
+	public final static String PROPERTY_SHOW_UNINSTALL = "showUninstall";
+	/** 
+	 * Property indicating additional text to be displayed when the product is uninstalled.
+	 */
+	public final static String PROPERTY_UNINSTALL_TEXT = "uninstallText";
+	
+	/**
+	 * Sets an installation property.
+	 * 
+	 * @param name Name of property
+	 * @param value Value of property
+	 */
+	public void setProperty(String name, String value);
+	
+	/**
+	 * Returns an installation property.
+	 * 
+	 * @param name Name of property
+	 * @return Value for property
+	 */
+	public String getProperty(String name);
+	
+	/**
+	 * Returns the product properties.
+	 * 
+	 * @return Properties
+	 */
+	public Map<String, String> getProperties();
+	
 	/**
 	 * Returns the unique product identifier.
 	 * 
@@ -31,6 +67,13 @@ public interface IInstallProduct {
 	 * @return Name
 	 */
 	public String getName();
+	
+	/**
+	 * Returns the Uninstall name of the product.
+	 * 
+	 * @return Uninstall name of the product
+	 */
+	public String getUninstallName();
 	
 	/**
 	 * Returns the version of the product.

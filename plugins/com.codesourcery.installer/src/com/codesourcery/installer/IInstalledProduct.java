@@ -53,6 +53,13 @@ public interface IInstalledProduct {
 	public IPath getInstallLocation();
 	
 	/**
+	 * Returns the product category.
+	 * 
+	 * @return Category or <code>null</code>
+	 */
+	public String getCategory();
+	
+	/**
 	 * Returns the path to the product uninstaller.
 	 * 
 	 * @return Uninstaller path or <code>null</code> if product installation

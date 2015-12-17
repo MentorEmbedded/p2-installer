@@ -13,6 +13,8 @@ package com.codesourcery.installer;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.equinox.p2.core.IProvisioningAgent;
+import org.eclipse.equinox.p2.engine.IProfile;
 
 /**
  * Abstract install verifier.
@@ -25,7 +27,22 @@ public abstract class AbstractInstallVerifier implements IInstallVerifier {
 	}
 
 	@Override
+	public IStatus verifyInstall(IProvisioningAgent agent, IProfile profile) {
+		return Status.OK_STATUS;
+	}
+
+	@Override
+	public IStatus verifyInstallComponents(IInstallComponent[] components) {
+		return Status.OK_STATUS;
+	}
+
+	@Override
 	public IStatus verifyCredentials(String username, String password) {
+		return Status.OK_STATUS;
+	}
+	
+	@Override
+	public IStatus verifyInstallComponentSelection(IInstallComponent[] selectedComponents) {
 		return Status.OK_STATUS;
 	}
 }

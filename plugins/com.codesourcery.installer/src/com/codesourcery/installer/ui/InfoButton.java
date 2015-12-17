@@ -42,6 +42,11 @@ import org.eclipse.swt.widgets.Event;
  * text.
  */
 public class InfoButton extends Canvas {
+	/** Text draw flags */
+	private static int DRAW_FLAGS = SWT.DRAW_MNEMONIC | SWT.DRAW_TAB | SWT.DRAW_TRANSPARENT | SWT.DRAW_DELIMITER;
+	/** Shortened text replacement */
+	private static final String ELLIPSIS = " ... "; //$NON-NLS-1$
+
 	/** Element colors */
 	public enum ElementColor {
 		/** Color of label text */
@@ -96,6 +101,8 @@ public class InfoButton extends Canvas {
 	private ListenerList selectionListeners;
 	/** <code>true</code> to draw rounded selection */
 	private boolean rounded = false;
+	/** <code>true</code> if button label should be shortened */
+	private boolean shortenText = false;
 	
 	/**
 	 * Constructor
@@ -177,8 +184,10 @@ public class InfoButton extends Canvas {
 			public void focusGained(FocusEvent e) {
 					if (canUpdate()) {
 					if (!tracking && ((getStyle() & SWT.NO_FOCUS) != SWT.NO_FOCUS)) {
-						hasFocus = true;
-						redraw();
+						if (!getSelection()) {
+							hasFocus = true;
+							redraw();
+						}
 					}
 				}
 			}
@@ -297,6 +306,26 @@ public class InfoButton extends Canvas {
 		setColor(ElementColor.selectedDescription, getShell().getDisplay().getSystemColor(SWT.COLOR_LIST_SELECTION_TEXT));
 		setColor(ElementColor.hoverBackground, getShell().getDisplay().getSystemColor(SWT.COLOR_LIST_SELECTION));
 		setColor(ElementColor.selectBackground, getShell().getDisplay().getSystemColor(SWT.COLOR_LIST_SELECTION));
+	}
+
+	/**
+	 * Sets if the label text should be shortened if it will not fit in the
+	 * button width.  The middle of the text will be replaced with "..." to
+	 * fit the width.
+	 *  
+	 * @param shortenText <code>true</code> to shorten text
+	 */
+	public void setShortenText(boolean shortenText) {
+		this.shortenText = shortenText;
+	}
+	
+	/**
+	 * Returns if the label text should be shortened.
+	 * 
+	 * @return <code>true</code> if text will be shortened
+	 */
+	public boolean getShortenText() {
+		return shortenText;
 	}
 
 	/**
@@ -647,7 +676,7 @@ public class InfoButton extends Canvas {
 		if (getDescription() != null) {
 			gc.setFont(getDescriptionFont());
 			textLayout.setFont(getDescriptionFont());
-			Point descriptionSize = gc.textExtent(getDescription());
+			Point descriptionSize = gc.textExtent(getDescription().replace('\n', ' '));
 			textLayout.setText(getDescription());
 			int descriptionWidth;
 			// If default width then use extents of description
@@ -744,7 +773,7 @@ public class InfoButton extends Canvas {
 			textLayout.setFont(getDescriptionFont());
 			textLayout.setText(getDescription());
 			textLayout.setWidth(clientArea.width - xOffset);
-			Point descriptionSize = gc.textExtent(getDescription());
+			Point descriptionSize = gc.textExtent(getDescription().replace('\n', ' '));
 			descriptionHeight = textLayout.getLineCount() * descriptionSize.y;
 		}
 		
@@ -755,7 +784,15 @@ public class InfoButton extends Canvas {
 		if (getText() != null) {
 			gc.setFont(getLabelFont());
 			gc.setForeground(selectForeground ? getColor(ElementColor.selectedLabel) : getColor(ElementColor.label));
-			gc.drawText(getText(), xOffset, yTextOffset);
+			
+			String labelText = getText();
+			if (getShortenText()) {
+				Point sz = gc.textExtent(labelText);
+				if (sz.x > clientArea.width - xOffset)
+					labelText = shortenText(gc, labelText, clientArea.width - xOffset);
+			}
+			
+			gc.drawText(labelText, xOffset, yTextOffset, DRAW_FLAGS);
 			yTextOffset += textHeight;
 		}
 		// Draw label description
@@ -773,5 +810,66 @@ public class InfoButton extends Canvas {
 			else
 				gc.drawRoundRectangle(clientArea.x, clientArea.y, clientArea.width - 1, clientArea.height - 1, ROUND_SIZE, ROUND_SIZE);
 		}
+	}
+
+	/**
+	 * Shorten the given text <code>t</code> so that its length doesn't exceed
+	 * the given width. The default implementation replaces characters in the
+	 * center of the original string with an ellipsis ("...").
+	 * Override if you need a different strategy.
+	 * 
+	 * @param gc the gc to use for text measurement
+	 * @param t the text to shorten
+	 * @param width the width to shorten the text to, in pixels
+	 * @return the shortened text
+	 * Note, this code was copied from 
+	 *   org.eclipse.swt.custom.CLabel.shortenText()
+	 */
+	protected String shortenText(GC gc, String t, int width) {
+		if (t == null) return null;
+		int w = gc.textExtent(ELLIPSIS, DRAW_FLAGS).x;
+		if (width<=w) return t;
+		int l = t.length();
+		int max = l/2;
+		int min = 0;
+		int mid = (max+min)/2 - 1;
+		if (mid <= 0) return t;
+		TextLayout layout = new TextLayout (getDisplay());
+		layout.setText(t);
+		mid = validateOffset(layout, mid);
+		while (min < mid && mid < max) {
+			String s1 = t.substring(0, mid);
+			String s2 = t.substring(validateOffset(layout, l-mid), l);
+			int l1 = gc.textExtent(s1, DRAW_FLAGS).x;
+			int l2 = gc.textExtent(s2, DRAW_FLAGS).x;
+			if (l1+w+l2 > width) {
+				max = mid;			
+				mid = validateOffset(layout, (max+min)/2);
+			} else if (l1+w+l2 < width) {
+				min = mid;
+				mid = validateOffset(layout, (max+min)/2);
+			} else {
+				min = max;
+			}
+		}
+		String result = mid == 0 ? t : t.substring(0, mid) + ELLIPSIS + t.substring(validateOffset(layout, l-mid), l);
+		layout.dispose();
+	 	return result;
+	}
+	
+	/**
+	 * Validates text layout offset.
+	 * 
+	 * @param layout Layout
+	 * @param offset Offset
+	 * @return Next offset if it fits, previous offset otherwise
+	 * 
+	 * Note, this code was copied from
+	 *   org.eclipse.swt.custom.CLabel.validateOffset()
+	 */
+	int validateOffset(TextLayout layout, int offset) {
+		int nextOffset = layout.getNextOffset(offset, SWT.MOVEMENT_CLUSTER);
+		if (nextOffset != offset) return layout.getPreviousOffset(nextOffset, SWT.MOVEMENT_CLUSTER);
+		return offset;
 	}
 }

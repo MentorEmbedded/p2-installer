@@ -12,11 +12,14 @@ package com.codesourcery.installer;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
@@ -25,7 +28,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import org.apache.commons.io.FileUtils;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.core.runtime.IPath;
@@ -43,6 +45,7 @@ import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceReference;
 
+import com.codesourcery.internal.installer.FileUtils;
 import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.IInstallerImages;
 import com.codesourcery.internal.installer.InstallDescription;
@@ -51,6 +54,7 @@ import com.codesourcery.internal.installer.InstallManifest;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.InstallMode;
 import com.codesourcery.internal.installer.InstallPlatform;
+import com.codesourcery.internal.installer.InstallUtils;
 import com.codesourcery.internal.installer.Log;
 import com.codesourcery.internal.installer.RepositoryManager;
 import com.codesourcery.internal.installer.ShutdownHandler;
@@ -80,6 +84,10 @@ public class Installer implements BundleActivator {
 	private boolean copyLog = false;
 	/** Install manager */
 	private InstallManager installManager;
+	/** Lock file */
+	private RandomAccessFile lockFile;
+	/** Lock file lock */
+	private FileLock fileLock;
 
 	/**
 	 * Returns the shared instance
@@ -137,11 +145,71 @@ public class Installer implements BundleActivator {
 		}
 
 		// Dispose of install manager
-		installManager.dispose();
+		if (installManager != null) {
+			installManager.dispose();
+		}
 		// Shutdown the repository manager
 		RepositoryManager.getDefault().shutdown();
 
 		plugin = null;
+		
+		// Release installer lock
+		releaseLock();
+	}
+
+	/**
+	 * Returns if this instance of the installer has the exclusive lock or the
+	 * installer was run with the command line option to not obtain a lock.
+	 * 
+	 * @return <code>true</code> if has lock
+	 */
+	public boolean hasLock() {
+		if (hasCommandLineOption(IInstallConstants.COMMAND_LINE_NO_LOCK)) {
+			return true;
+		}
+		else {
+			return (fileLock != null);
+		}
+	}
+	
+	/**
+	 * Attempts to get the installer lock.  If another instance of the installer
+	 * is currently running, this instance will not be able to obtain the lock.
+	 * 
+	 * @param path Directory for lock file
+	 * @see #hasLock()
+	 */
+	private void getLock(IPath path) {
+		try {
+			File dataLockFile = path.append(".lock").toFile();
+			if (!dataLockFile.exists()) {
+				dataLockFile.createNewFile();
+			}
+			lockFile = new RandomAccessFile(dataLockFile, "rw");
+			FileChannel channel = lockFile.getChannel();
+			fileLock = channel.tryLock();
+		} catch (Exception e) {
+			Installer.log(e);
+		}
+	}
+
+	/**
+	 * Releases the installer lock.
+	 */
+	private void releaseLock() {
+		try {
+			if (fileLock != null) {
+				fileLock.release();
+			}
+			fileLock = null;
+			if (lockFile != null) {
+				lockFile.close();
+			}
+			lockFile = null;
+		}
+		catch (Exception e) {
+			Installer.log(e);
+		}
 	}
 	
 	/**
@@ -156,7 +224,7 @@ public class Installer implements BundleActivator {
 		// Get log command line argument
 		String dataDirectory = getCommandLineOption(IInstallConstants.COMMAND_LINE_DATA);
 		if (dataDirectory != null) {
-			dataFolder = new Path(dataDirectory);
+			dataFolder = InstallUtils.resolvePath(dataDirectory);
 		}
 		// Use default location
 		else {
@@ -188,7 +256,7 @@ public class Installer implements BundleActivator {
 			// Clean data folder
 			if (hasCommandLineOption(IInstallConstants.COMMAND_CLEAN)) {
 				if (dataDirectoryFile.exists()) {
-					FileUtils.deleteDirectory(dataDirectoryFile);
+					FileUtils.deleteDirectory(dataDirectoryFile.toPath());
 				}
 			}
 			
@@ -200,29 +268,55 @@ public class Installer implements BundleActivator {
 		catch (Exception e) {
 			fail("Failed to access data folder.", e);
 		}
-		
-		// Create install manager.  This must be done after the data location
-		// has been initialized.
-		installManager = new InstallManager();
 
-		// Install
-		if (manifest != null) {
-			installManager.setInstallManifest(manifest);
-			installManager.setInstallMode(new InstallMode(false));
-		}
-		// Uninstall
-		else if (description != null) {
-			// Set install description
-			installManager.setInstallDescription(description);
-			// Set install mode
-			InstallMode mode = new InstallMode(true);
-			// Patch installation
-			if (description.getPatch())
-				mode.setPatch();
-			installManager.setInstallMode(mode);
-		}
-		else {
-			Installer.fail("No install description found.");
+		// Only one instance of the installer is allowed to run at a time.
+		// Obtain the installer lock.
+		getLock(dataFolder);
+		
+		if (hasLock()) {
+			// Create install manager.  This must be done after the data location
+			// has been initialized.
+			installManager = new InstallManager();
+	
+			// Uninstall
+			if (manifest != null) {
+				installManager.setInstallMode(new InstallMode(false));
+				installManager.setInstallManifest(manifest);
+			}
+			// Install
+			else if (description != null) {
+				// Set install mode
+				InstallMode mode = new InstallMode(true);
+				// Patch installation
+				if (description.getPatch())
+					mode.setPatch();
+				installManager.setInstallMode(mode);
+
+				// Set install description
+				installManager.setInstallDescription(description);
+			}
+			else {
+				Installer.fail("No install description found.");
+			}
+
+			// Save to mirror command line option
+			String location = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_SAVE_INSTALL);
+			if (location != null) {
+				installManager.setMirrorLocation(new Path(location), null);
+			}
+			// Load from mirror command line option
+			else {
+				location = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_LOAD_INSTALL);
+				if (location != null) {
+					try {
+						installManager.setSourceLocation(new Path(location));
+					}
+					catch (Exception e) {
+						System.err.println(e.getLocalizedMessage());
+					}
+				}
+				
+			}
 		}
 	}
 	
@@ -248,7 +342,7 @@ public class Installer implements BundleActivator {
 				// Override the install location if specified
 				String installLocation = getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_LOCATION);
 				if (installLocation != null) {
-					description.setRootLocation(new Path(installLocation));
+					description.setRootLocation(InstallUtils.resolvePath(installLocation));
 				}
 			}
 		} catch (Exception e) {
@@ -300,7 +394,8 @@ public class Installer implements BundleActivator {
 	/**
 	 * Returns the install manager.
 	 * 
-	 * @return Install manager
+	 * @return Install manager or <code>null</code> if there was a problem
+	 * starting the installer
 	 */
 	public IInstallManager getInstallManager() {
 		return installManager;
@@ -423,7 +518,7 @@ public class Installer implements BundleActivator {
 			File monTempFile = monTempPath.toFile();
 
 			// Copy install monitor
-			FileUtils.copyFile(monSrcFile, monTempFile);
+			FileUtils.copyFile(monSrcFile.toPath(), monTempFile.toPath(), true);
 			// Set execute attribute
 			monTempFile.setExecutable(true);
 			
@@ -593,14 +688,22 @@ public class Installer implements BundleActivator {
 				URL imagePathUrl;
 				imagePathUrl = FileLocator.find(bundle, new Path("icons/bullet-empty.png"), null); //$NON-NLS-1$
 				imageRegistry.put(IInstallerImages.BULLET_EMPTY, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/bullet-empty2.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.BULLET_EMPTY2, ImageDescriptor.createFromURL(imagePathUrl));
 				imagePathUrl = FileLocator.find(bundle, new Path("icons/bullet-solid.png"), null); //$NON-NLS-1$
 				imageRegistry.put(IInstallerImages.BULLET_SOLID, ImageDescriptor.createFromURL(imagePathUrl));
 				imagePathUrl = FileLocator.find(bundle, new Path("icons/bullet-error.png"), null); //$NON-NLS-1$
 				imageRegistry.put(IInstallerImages.BULLET_ERROR, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/bullet-error2.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.BULLET_ERROR2, ImageDescriptor.createFromURL(imagePathUrl));
 				imagePathUrl = FileLocator.find(bundle, new Path("icons/bullet-checked.png"), null); //$NON-NLS-1$
 				imageRegistry.put(IInstallerImages.BULLET_CHECKED, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/bullet-checked2.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.BULLET_CHECKED2, ImageDescriptor.createFromURL(imagePathUrl));
 				imagePathUrl = FileLocator.find(bundle, new Path("icons/arrow-right.png"), null); //$NON-NLS-1$
-				imageRegistry.put(IInstallerImages.ARROW_RIGHT, ImageDescriptor.createFromURL(imagePathUrl));
+				imageRegistry.put(IInstallerImages.BULLET_ARROW, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/arrow-right2.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.BULLET_ARROW2, ImageDescriptor.createFromURL(imagePathUrl));
 				imagePathUrl = FileLocator.find(bundle, new Path("icons/title.png"), null); //$NON-NLS-1$
 				imageRegistry.put(IInstallerImages.PAGE_BANNER, ImageDescriptor.createFromURL(imagePathUrl));
 				imagePathUrl = FileLocator.find(bundle, new Path("icons/comp.png"), null); //$NON-NLS-1$
@@ -663,6 +766,16 @@ public class Installer implements BundleActivator {
 				imageRegistry.put(IInstallerImages.UPDATE_INSTALL, ImageDescriptor.createFromURL(imagePathUrl));
 				imagePathUrl = FileLocator.find(bundle, new Path("icons/update-remove.png"), null); //$NON-NLS-1$
 				imageRegistry.put(IInstallerImages.UPDATE_REMOVE, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/tree-collapse.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.TREE_COLLAPSE, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/tree-expand.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.TREE_EXPAND, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/tree-nocheck.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.TREE_NOCHECK, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/tree-checked.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.TREE_CHECKED, ImageDescriptor.createFromURL(imagePathUrl));
+				imagePathUrl = FileLocator.find(bundle, new Path("icons/tree-unchecked.png"), null); //$NON-NLS-1$
+				imageRegistry.put(IInstallerImages.TREE_UNCHECKED, ImageDescriptor.createFromURL(imagePathUrl));
 			}
 			catch (Exception e) {
 				log(e);
@@ -700,6 +813,16 @@ public class Installer implements BundleActivator {
 	 */
 	public static void fail(String message, Throwable throwable) throws CoreException {
 		Status status = new Status(IStatus.ERROR, Installer.ID, message, throwable);
+		Log.getDefault().log(status);
+		throw new CoreException(status);
+	}
+
+	/**
+	 * Throws a new exception of severity error.
+	 * @throws CoreException Exception
+	 */
+	public static void fail(Throwable throwable) throws CoreException {
+		Status status = new Status(IStatus.ERROR, Installer.ID, throwable.getLocalizedMessage(), throwable);
 		Log.getDefault().log(status);
 		throw new CoreException(status);
 	}

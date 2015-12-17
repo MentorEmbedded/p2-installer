@@ -12,6 +12,7 @@ package com.codesourcery.internal.installer.ui.pages;
 
 import java.util.ArrayList;
 
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.ModifyEvent;
@@ -27,7 +28,9 @@ import org.eclipse.swt.widgets.Label;
 
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
+import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallPlatform.ShortcutFolder;
+import com.codesourcery.installer.IInstallValues;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LinkDescription;
 import com.codesourcery.installer.console.ConsoleListPrompter;
@@ -35,8 +38,8 @@ import com.codesourcery.installer.ui.BrowseDefaultEditor;
 import com.codesourcery.installer.ui.BrowseDirectoryDefaultEditor;
 import com.codesourcery.installer.ui.IInstallSummaryProvider;
 import com.codesourcery.installer.ui.InstallWizardPage;
-import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.InstallMessages;
+import com.codesourcery.internal.installer.InstallUtils;
 
 /**
  * Install wizard page for shortcut options.
@@ -59,12 +62,10 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 	private boolean showProgramShortcuts;
 	/** <code>true</code> to show desktop short-cuts option */
 	private boolean showDesktopShortcuts;
-	/** <code>true</code> to create desktop shortcuts */
-	private boolean isDesktopShortcuts;
-	/** <code>true</code> to create program shortcuts */
-	private boolean isProgramShortcuts;
 	/** Program shortcuts location */
 	private String programsLocation;
+	/** Saved install location */
+	private IPath savedInstallLocation;
 	/** Console prompter */
 	private ConsoleListPrompter<String> consolePrompter;
 	/** Current console state */
@@ -76,19 +77,15 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 	 * @param pageName Page name
 	 * @param title Page title
 	 * @param shortcuts Short-cuts
-	 * @param linkPath Directory for short-cuts
 	 */
-	public ShortcutsPage(String pageName, String title, LinkDescription[] shortcuts, IPath linkPath) {
+	public ShortcutsPage(String pageName, String title, LinkDescription[] shortcuts) {
 		super(pageName, title);
 		
 		showProgramShortcuts = false;
 		showDesktopShortcuts = false;
-		isDesktopShortcuts = false;
-		isProgramShortcuts = false;
 		consoleState = 0;
 		
 		this.shortcuts = shortcuts;
-		setProgramsLocation(linkPath.toOSString());
 		
 		init();
 	}
@@ -97,21 +94,25 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 	 * Initializes the page.
 	 */
 	private void init() {
-		setProgramShortcuts(false);
-		setDesktopShortcuts(false);
-		
 		for (LinkDescription shortcut : getShortcuts()) {
+			// If program short-cut defined, show program short-cuts option
 			if (shortcut.getFolder() == ShortcutFolder.PROGRAMS) {
 				showProgramShortcuts = true;
-				if (shortcut.isDefault())
-					setProgramShortcuts(true);
 			}
+			// If desktop short-cut defined, show desktop short-cuts option
 			else if (shortcut.getFolder() == ShortcutFolder.DESKTOP) {
 				showDesktopShortcuts = true;
-				if (shortcut.isDefault())
-					setDesktopShortcuts(true);
 			}
 		}
+	}
+	
+	/**
+	 * Returns if the page is being displayed on a Windows platform.
+	 * 
+	 * @return <code>true</code> if running on Windows
+	 */
+	private boolean isWindows() {
+		return Installer.isWindows();
 	}
 
 	/**
@@ -130,7 +131,7 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 	 * will be created.
 	 */
 	protected void setProgramShortcuts(boolean isProgramShortcuts) {
-		this.isProgramShortcuts = isProgramShortcuts;
+		getInstallData().setProperty(IInstallValues.CREATE_PROGRAM_SHORTCUTS, isProgramShortcuts);
 	}
 	
 	/**
@@ -141,7 +142,7 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 	 * will be created.
 	 */
 	protected boolean isProgramShortcuts() {
-		return isProgramShortcuts;
+		return getInstallData().getBooleanProperty(IInstallValues.CREATE_PROGRAM_SHORTCUTS);
 	}
 	
 	/**
@@ -151,7 +152,7 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 	 * will be created.
 	 */
 	protected void setDesktopShortcuts(boolean isDesktopShortcuts) {
-		this.isDesktopShortcuts = isDesktopShortcuts;
+		getInstallData().setProperty(IInstallValues.CREATE_DESKTOP_SHORTCUTS, isDesktopShortcuts);
 	}
 	
 	/**
@@ -162,7 +163,7 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 	 * will be created.
 	 */
 	protected boolean isDesktopShortcuts() {
-		return isDesktopShortcuts;
+		return getInstallData().getBooleanProperty(IInstallValues.CREATE_DESKTOP_SHORTCUTS);
 	}
 
 	/**
@@ -171,7 +172,7 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 	 * @return Label
 	 */
 	private String getProgramsLabel() {
-		return Installer.isWindows() ? 
+		return isWindows() ? 
 				InstallMessages.ShortcutsPage_ProgramsOptionWin : 
 				InstallMessages.ShortcutsPage_ProgramsOptionOther;
 	}
@@ -185,7 +186,9 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 		// Message label
 		Label messageLabel = new Label(area, SWT.WRAP);
 		messageLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
-		messageLabel.setText(InstallMessages.ShortcutsPage_MessageLabel);
+		messageLabel.setText(
+				Installer.getDefault().getInstallManager().getInstallDescription().getText(IInstallDescription.TEXT_SHORTCUTS_PAGE_MESSAGE, 
+				InstallMessages.ShortcutsPage_MessageLabel));
 
 		// Spacing
 		Label spacing = new Label(area, SWT.NONE);
@@ -210,7 +213,7 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 			});
 			
 			// Include browse button?
-			boolean includeBrowse = !Installer.isWindows();
+			boolean includeBrowse = !isWindows();
 			
 			// Programs shortcut location
 			programsLocationEditor = new BrowseDirectoryDefaultEditor(area, SWT.NONE, true, includeBrowse, getProgramsLocation());
@@ -264,6 +267,72 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 		return programsLocation;
 	}
 	
+	@Override
+	public void setActive(IInstallData data) {
+		// Current install location
+		IPath installLocation = Installer.getDefault().getInstallManager().getInstallLocation();
+		// Program links location
+		IPath linksLocation = Installer.getDefault().getInstallManager().getInstallDescription().getLinksLocation();
+
+		// Initialize the programs location
+		if (getProgramsLocation() == null) {
+			String programsLocation;
+			// For windows, the programs location is fixed to Start Menu
+			if (isWindows()) {
+				programsLocation = linksLocation.toOSString();
+			}
+			// For Linux, the programs location is relative to the install location
+			else {
+				programsLocation = installLocation.append(linksLocation).toOSString();
+				// Save the install location.  If it changes and the user has not
+				// changed the program short-cuts location, we will update relative
+				// to the new install location.
+				savedInstallLocation = installLocation;
+			}
+			
+			setProgramsLocation(programsLocation);
+			// Update the GUI
+			if (!isConsoleMode() && (programsLocationEditor != null)) {
+				programsLocationEditor.setDefaultValue(programsLocation);
+				programsLocationEditor.setText(programsLocation);
+			}
+		}
+		// For Linux, check if the install location has changed
+		else if (!isWindows()) {
+			// Install location has changed
+			if (!savedInstallLocation.equals(installLocation)) {
+				String programsLocation = installLocation.append(linksLocation).toOSString();
+				if (programsLocationEditor != null) {
+					programsLocationEditor.setDefaultValue(programsLocation);
+					// If the user didn't change the default program short-cuts location
+					// update to new install location
+					if (getProgramsLocation().equals(savedInstallLocation.append(linksLocation).toOSString())) {
+						programsLocationEditor.setText(programsLocation);
+					}
+				}
+				savedInstallLocation = installLocation;
+			}
+		}
+		
+		if (!isConsoleMode() && (programsOptionButton != null)) {
+			programsOptionButton.setSelection(isProgramShortcuts());
+		}
+
+		if (!isConsoleMode() && (desktopOptionButton != null)) {
+			desktopOptionButton.setSelection(isDesktopShortcuts());
+		}
+
+		String programShortcutsFolder = data.getProperty(IInstallValues.PROGRAM_SHORTCUTS_FOLDER);
+		if (programShortcutsFolder != null) {
+			setProgramsLocation(programShortcutsFolder);
+			if (!isConsoleMode() && (programsLocationEditor != null)) {
+				programsLocationEditor.setText(getProgramsLocation());
+			}
+		}
+
+		super.setActive(data);
+	}
+
 	/**
 	 * Updates the enabled/disabled state of controls.
 	 */
@@ -299,10 +368,13 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 	}
 
 	@Override
-	public void saveInstallData(IInstallData data) {
-		data.setProperty(IInstallConstants.PROPERTY_DESKTOP_SHORTCUTS, new Boolean(isDesktopShortcuts()));
-		data.setProperty(IInstallConstants.PROPERTY_PROGRAM_SHORTCUTS, new Boolean(isProgramShortcuts()));
-		data.setProperty(IInstallConstants.PROPERTY_PROGRAM_SHORTCUTS_FOLDER, getProgramsLocation());
+	public void saveInstallData(IInstallData data) throws CoreException {
+		data.setProperty(IInstallValues.CREATE_DESKTOP_SHORTCUTS, isDesktopShortcuts());
+		data.setProperty(IInstallValues.CREATE_PROGRAM_SHORTCUTS, isProgramShortcuts());
+		if (getProgramsLocation() != null) {
+			IPath shortcutsPath = InstallUtils.resolvePath(getProgramsLocation());
+			data.setProperty(IInstallValues.PROGRAM_SHORTCUTS_FOLDER, shortcutsPath.toOSString());
+		}
 	}
 
 	@Override
@@ -311,7 +383,7 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 		
 		setErrorMessage(null);
 		
-		if (getProgramsLocation().isEmpty()) {
+		if ((getProgramsLocation() != null) && getProgramsLocation().isEmpty()) {
 			setErrorMessage(InstallMessages.Error_PleaseSpecifyLocation);
 			valid = false;
 		}
@@ -339,7 +411,9 @@ public class ShortcutsPage extends InstallWizardPage implements IInstallSummaryP
 		if (input == null) {
 			consoleState = 0;
 			// Show options to create program and/or desktop shortcuts
-			consolePrompter = new ConsoleListPrompter<String>(InstallMessages.ShortcutsPage_MessageLabel);
+			consolePrompter = new ConsoleListPrompter<String>(
+					Installer.getDefault().getInstallManager().getInstallDescription().getText(IInstallDescription.TEXT_SHORTCUTS_PAGE_MESSAGE, 
+					InstallMessages.ShortcutsPage_MessageLabel));
 			if (showProgramShortcuts) {
 				consolePrompter.addItem(getProgramsLabel(), "PROGRAMS", true, true);
 			}

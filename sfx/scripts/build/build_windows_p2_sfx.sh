@@ -41,6 +41,13 @@ p2_sfx_windows_sign_internal_exes()
     : #null command
 }
 
+# p2_sfx_windows_append_marker_string - Default implementation. Can be 
+# used to append a marker string to the output exe before it is signed
+p2_sfx_windows_append_marker_string()
+{
+    : # null command
+}
+
 # This function may be used to digitally sign the self extraction
 # executable.
 p2_sfx_windows_sign_output_file()

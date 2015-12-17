@@ -30,21 +30,34 @@ public class InstallMode implements IInstallMode {
 	private boolean install;
 	/** Update mode */
 	private UpdateMode updateMode = UpdateMode.NONE; 
-	/** <code>true</code> if root uninstall </code> */
-	private boolean rootUninstall;
 	/** <code>true</code> if patch */
 	private boolean patch = false;
 	/** Run mode */
 	private InstallerRunMode runMode = InstallerRunMode.GUI;
+	/** <code>true</code> if creating a mirror */
+	private boolean mirror;
 
 	/**
-	 * Constructor
+	 * Constructs an install mode.
 	 * 
 	 * @param install <code>true</code> if install, <code>false</code> if
 	 * uninstall
 	 */
 	public InstallMode(boolean install) {
 		this.install = install;
+	}
+	
+	/**
+	 * Constructs an install mode from another install mode.
+	 * 
+	 * @param other Install mode to copy.
+	 */
+	public InstallMode(InstallMode other) {
+		this.install = other.install;
+		this.updateMode = other.updateMode;
+		this.patch = other.patch;
+		this.runMode = other.runMode;
+		this.mirror = other.mirror;
 	}
 
 	/**
@@ -71,6 +84,13 @@ public class InstallMode implements IInstallMode {
 	public void setPatch() {
 		this.patch = true;
 	}
+	
+	/**
+	 * Sets mirror operation.
+	 */
+	public void setMirror() {
+		this.mirror = true;
+	}
 
 	/**
 	 * Sets the run mode.
@@ -80,16 +100,14 @@ public class InstallMode implements IInstallMode {
 	public void setRunMode(InstallerRunMode runMode) {
 		this.runMode = runMode;
 	}
-	
+
 	/**
-	 * Sets root uninstall.
+	 * Sets installing or uninstalling.
 	 * 
-	 * @param rootUninstall <code>true</code> if root uninstall
+	 * @param install <code>true</code> for installing.
 	 */
-	public void setRootUninstall(boolean rootUninstall) {
-		if (isUninstall()) {
-			this.rootUninstall = rootUninstall;
-		}
+	public void setInstall(boolean install) {
+		this.install = install;
 	}
 	
 	@Override
@@ -113,13 +131,13 @@ public class InstallMode implements IInstallMode {
 	}
 
 	@Override
-	public boolean isRootUninstall() {
-		return rootUninstall;
+	public boolean isPatch() {
+		return patch;
 	}
 
 	@Override
-	public boolean isPatch() {
-		return patch;
+	public boolean isMirror() {
+		return mirror;
 	}
 
 	@Override

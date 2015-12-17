@@ -10,16 +10,18 @@
  *******************************************************************************/
 package com.codesourcery.installer;
 
+import org.eclipse.equinox.p2.metadata.IVersionedId;
+
 /**
  * Information for a product license.
  */
 public class LicenseDescriptor {
 	/** License name */
 	private String licenseName;
-	/** License text */
+	/** License text or <code>null</code> */
 	private String licenseText;
-	/** <code>true</code> if license is enabled **/
-	private boolean enabled = true;
+	/** Installable unit for license or <code>null</code> */
+	private IVersionedId id;
 	
 	/**
 	 * Constructor
@@ -33,12 +35,41 @@ public class LicenseDescriptor {
 	}
 	
 	/**
+	 * Constructor
+	 * 
+	 * @param id Installable unit
+	 * @param licenseName License name or <code>null</code>
+	 */
+	public LicenseDescriptor(IVersionedId iu, String licenseName) {
+		this.id = iu;
+		this.licenseName = licenseName;
+	}
+	
+	/**
+	 * Sets the license content text.
+	 * 
+	 * @param licenseText License text or <code>null</code>
+	 */
+	public void setLicenseText(String licenseText) {
+		this.licenseText = licenseText;
+	}
+	
+	/**
 	 * Returns the license content text.
 	 * 
-	 * @return License text
+	 * @return License text or <code>null</code>
 	 */
 	public String getLicenseText() {
 		return licenseText;
+	}
+	
+	/**
+	 * Returns the installable unit for the license.
+	 * 
+	 * @return Installable unit or <code>null</code>
+	 */
+	public IVersionedId getUnit() {
+		return id;
 	}
 	
 	/**
@@ -48,23 +79,5 @@ public class LicenseDescriptor {
 	 */
 	public String getLicenseName() {
 		return licenseName;
-	}
-	
-	/**
-	 * Returns if the license is enabled.
-	 * 
-	 * @return <code>true</code> if the license is enabled
-	 */
-	public boolean isEnabled() {
-		return enabled;
-	}
-
-	/**
-	 * Sets the license enabled or disabled.
-	 * 
-	 * @param enable <code>true</code> to enable license
-	 */
-	public void setEnabled(boolean enabled) {
-		this.enabled = enabled;
 	}
 }

@@ -27,7 +27,7 @@ import org.w3c.dom.Element;
 public interface IInstallAction {
 	
 	/** Default progress weight */
-	public static final int DEFAULT_PROGRESS_WEIGHT = 100;
+	public static final int DEFAULT_PROGRESS_WEIGHT = 10;
 	
 	/** Install phase allows clients control over the order of the install
 	 * actions.
@@ -117,4 +117,12 @@ public interface IInstallAction {
 	 * @return The install phase
 	 */
 	public InstallPhase getInstallPhase();
+	
+	/**
+	 * Returns whether restart or re-login required for action.
+	 *  
+	 * @return <code>true</code> if restart or relogin is required other
+	 * <code>false</code>
+	 */
+	public boolean needsRestartOrRelogin();
 }

@@ -57,7 +57,11 @@
 #define LOGS_DIR "logs"
 #define VM_ARGS " -vmargs -XX:ErrorFile="
 #define VM_ARG_FILE "/jre_error.log"
+#ifdef VSI_VMARGS
+#define VSI_XMX_VM_ARG " -Xmx850m"
+#endif
 #define P2_SFX_HIDE_WIN (WM_USER + 1)
+#define MAX_PATH_EXTRA (MAX_PATH * 8)
 
 /* The bundles[] array and P2_SFX_NUM_BUNDLES variables are defined in the
    generated c file */
@@ -95,10 +99,12 @@ static char random_chars[] =
         "abcdefghijklmnopqrstuvwxyz"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "0123456789";
-static char helpString[] = "-? | --help | -help | -h\t\tShow this help text\n-location=[path]\t\tUse the specified install location.\n-console\t\t\tPerform a console installation\n-silent\t\t\tPerform a silent installation using defaults.\n-nosplash\t\t\tDo not display splash screen.\n-x [path]\t\t\tExtract installer to [path] but do not start installer.";
+static char helpString[] = "-? | --help | -help | -h\t\tShow this help text\n-license=[location]\t\tLocation of the license.\n-location=[path]\t\tUse the specified install location.\n-console\t\t\tPerform a console installation\n-silent\t\t\tPerform a silent installation using defaults.\n-nosplash\t\t\tDo not display splash screen.\n-x [path]\t\t\tExtract installer to [path] but do not start installer.";
 
 static char msg_box_string[5 * sizeof(timestamp_log_dir)];
 static char timestamp[TIMESTAMP_LEN + 1];
+static char g_filename[MAX_PATH_EXTRA];
+static char g_dirname[MAX_PATH_EXTRA];
 
 /******************************************************************************
  * log_message - Writes a message to the log if logging is enabled.
@@ -722,6 +728,149 @@ splash_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 }
 
 /******************************************************************************
+* start_unzipped_installer: If the installer was created as a zip file instead
+* of as an exe, start the setup exe in the .data directory.
+*
+******************************************************************************/
+static void 
+start_unzipped_installer (HWND hwnd)
+{
+    HINSTANCE return_value;
+    int string_length;
+    char * tmp;
+    char * exestring;
+    char * cmdargs;
+    char * install_once = INSTALL_ONCE;
+    char * install_log = INSTALL_LOG;
+    char * dash_data = DASH_DATA;
+
+    /* Obtain directory name where this exe lives */
+    _splitpath(g_filename, NULL, g_dirname, NULL, NULL);
+
+    /* Add the log dir arguments */
+    string_length = strlen(g_dirname) + strlen(install_once) + strlen(dash_data) + (4 * strlen("\"")) + 1;
+    string_length += strlen(install_log) + strlen(base_log_dir) + strlen(timestamp_log_dir) + 1;
+    tmp = allocate_string_buffer(string_length);
+    if (tmp == NULL)
+    {
+        log_message("Error: Failed to allocate memory for implicit arguments\n");
+        fclose(g_logFile);
+        if (g_console_install == FALSE || g_nosplash == FALSE)
+        {
+            sprintf(msg_box_string, "%s%s%s", "Error\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+            MessageBox(hwnd, msg_box_string, NULL, MB_OK);
+            SendMessage(hwnd, WM_DESTROY, 0, 0);
+        }
+        exit(50);
+    }
+    strcpy(tmp, g_dirname);
+    strcat(tmp, install_log);
+    strcat(tmp, "\"");
+    strcat(tmp, base_log_dir);
+    strcat(tmp, "\"");
+    strcat(tmp, dash_data);
+    strcat(tmp, "\"");
+    strcat(tmp, timestamp_log_dir);
+    strcat(tmp, "\"");
+    cmdargs = tmp;
+
+    /* Add the user arguments */
+    if (g_args != NULL)
+	{
+        string_length = strlen(cmdargs) + strlen(g_args) + 2;
+        tmp = allocate_string_buffer(string_length);
+
+        if (tmp == NULL)
+        {
+            log_message("Error: Failed to allocate memory for command with arguments");
+            fclose(g_logFile);
+            if (g_console_install == FALSE || g_nosplash == FALSE)
+            {
+                sprintf(msg_box_string, "%s%s%s", "Error\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+                MessageBox(hwnd, msg_box_string, NULL, MB_OK);
+                SendMessage(hwnd, WM_DESTROY, 0, 0);
+            }
+            exit(51);
+        }
+        strcpy(tmp, cmdargs);
+        strcat(tmp, " ");
+        strcat(tmp, g_args);
+        cmdargs = tmp;
+	}
+
+    /* Add the VM arguments */
+    string_length = strlen(cmdargs) + strlen(VM_ARGS) +
+                    strlen(VM_ARG_FILE) + strlen(timestamp_log_dir) + 3;
+#ifdef VSI_VMARGS
+    string_length += strlen(VSI_XMX_VM_ARG);
+#endif
+    tmp = allocate_string_buffer(string_length);
+
+    if (tmp == NULL)
+    {
+        log_message("Error: Failed to allocate memory for vm args");
+        fclose(g_logFile);
+        if (g_console_install == FALSE || g_nosplash == FALSE)
+        {
+            sprintf(msg_box_string, "%s%s%s", "Error\nUnable to allocate memory\n\n", "See the log file at:\n\n", sfx_log_file);
+            MessageBox(hwnd, msg_box_string, NULL, MB_OK);
+            SendMessage(hwnd, WM_DESTROY, 0, 0);
+        }
+        exit(52);
+    }
+
+    strcpy(tmp, cmdargs);
+    strcat(tmp, VM_ARGS);
+    strcat(tmp, "\"");
+    strcat(tmp, timestamp_log_dir);
+    strcat(tmp, VM_ARG_FILE);
+    strcat(tmp, "\"");
+#ifdef VSI_VMARGS
+    strcat(tmp, VSI_XMX_VM_ARG);
+#endif
+    cmdargs = tmp;
+
+    /* At this point, cmdargs should contain all of the user and required arguments */
+
+    /* Determine whether to call setup.exe or setupc.exe */
+
+    if (g_console_install == FALSE)
+    {
+        tmp = GUI_SETUP_COMMAND;
+    }
+    else
+    {
+    	tmp = CONSOLE_SETUP_COMMAND;
+    }
+
+    /* Create path to setup.exe */
+    string_length = strlen(g_dirname) + strlen(tmp) + strlen(".data") + strlen(DIRSEPSTR) * 2;
+    exestring = allocate_string_buffer(string_length);
+    strcpy(exestring, g_dirname);
+    strcat(exestring, DIRSEPSTR);
+    strcat(exestring, ".data");
+    strcat(exestring, DIRSEPSTR);
+    strcat(exestring, tmp);
+
+    /* Call setup.exe with arguments */
+    log_message("Command: %s\n", exestring);
+    log_message("Arguments: %s\n", cmdargs);
+    return_value = ShellExecute(NULL, "open", exestring, cmdargs, NULL, SW_SHOWNORMAL);
+
+    if ((int)return_value <= 32)
+    {
+        log_message("Error: ShellExecute returned a value of %d\n", (int)return_value);
+        fclose(g_logFile);
+        if (g_console_install == FALSE || g_nosplash == FALSE)
+        {
+            sprintf(msg_box_string, "%s%s%s", "Error\nCommand failure\n\n", "See the log file at:\n\n", sfx_log_file);
+            MessageBox(hwnd, msg_box_string, NULL, MB_OK);
+        }
+        exit(53);
+    }
+}
+
+/******************************************************************************
 * extract_files: extract and restore files from binary. 
 *
 * @param hwnd: handle to window 
@@ -864,7 +1013,6 @@ extract_files(HWND hwnd)
             }
         }
         free(installer_dir_path);
-
         /* Process commands */
         for (j = 0; j < bundles[i].num_commands; j++)
         {
@@ -878,7 +1026,7 @@ extract_files(HWND hwnd)
             if (pch3 != NULL)
             {
                 if (g_console_install == FALSE)
-                {          
+                {
                     setupexe = replace_sub_string(bundles[i].commands[j], SETUP, GUI_SETUP_COMMAND);
                 }
                 else
@@ -887,7 +1035,7 @@ extract_files(HWND hwnd)
                 }
             }
 
-            /* If the command contains setup.exe and there is no user path 
+            /* If the command contains setup.exe and there is no user path
                or if it is any other command that doesn't contain setup */
             if ((setupexe != NULL && g_user_path == NULL) ||
                  setupexe == NULL)
@@ -967,7 +1115,7 @@ extract_files(HWND hwnd)
                     strcat(tmp, timestamp_log_dir);
                     strcat(tmp, "\"");
 
-                    free(pch2); 
+                    free(pch2);
                     pch2 = tmp;
                 }
 
@@ -992,13 +1140,13 @@ extract_files(HWND hwnd)
                     strcpy(tmp, pch2);
                     strcat(tmp, " ");
                     strcat(tmp, g_args);
-                    free(pch2); 
+                    free(pch2);
                     pch2 = tmp;
                 }
 
                 if (setupexe != NULL)
                 {
-                    string_length = strlen(pch2) + strlen(VM_ARGS) + 
+                    string_length = strlen(pch2) + strlen(VM_ARGS) +
                                     strlen(VM_ARG_FILE) + strlen(timestamp_log_dir) + 3;
                     tmp = allocate_string_buffer(string_length);
 
@@ -1021,7 +1169,7 @@ extract_files(HWND hwnd)
                     strcat(tmp, timestamp_log_dir);
                     strcat(tmp, VM_ARG_FILE);
                     strcat(tmp, "\"");
-                    free(pch2); 
+                    free(pch2);
                     pch2 = tmp;
                 }
 
@@ -1074,7 +1222,7 @@ extract_files(HWND hwnd)
                         }
                         exit(31);
                     }
-                    
+
                 }
 
                 free(pch2);
@@ -1109,14 +1257,26 @@ extract_files_app (HINSTANCE hInstance,
     unsigned int threadID;
     int return_value;
 
-    if (g_console_install == TRUE || g_nosplash == TRUE)
+    if (g_console_install == TRUE || g_nosplash == TRUE ||
+        P2_SFX_NUM_BUNDLES == 0)
     {
-        /* Separate thread not created when a window isn't created */
-        return_value = extract_files(NULL);
-        fclose(g_logFile);
-        log_message("Successfully exiting extraction app\n");
-        log_message("------------------------------------\n\n");
-        return(return_value);
+        if (P2_SFX_NUM_BUNDLES > 0)
+        {
+            /* Separate thread not created when a window isn't created */
+            return_value = extract_files(NULL);
+            fclose(g_logFile);
+            log_message("Successfully exiting extraction app\n");
+            log_message("------------------------------------\n\n");
+            return(return_value);
+        }
+        else
+        {
+           start_unzipped_installer(hwnd);
+            fclose(g_logFile);
+            log_message("Successfully started installer\n");
+            log_message("------------------------------------\n\n");
+            return(0);
+        }
     }
     else
     {
@@ -1206,6 +1366,30 @@ extract_files_app (HINSTANCE hInstance,
 }
 
 /******************************************************************************
+* firststrstr: returns one if str2 is found at the beginning of str1
+*
+* @param str1
+* @param str2
+* 
+* @return 0 or 1 if str2 is found in str1
+******************************************************************************/
+static int 
+firststrstr(const char * str1, const char * str2) {
+    if (*str2 == 0) {
+        return 0;
+    }
+    for ( ; *str1 != 0 && *str2 != 0; str1 += 1, str2 += 1) {
+        if (*str1 != *str2) {
+            return 0;
+        }
+        if (*(str2 + 1) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/******************************************************************************
 * WinMain: Entry point
 *
 * @param hInstance
@@ -1226,7 +1410,6 @@ WinMain(HINSTANCE hInstance,
     int i;
     char *nosplash_string = "-nosplash ";
     int arg_length = 0;
-    char filename[MAX_PATH];
     char time[MAX_PATH];
     SYSTEMTIME sys_time;
     DWORD return_value;
@@ -1241,10 +1424,10 @@ WinMain(HINSTANCE hInstance,
 
     for (i = 1; i < argc; i++)
     {
-        if (strstr(argv[i], "-?") != NULL ||
-            strstr(argv[i], "-help") != NULL ||
-            strstr(argv[i], "--help") != NULL ||
-            strstr(argv[i], "-h") != NULL)
+        if (firststrstr(argv[i], "-?") != 0 ||
+            firststrstr(argv[i], "-help") != 0 ||
+            firststrstr(argv[i], "--help") != 0 ||
+            firststrstr(argv[i], "-h") != 0)
         {
             MessageBox(NULL, helpString, "Help", MB_OK);
             exit(0);
@@ -1256,7 +1439,7 @@ WinMain(HINSTANCE hInstance,
 
     if (return_value == 0)
     {
-        MessageBox(NULL, "Extraction error: could not obtain user directory", NULL, MB_OK);
+        MessageBox(NULL, "Error: could not obtain user directory", NULL, MB_OK);
         exit(1);
     }
 
@@ -1265,7 +1448,7 @@ WinMain(HINSTANCE hInstance,
     return_value = GetTimeFormat(MAKELCID(LANG_USER_DEFAULT, SORT_DEFAULT), 0, NULL, NULL, time, MAX_PATH);
     if (return_value == 0) 
     {
-        MessageBox(NULL, "Extraction error: Invalid timestamp information received from the OS\n", NULL, MB_OK);
+        MessageBox(NULL, "Error: Invalid timestamp information received from the OS\n", NULL, MB_OK);
         exit(2);
     }
 
@@ -1285,7 +1468,7 @@ WinMain(HINSTANCE hInstance,
     {
         if (make_path(timestamp_log_dir, 0777) != 0)
         {
-            sprintf(msg_box_string, "Extraction error: could not create log directory\n\n%s", timestamp_log_dir);
+            sprintf(msg_box_string, "Error: could not create log directory\n\n%s", timestamp_log_dir);
             MessageBox(NULL, msg_box_string, NULL, MB_OK);
             exit(2);
         }
@@ -1299,7 +1482,7 @@ WinMain(HINSTANCE hInstance,
 
     if(g_logFile == NULL || ferror(g_logFile))
     {
-        sprintf(msg_box_string, "Extraction error: could not create log file\n\n%s", sfx_log_file);
+        sprintf(msg_box_string, "Error: could not create log file\n\n%s", sfx_log_file);
         MessageBox(NULL, msg_box_string, NULL, MB_OK);
         exit(3);
     }
@@ -1314,7 +1497,7 @@ WinMain(HINSTANCE hInstance,
 
     log_message("Raw command line: %s\n", lpCmdLine);
     
-    return_value = GetModuleFileName(NULL, filename, MAX_PATH);
+    return_value = GetModuleFileName(NULL, g_filename, MAX_PATH_EXTRA);
 
     if (return_value == 0)
     {
@@ -1329,14 +1512,14 @@ WinMain(HINSTANCE hInstance,
                       NULL);
         log_message("Error getting module information: %s\n", errorString);
         fclose(g_logFile);
-        sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+        sprintf(msg_box_string, "Error. See the following file\n\n%s", sfx_log_file);
         MessageBox(NULL, msg_box_string, NULL, MB_OK);
         exit(4);
     }
 
     for (i = 0; i < argc; i++)
     {
-        if (strcmp(argv[i], "-x") == 0)
+        if (strcmp(argv[i], "-x") == 0 && argv[i][0] == '-')
         {
             if (i + 1 < argc)
             {
@@ -1345,9 +1528,9 @@ WinMain(HINSTANCE hInstance,
             else
             {
                 log_message("-x option requires a path to be provided\n");
-                log_message("%s -x <path>\n", filename);
+                log_message("%s -x <path>\n", g_filename);
                 fclose(g_logFile);
-                sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+                sprintf(msg_box_string, "Error. See the following file\n\n%s", sfx_log_file);
                 MessageBox(NULL, msg_box_string, NULL, MB_OK);
                 exit(5);
             }
@@ -1366,7 +1549,7 @@ WinMain(HINSTANCE hInstance,
             {
                 log_message("Could not create directory: %s\n", g_user_path);
                 fclose(g_logFile);
-                sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+                sprintf(msg_box_string, "Error. See the following file\n\n%s", sfx_log_file);
                 MessageBox(NULL, msg_box_string, NULL, MB_OK);
                 exit(6);
             }
@@ -1377,7 +1560,7 @@ WinMain(HINSTANCE hInstance,
         log_message("Error: path provided with -x option is invalid \"%s\"\n", g_user_path);
         log_message("Note: path cannot exceed %d characters\n", MAX_PATH);
         fclose(g_logFile);
-        sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+        sprintf(msg_box_string, "Error. See the following file\n\n%s", sfx_log_file);
         MessageBox(NULL, msg_box_string, NULL, MB_OK);
         exit(7);
     }
@@ -1394,7 +1577,7 @@ WinMain(HINSTANCE hInstance,
             {
                 log_message("Error: Could not find temporary directory to extract files\n");
                 fclose(g_logFile);
-                sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+                sprintf(msg_box_string, "Error. See the following file\n\n%s", sfx_log_file);
                 MessageBox(NULL, msg_box_string, NULL, MB_OK);
                 exit(8);
             }
@@ -1416,6 +1599,7 @@ WinMain(HINSTANCE hInstance,
         short nosplash_set = FALSE;
         short installsilent_set = FALSE;
         short installconsole_set = FALSE;
+        short installlicense_set = FALSE;
         short installlocation_set = FALSE;
 
         /* Allocate memory for argument string */
@@ -1429,7 +1613,7 @@ WinMain(HINSTANCE hInstance,
 
         /* Allocate space for an extra -nosplash and extra space if -console is
            used instead of -install.console or -install.silent */
-        arg_length += strlen(nosplash_string) + strlen(".console") + strlen(".location");
+        arg_length += strlen(nosplash_string) + strlen(".console") + strlen(".location" + strlen(".license"));
 
         g_args = allocate_string_buffer(arg_length);
 
@@ -1437,7 +1621,7 @@ WinMain(HINSTANCE hInstance,
         {
             log_message("Error: Couldn't allocate memory for arguments: %d\n", arg_length);
             fclose(g_logFile);
-            sprintf(msg_box_string, "Extraction error. See the following file\n\n%s", sfx_log_file);
+            sprintf(msg_box_string, "Error. See the following file\n\n%s", sfx_log_file);
             MessageBox(NULL, msg_box_string, NULL, MB_OK);
             exit(9);
         }
@@ -1447,8 +1631,8 @@ WinMain(HINSTANCE hInstance,
         {
             log_message("argv[%d] = %s\n", i, argv[i]);
 
-            if (((strstr(argv[i], "-install.silent") != NULL) ||
-                  (strstr(argv[i], "-silent") != NULL)) &&
+            if ((firststrstr(argv[i], "-silent") != 0 ||
+                 firststrstr(argv[i], "-install.silent") != 0) && 
                 installsilent_set == FALSE &&
                 installconsole_set == FALSE)
             {
@@ -1461,8 +1645,8 @@ WinMain(HINSTANCE hInstance,
                 }
                 strcat(g_args, "-install.silent ");
             }
-            else if (((strstr(argv[i], "-install.console") != NULL) || 
-                      (strstr(argv[i], "-console") != NULL)) &&
+            else if ((firststrstr(argv[i], "-console") != 0 ||
+                      firststrstr(argv[i], "-install.console") != 0) &&
                      installconsole_set == FALSE &&
                      installsilent_set == FALSE)
             {
@@ -1475,8 +1659,52 @@ WinMain(HINSTANCE hInstance,
                 }
                 strcat(g_args, "-install.console ");
             }
-            else if (((strstr(argv[i], "-install.location") != NULL) || 
-                      (strstr(argv[i], "-location") != NULL))&&
+            else if (firststrstr(argv[i], "-mirror") != 0)
+            {
+                char * pch = NULL;
+
+                pch = strtok(argv[i], "=");
+                if (pch != NULL)
+                {
+                    pch = strtok(NULL, "=");
+                    if (pch != NULL)
+                    {
+                        installlicense_set = TRUE;
+                        strcat(g_args, "-install.mirror=");
+                        strcat(g_args, pch);
+                        strcat(g_args, " ");
+                    }
+                }
+                if (pch == NULL)
+                {
+                    strcat(g_args, argv[i]);
+                    strcat(g_args, " ");
+                }
+            }
+            else if (firststrstr(argv[i], "-license") != 0 &&
+                     installlicense_set == FALSE)
+            {
+                char * pch = NULL;
+
+                pch = strtok(argv[i], "=");
+                if (pch != NULL)
+                {
+                    pch = strtok(NULL, "=");
+                    if (pch != NULL)
+                    {
+                        installlicense_set = TRUE;
+                        strcat(g_args, "-install.license=");
+                        strcat(g_args, pch);
+                        strcat(g_args, " ");
+                    }
+                }
+                if (pch == NULL)
+                {
+                    strcat(g_args, argv[i]);
+                    strcat(g_args, " ");
+                }
+            }
+            else if (firststrstr(argv[i], "-location") != 0 &&
                      installlocation_set == FALSE)
             {
                 char * pch = NULL;
@@ -1499,7 +1727,7 @@ WinMain(HINSTANCE hInstance,
                     strcat(g_args, " ");
                 }
             }
-            else if (strstr(argv[i], "-nosplash") != NULL &&
+            else if (firststrstr(argv[i], "-nosplash") != 0 &&
                      nosplash_set == FALSE)
             {
                 nosplash_set = TRUE;

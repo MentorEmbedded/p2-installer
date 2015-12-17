@@ -10,7 +10,11 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer.ui;
 
+import org.eclipse.jface.dialogs.MessageDialog;
+
 import com.codesourcery.installer.Installer;
+import com.codesourcery.internal.installer.IInstallConstants;
+import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.InstallOperation;
 
 /**
@@ -30,12 +34,23 @@ public class GUIInstallOperation extends InstallOperation {
 		// Initialize images
 		Installer.getDefault().initializeImages();
 
+		boolean forceToFront = true;
+		// Force application window to front has been disabled
+		if (Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_NO_FRONT)) {
+			forceToFront = false;
+		}
+		
 		// Open wizard dialog
 		InstallWizard wizard = new InstallWizard();
-		InstallWizardDialog dialog = new InstallWizardDialog(wizard);
+		InstallWizardDialog dialog = new InstallWizardDialog(wizard, forceToFront);
 		dialog.open();
 		
 		// Write status
 		writeStatus(wizard.getStatus());
+	}
+
+	@Override
+	public void showError(String message) {
+		MessageDialog.openError(null, InstallMessages.Title, message);
 	}
 }

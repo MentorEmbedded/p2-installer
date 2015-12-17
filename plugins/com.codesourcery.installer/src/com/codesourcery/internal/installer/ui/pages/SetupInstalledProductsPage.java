@@ -10,35 +10,47 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer.ui.pages;
 
-import org.eclipse.osgi.util.NLS;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map.Entry;
+
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
 
 import com.codesourcery.installer.IInstalledProduct;
-import com.codesourcery.installer.Installer;
 import com.codesourcery.internal.installer.IInstallerImages;
 import com.codesourcery.internal.installer.InstallMessages;
 
 /**
  * A Setup page that displays a list of installed products. 
  */
-public class SetupInstalledProductsPage extends AbstractSetupPage {
+public class SetupInstalledProductsPage extends AbstractListSetupPage {
 	/** Installed products for selection */
 	private IInstalledProduct[] products;
+	/** <code>true</code> to show locations */
+	private boolean showLocations;
 
 	/**
 	 * Constructor
 	 * 
 	 * @param pageName Page name
+	 * @param pageTitle Page title
 	 * @param products Installed products for selection
+	 * @param <code>true</code> to show unique install locations in a list 
+	 * along with the products installed in the location.
+	 * <code>false</code> to show products in a list along with the product 
+	 * installed location.
 	 */
-	public SetupInstalledProductsPage(String pageName, IInstalledProduct[] products) {
+	public SetupInstalledProductsPage(String pageName, String pageTitle, IInstalledProduct[] products, boolean showLocations) {
 		super(pageName, 
-				NLS.bind(InstallMessages.SetupPage_Title0, Installer.getDefault().getInstallManager().getInstallDescription().getProductName()), 
+				pageTitle, 
 				InstallMessages.SetupPage_Prompt);
 		this.products = products;
+		this.showLocations = showLocations;
 		
 		setBorder(true);
 	}
-
+	
 	/**
 	 * Returns the installed products.
 	 * 
@@ -50,15 +62,53 @@ public class SetupInstalledProductsPage extends AbstractSetupPage {
 
 	@Override
 	protected void createOptions() {
-		// Add installed products
-		IInstalledProduct[] products = getProducts();
-		for (IInstalledProduct product : products) {
-			Option choice = new Option(
-					product,
-					getImage(IInstallerImages.UPDATE_INSTALL),
-					product.getName() + " " + product.getVersionText(),
-					product.getInstallLocation().toOSString());
-			addOption(choice);
+		// Show installations by unique locations
+		if (showLocations) {
+			// Get unique locations
+			HashMap<IPath, ArrayList<IInstalledProduct>> installations = new HashMap<IPath, ArrayList<IInstalledProduct>>();
+			for (IInstalledProduct product : products) {
+				ArrayList<IInstalledProduct> locationProducts = installations.get(product.getInstallLocation());
+				if (locationProducts == null) {
+					locationProducts = new ArrayList<IInstalledProduct>();
+					installations.put(product.getInstallLocation(), locationProducts);
+				}
+				locationProducts.add(product);
+			}
+			// Add options for locations with installed products
+			for (Entry<IPath, ArrayList<IInstalledProduct>> entry : installations.entrySet()) {
+				ArrayList<IInstalledProduct> products = entry.getValue();
+				StringBuffer description = new StringBuffer();
+				for (int index = 0; index < products.size(); index ++) {
+					IInstalledProduct product = products.get(index);
+					
+					if (index > 0)
+						description.append("\n");
+					description.append("  ");
+					description.append(product.getName());
+					description.append(" (");
+					description.append(product.getVersionText());
+					description.append(')');
+				}
+				
+				Option choice = new Option(
+						products.get(0),
+						getImage(IInstallerImages.UPDATE_INSTALL),
+						entry.getKey().toOSString(),
+						description.toString());
+				addOption(choice);
+			}
+		}
+		// Show installations by products
+		else {
+			IInstalledProduct[] products = getProducts();
+			for (IInstalledProduct product : products) {
+				Option choice = new Option(
+						product,
+						getImage(IInstallerImages.UPDATE_INSTALL),
+						product.getName() + " " + product.getVersionText(),
+						product.getInstallLocation().toOSString());
+				addOption(choice);
+			}
 		}
 		
 		// Add option to choose other product
@@ -69,21 +119,19 @@ public class SetupInstalledProductsPage extends AbstractSetupPage {
 				InstallMessages.InstalledProductsPage_OtherDescription));
 		
 		// Select first
-		if (products.length > 0) {
+		if (getOptions().length > 1) {
 			selectOption(getOptions()[0]);
 		}
 	}
 
 	@Override
-	protected void saveOption(Option selectedChoice) {
-		try {
-			IInstalledProduct product = (IInstalledProduct)selectedChoice.getData();
-			if (product != null) {
-				Installer.getDefault().getInstallManager().setInstalledProduct(product);
-			}
-		}
-		catch (Exception e) {
-			Installer.log(e);
-		}
+	protected void saveOption(Option selectedChoice) throws CoreException {
+		final IInstalledProduct product = (IInstalledProduct)selectedChoice.getData();
+		setProduct(product);
+	}
+
+	@Override
+	public boolean isSupported() {
+		return (super.isSupported() && !getInstallMode().isMirror());
 	}
 }

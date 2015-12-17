@@ -11,6 +11,7 @@
 package com.codesourcery.internal.installer.ui.pages;
 
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Status;
@@ -30,15 +31,16 @@ import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallMode;
+import com.codesourcery.installer.IInstalledProduct;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.console.ConsoleYesNoPrompter;
 import com.codesourcery.installer.ui.BrowseDefaultEditor;
 import com.codesourcery.installer.ui.BrowseDirectoryDefaultEditor;
 import com.codesourcery.installer.ui.IInstallSummaryProvider;
 import com.codesourcery.installer.ui.InstallWizardPage;
-import com.codesourcery.internal.installer.ContributorRegistry;
-import com.codesourcery.internal.installer.IInstallConstants;
+import com.codesourcery.internal.installer.InstallManager;
 import com.codesourcery.internal.installer.InstallMessages;
+import com.codesourcery.internal.installer.InstallUtils;
 
 /**
  * Page that prompts for the installation folder
@@ -46,7 +48,7 @@ import com.codesourcery.internal.installer.InstallMessages;
  */
 public class InstallFolderPage extends InstallWizardPage implements IInstallSummaryProvider, IInstallConsoleProvider {
 	/** Folder text */
-	private BrowseDefaultEditor valueEditor;
+	protected BrowseDefaultEditor valueEditor;
 	/** Default installation folder */
 	private String defaultFolder;
 	/** Installation folder */
@@ -55,6 +57,10 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 	private IInstallDescription installDescription;
 	/** Warning console prompter */
 	private ConsoleYesNoPrompter warningConsolePrompter;
+	/** Main area of page */
+	private Composite area;
+	/** Install area of page */
+	private Composite installArea;
 
 	/**
 	 * Constructor
@@ -118,22 +124,44 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		}
 	}
 
+	/**
+	 * Enables or disables the folder editor.
+	 * 
+	 * @param enabled <code>true</code> to enable, <code>false</code> to disable.
+	 */
+	protected void setFolderEnabled(boolean enabled) {
+		valueEditor.setEnabled(enabled);
+	}
+	
 	public IStatus[] verifyInstallLocation() {
-		return (ContributorRegistry.getDefault().verifyInstallLocation(new Path(getFolder())));
+		if (getInstallMode().isMirror()) {
+			return new IStatus[0];
+		}
+		else {
+			InstallManager manager = (InstallManager)Installer.getDefault().getInstallManager();
+			return (manager.verifyInstallLocation(new Path(getFolder())));
+		}
 	}
 	
 	@Override
 	public Control createContents(Composite parent) {
-		Composite area = new Composite(parent, SWT.NONE);
+		area = new Composite(parent, SWT.NONE);
 		area.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
 		area.setLayout(new GridLayout(1, false));
 
+		installArea = new Composite(area, SWT.NONE);
+		GridLayout layout = new GridLayout(1, true);
+		layout.marginHeight = layout.marginWidth = 0;
+		installArea.setLayout(layout);
+		installArea.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false));
+		
 		// Install folder label
-		Label folderLabel = new Label(area, SWT.NONE);
+		Label folderLabel = new Label(installArea, SWT.NONE);
 		folderLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
-		folderLabel.setText(InstallMessages.InstallFolder);
+		String installFolderText = getInstallDescription().getText(IInstallDescription.TEXT_INSTALL_FOLDER, InstallMessages.InstallFolder);
+		folderLabel.setText(installFolderText);
 
-		valueEditor = new BrowseDirectoryDefaultEditor(area, SWT.NONE, true, true, getFolder());
+		valueEditor = new BrowseDirectoryDefaultEditor(installArea, SWT.NONE, true, true, getFolder());
 		valueEditor.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
 		valueEditor.getEditor().addModifyListener(new ModifyListener() {
 			@SuppressWarnings("synthetic-access")
@@ -141,6 +169,7 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 			public void modifyText(ModifyEvent e) {
 				hideStatus();
 				setPageComplete(true);
+				stopAutoUpdate();
 			}
 		});
 		valueEditor.getRestoreButton().addSelectionListener(new SelectionAdapter() {
@@ -159,23 +188,73 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		});
 		valueEditor.setBrowseMessage(InstallMessages.SelectInstallFolderMessage);
 
-		validate();
-		
 		return area;
+	}
+	
+	/**
+	 * Shows or hides the install section of the page.
+	 * 
+	 * @param show <code>true</code> to show, <code>false</code> to hide
+	 */
+	protected void showInstallArea(boolean show) {
+		GridData data = (GridData)installArea.getLayoutData();
+		if (data.exclude == show) {
+			data.exclude = !show;
+			if (!show) {
+				installArea.setSize(0, 0);
+			}
+			area.layout(true);
+		}
+	}
+	
+	@Override
+	public void setActive(IInstallData data) {
+		super.setActive(data);
+		// If an installed product has been setup, update the install folder
+		IInstalledProduct installedProduct = Installer.getDefault().getInstallManager().getInstalledProduct();
+		if (installedProduct != null) {
+			setFolder(installedProduct.getInstallLocation().toOSString());
+		}
+	}
+	
+	@Override
+	public void setVisible(boolean visible) {
+		super.setVisible(visible);
+		
+		// If an installed product has been setup, disable the install folder editing
+		setFolderEnabled(Installer.getDefault().getInstallManager().getInstalledProduct() == null);
 	}
 
 	@Override
 	public String getInstallSummary() {
-		return InstallMessages.SummaryInstallFolder + getFolder() + "\n\n";	
+		if (getInstallMode().isMirror()) {
+			return null;
+		}
+		else {
+			return InstallMessages.SummaryInstallFolder + getFolder() + "\n\n";
+		}
 	}
 
 	@Override
-	public void saveInstallData(IInstallData data) {
-		data.setProperty(IInstallConstants.PROPERTY_INSTALL_FOLDER, getFolder());
-		try {
-			Installer.getDefault().getInstallManager().setInstallLocation(new Path(getFolder()));
-		} catch (CoreException e) {
-			Installer.log(e);
+	public void saveInstallData(IInstallData data) throws CoreException {
+		final IPath installLocation = InstallUtils.resolvePath(getFolder());
+		final Exception[] error = new Exception[] { null };
+		
+		runOperation(InstallMessages.PreparingInstall, new Runnable() {
+			@Override
+			public void run() {
+				try {
+					// Set install location
+					Installer.getDefault().getInstallManager().setInstallLocation(installLocation, null);
+				} catch (Exception e) {
+					error[0] = e;
+				}
+			}
+		});
+
+		// Error creating install location
+		if (error[0] != null) {
+			Installer.fail(error[0].getLocalizedMessage());
 		}
 	}
 	
@@ -201,6 +280,7 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 	@Override
 	public boolean validate() {
 		boolean valid = true;
+		boolean recheck = false;
 		
 		// Verify install location
 		IStatus[] status = verifyInstallLocation();
@@ -208,6 +288,7 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 			// Status has errors
 			if (statusContainsErrors(status)) {
 				valid = false;
+				recheck = true;
 				setPageComplete(false);
 			}
 			// If only warnings or information, the page is valid if has already
@@ -228,6 +309,15 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 			hideStatus();
 			valid = true;
 			setPageComplete(true);
+		}
+
+		// Start auto-update to periodically re-check in case conditions changed
+		// to cause validation to succeed.
+		if (recheck) {
+			startAutoUpdate();
+		}
+		else {
+			stopAutoUpdate();
 		}
 		
 		return valid;
@@ -254,6 +344,10 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 	public String getConsoleResponse(String input) throws IllegalArgumentException {
 		String response = null;
 		
+		// Don't prompt for install folder if mirror operation
+		if (getInstallMode().isMirror())
+			return response;
+			
 		// Warning prompter active
 		if (warningConsolePrompter != null) {
 			response = warningConsolePrompter.getConsoleResponse(input);
@@ -270,7 +364,9 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		
 		// Initial message
 		if (input == null) {
-			response = getConsoleMessage();
+			if (Installer.getDefault().getInstallManager().getInstalledProduct() == null) {
+				response = getConsoleMessage();
+			}
 		}
 		// Response
 		else {
@@ -321,7 +417,12 @@ public class InstallFolderPage extends InstallWizardPage implements IInstallSumm
 		// for an update or upgrade to an existing product.
 		else {
 			IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
-			return (mode.isInstall() && !mode.isUpdate() && !mode.isUpgrade());
+			return (mode.isInstall() && !mode.isUpdate() && !mode.isUpgrade() && !mode.isMirror());
 		}
+	}
+
+	@Override
+	protected void autoUpdate() {
+		validate();
 	}
 }

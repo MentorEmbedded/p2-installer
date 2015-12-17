@@ -12,7 +12,7 @@ package com.codesourcery.internal.installer;
 
 import java.net.URI;
 
-import com.codesourcery.installer.ui.IInstallComponent;
+import com.codesourcery.installer.IInstallComponent;
 
 /**
  * A listener that is notified of changes to the install repositories. 
@@ -38,12 +38,9 @@ public interface IInstallRepositoryListener {
 	public void repositoryStatus(RepositoryStatus status);
 	
 	/**
-	 * Called when a repository is loaded.
-	 * 
-	 * @param location Repository location
-	 * @param components Components loaded from repository
+	 * Called when the set of install components changes.
 	 */
-	public void repositoryLoaded(URI location, IInstallComponent[] components);
+	public void installComponentsChanged();
 	
 	/**
 	 * Called when a repository fails to load due to an error.
@@ -52,4 +49,11 @@ public interface IInstallRepositoryListener {
 	 * @param errorMessage Error message
 	 */
 	public void repositoryError(URI location, String errorMessage);
+	
+	/**
+	 * Called when an install component changes.
+	 * 
+	 * @param component Component that changed
+	 */
+	public void installComponentChanged(IInstallComponent component);
 }

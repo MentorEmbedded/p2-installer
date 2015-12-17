@@ -10,28 +10,25 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer;
 
-import java.net.URI;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.StringTokenizer;
 
-import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.equinox.p2.engine.IProfile;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
-import org.eclipse.equinox.p2.metadata.IVersionedId;
+import org.eclipse.equinox.p2.metadata.IProvidedCapability;
+import org.eclipse.equinox.p2.metadata.IRequirement;
+import org.eclipse.equinox.p2.metadata.IUpdateDescriptor;
+import org.eclipse.equinox.p2.metadata.MetadataFactory;
+import org.eclipse.equinox.p2.metadata.MetadataFactory.InstallableUnitDescription;
 import org.eclipse.equinox.p2.metadata.Version;
 import org.eclipse.equinox.p2.metadata.VersionRange;
-import org.eclipse.equinox.p2.query.IQuery;
-import org.eclipse.equinox.p2.query.IQueryResult;
-import org.eclipse.equinox.p2.query.IQueryable;
-import org.eclipse.equinox.p2.query.QueryUtil;
-import org.eclipse.equinox.p2.repository.IRepositoryManager;
-import org.eclipse.equinox.p2.repository.metadata.IMetadataRepository;
-import org.eclipse.equinox.p2.repository.metadata.IMetadataRepositoryManager;
 
-import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LicenseDescriptor;
 
 /**
@@ -56,156 +53,24 @@ public class InstallUtils {
 		}
 		return result.toArray(new String[result.size()]);
 	}
-
-	/**
-	 * Returns installable units from a profile.
-	 * 
-	 * @param profile Profile
-	 * @param versions Versions for installable units
-	 * @return Installable units
-	 */
-	public static IInstallableUnit[] getUnitsFromProfile(IProfile profile, IVersionedId[] versions) {
-		ArrayList<IInstallableUnit> units = new ArrayList<IInstallableUnit>();
-		
-		for (IVersionedId version : versions) {
-			IQueryResult<IInstallableUnit> query = profile.query(QueryUtil.createIUQuery(version), null);
-			Iterator<IInstallableUnit> iter = query.iterator();
-			while (iter.hasNext()) {
-				units.add(iter.next());
-			}
-		}
-		
-		return units.toArray(new IInstallableUnit[units.size()]);
-	}
 	
 	/**
-	 * Returns the latest version of an installable unit in a profile.
-	 * 
-	 * @param profile Profile
-	 * @param id Installable unit identifier
-	 * @return Latest version found or <code>null</code>
+	 * Converts an array of strings to a single separator delimited string.
+	 *  
+	 * @param list Array of strings
+	 * @param separator Separator
+	 * @return Delimited string
 	 */
-	public static IInstallableUnit getUnitFromProfile(IProfile profile, String id) {
-		IInstallableUnit unit = null;
-		IQueryResult<IInstallableUnit> query = profile.query(QueryUtil.createIUQuery(id), null);
-		Iterator<IInstallableUnit> iter = query.iterator();
-		while (iter.hasNext()) {
-			IInstallableUnit foundUnit = iter.next();
-			if ((unit == null) || (unit.getVersion().compareTo(unit.getVersion()) > 0)) {
-				unit = foundUnit;
+	public static String getStringFromArray(String[] list, String separator) {
+		StringBuilder buffer = new StringBuilder();
+		for (int index = 0; index < list.length; index++) {
+			if (index != 0) {
+				buffer.append(separator);
 			}
+			buffer.append(list[index]);
 		}
 		
-		return unit;
-	}
-
-	/**
-	 * Finds an installable unit in all repositories.
-	 * 
-	 * @param manager Repository meta-data manager
-	 * @param spec Version specification
-	 * @return Installable unit or <code>null</code>.
-	 * @throws CoreException on failure
-	 */
-	public static IInstallableUnit findUnitAll(IMetadataRepositoryManager manager, IVersionedId spec) throws CoreException {
-		String id = spec.getId();
-		if (id == null) {
-			Installer.fail(InstallMessages.Error_NoId);
-		}
-		Version version = spec.getVersion();
-		VersionRange range = VersionRange.emptyRange;
-		if (version != null && !version.equals(Version.emptyVersion))
-			range = new VersionRange(version, true, version, true);
-		IQuery<IInstallableUnit> query = QueryUtil.createIUQuery(id, range);
-		Iterator<IInstallableUnit> matches = manager.query(query, null).iterator();
-		// pick the newest match
-		IInstallableUnit newest = null;
-		while (matches.hasNext()) {
-			IInstallableUnit candidate = matches.next();
-			if (newest == null || (newest.getVersion().compareTo(candidate.getVersion()) < 0))
-				newest = candidate;
-		}
-		if (newest == null)
-		{
-			Installer.fail(InstallMessages.Error_IUNotFound + id);
-		}
-		return newest;
-	}
-
-	/**
-	 * Finds an installable unit in local repositories.
-	 * 
-	 * @param manager Repository meta-data manager
-	 * @param spec Version specification
-	 * @return Installable unit or <code>null</code>.
-	 * @throws CoreException on failure
-	 */
-	public static IInstallableUnit findUnit(IMetadataRepositoryManager manager, IVersionedId spec) throws CoreException {
-		String id = spec.getId();
-		if (id == null) {
-			Installer.fail(InstallMessages.Error_NoId);
-		}
-		Version version = spec.getVersion();
-		VersionRange range = VersionRange.emptyRange;
-		if (version != null && !version.equals(Version.emptyVersion))
-			range = new VersionRange(version, true, version, true);
-		
-		URI[] locations = manager.getKnownRepositories(IRepositoryManager.REPOSITORIES_LOCAL);
-		List<IMetadataRepository> queryables = new ArrayList<IMetadataRepository>(locations.length);
-		for (URI location : locations) {
-			queryables.add(manager.loadRepository(location, new NullProgressMonitor()));
-		}
-
-		IQuery<IInstallableUnit> query = QueryUtil.createIUQuery(id, range);
-		IQueryable<IInstallableUnit> compoundQueryable = QueryUtil.compoundQueryable(queryables);
-		IQueryResult<IInstallableUnit> queryResult = compoundQueryable.query(query, new NullProgressMonitor());
-		
-		Iterator<IInstallableUnit> matches = queryResult.iterator();
-		// pick the newest match
-		IInstallableUnit newest = null;
-		while (matches.hasNext()) {
-			IInstallableUnit candidate = matches.next();
-			if (newest == null || (newest.getVersion().compareTo(candidate.getVersion()) < 0))
-				newest = candidate;
-		}
-		if (newest == null)
-		{
-			Installer.fail(InstallMessages.Error_IUNotFound + id);
-		}
-		return newest;
-	}
-	
-	/**
-	 * Finds an installable unit in a repository.
-	 * 
-	 * @param manager Repository meta-data manager
-	 * @param spec Version specification
-	 * @return Installable unit or <code>null</code>.
-	 * @throws CoreException on failure
-	 */
-	public static IInstallableUnit findUnit(IMetadataRepository repository, IVersionedId spec) throws CoreException {
-		String id = spec.getId();
-		if (id == null) {
-			Installer.fail(InstallMessages.Error_NoId);
-		}
-		Version version = spec.getVersion();
-		VersionRange range = VersionRange.emptyRange;
-		if (version != null && !version.equals(Version.emptyVersion))
-			range = new VersionRange(version, true, version, true);
-		
-		IQuery<IInstallableUnit> query = QueryUtil.createIUQuery(id, range);
-		IQueryResult<IInstallableUnit> queryResult = repository.query(query, new NullProgressMonitor());
-		
-		Iterator<IInstallableUnit> matches = queryResult.iterator();
-		// pick the newest match
-		IInstallableUnit newest = null;
-		while (matches.hasNext()) {
-			IInstallableUnit candidate = matches.next();
-			if (newest == null || (newest.getVersion().compareTo(candidate.getVersion()) < 0))
-				newest = candidate;
-		}
-		
-		return newest;
+		return buffer.toString();
 	}
 
 	/**
@@ -214,11 +79,6 @@ public class InstallUtils {
 	 * @return The safe filename
 	 */
 	public static String makeFileNameSafe(String fileName) {
-		
-		// Spaces in file paths are not very Linuxy.
-		if (!Installer.isWindows()) {
-			fileName = fileName.replace(" ", "_");
-		}
 		String newName = fileName.replace("/", "-");
 		return newName;
 	}
@@ -274,5 +134,117 @@ public class InstallUtils {
 		version = version.replace('_', '.');
 		
 		return version;
+	}
+	
+	/**
+	 * Resolves a path, replacing ~ with the user's home directory path.
+	 * 
+	 * @param path Path
+	 * @return Resolved path
+	 */
+	public static IPath resolvePath(String path) {
+		if (path == null)
+			return null;
+		
+		path = path.trim().replace('\\', File.separatorChar);
+		path = path.replace('/', File.separatorChar);
+		// Replace home directory
+		path = path.replace("~", System.getProperty("user.home"));
+		
+		return new Path(path);
+	}
+
+	/**
+	 * Creates an IU description.
+	 * 
+	 * @param id IU identifier
+	 * @param version IU version
+	 * @param singleton <code>true</code> if singleton
+	 * @param properties IU properties or <code>null</code>
+	 * @return IU description
+	 */
+	public static InstallableUnitDescription createIuDescription(String id, Version version, boolean singleton, 
+			Map<String, String> properties) {
+		InstallableUnitDescription iuDesc = new MetadataFactory.InstallableUnitDescription();
+		iuDesc.setId(id);
+		iuDesc.setVersion(version);
+		iuDesc.setSingleton(singleton);
+		iuDesc.setUpdateDescriptor(MetadataFactory.createUpdateDescriptor(id, new VersionRange(null), IUpdateDescriptor.NORMAL, ""));
+
+		// Set provided capability
+		iuDesc.setCapabilities(new IProvidedCapability[] { MetadataFactory
+				.createProvidedCapability(IInstallableUnit.NAMESPACE_IU_ID, id, version) });
+		
+		// Set properties
+		if (properties != null) {
+			Iterator<Entry<String, String>> propertiesIter = properties.entrySet().iterator();
+			while (propertiesIter.hasNext()) {
+				Entry<String, String> property = propertiesIter.next();
+				iuDesc.setProperty(property.getKey(), property.getValue());
+			}
+		}
+		
+		return iuDesc;
+	}
+	
+	/**
+	 * Adds installable unit requirements to an installable unit description.
+	 * The group property will be set on the description.
+	 * 
+	 * @param desc Installable unit description
+	 * @param units Installable units to add
+	 * @param strictVersion <code>true</code> to set strict requirement on the IU versions.
+	 */
+	public static void addInstallableUnitRequirements(InstallableUnitDescription desc, List<IInstallableUnit> units, boolean strictVersion) {
+		ArrayList<IRequirement> requirements = new ArrayList<IRequirement>();
+		for (IInstallableUnit unit : units) {
+			IRequirement requirement = MetadataFactory.createRequirement(
+					IInstallableUnit.NAMESPACE_IU_ID,
+					unit.getId(), 
+					strictVersion ? 
+							new VersionRange(unit.getVersion(), true, unit.getVersion(), true) : 
+							new VersionRange(null), 
+					null, 
+					false, 
+					false);
+			requirements.add(requirement);
+		}
+		// Add requirements
+		if (!requirements.isEmpty()) {
+			desc.addRequirements(requirements);
+			desc.setProperty(InstallableUnitDescription.PROP_TYPE_GROUP, Boolean.TRUE.toString());
+		}
+	}
+
+	/**
+	 * Returns if an IU's requirements are satisfied by a 
+	 * specified set of IUs.
+	 * 
+	 * @param unit Unit to check
+	 * @param candidates Units for requirements
+	 * @return <code>true</code> if units requirements are satisified
+	 */
+	public boolean isIURequirementsSatisfied(IInstallableUnit unit, List<IInstallableUnit> candidates) {
+		boolean satisfied = true;
+		// Get unit requirements
+		Iterator<IRequirement> requirements = unit.getRequirements().iterator();
+		while (requirements.hasNext()) {
+			IRequirement requirement = requirements.next();
+			boolean requirementSatisfied = false;
+			// Check if any of the units satisfy the units requirement
+			for (IInstallableUnit candidate : candidates) {
+				if (candidate.satisfies(requirement)) {
+					requirementSatisfied = true;
+					break;
+				}
+			}
+			// At least one requirement is not satisfied
+			if (!requirementSatisfied) {
+				satisfied = false;
+				break;
+			}
+		}
+		
+		return satisfied;
 	}
 }

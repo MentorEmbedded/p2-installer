@@ -24,8 +24,10 @@ import com.codesourcery.internal.installer.InstallMessages;
  *       new ConsoleYesNoPrompter("An option can be enabled.", 
  *       "DO YOU WANT TO ENABLE THE OPTION?", false);
  *     String response = prompter.getResponse(input);
- *     if (response.getResult()) {
- *       // Handle result...
+ *     if (response == null) {
+ *       if (response.getResult()) {
+ *         // Handle result...
+ *       }
  *     }
  *     
  *     return response;
@@ -52,7 +54,7 @@ public class ConsoleYesNoPrompter implements IInstallConsoleProvider {
 	 * be allowed to press ENTER.
 	 * 
 	 * @param message Message to display
-	 * @param prompt Prompt to display
+	 * @param prompt Prompt to display or <code>null</code>
 	 */
 	public ConsoleYesNoPrompter(String message, String prompt) {
 		this.message = message;
@@ -66,7 +68,7 @@ public class ConsoleYesNoPrompter implements IInstallConsoleProvider {
 	 * value.
 	 * 
 	 * @param message Message to display
-	 * @param prompt Prompt to display
+	 * @param prompt Prompt to display or <code>null</code>
 	 * @param defaultValue Default value
 	 */
 	public ConsoleYesNoPrompter(String message, String prompt, boolean defaultValue) {
@@ -166,10 +168,9 @@ public class ConsoleYesNoPrompter implements IInstallConsoleProvider {
 			buffer.append('\n');
 			buffer.append(getPrompt());
 			buffer.append('\n');
-			
-			String promptMessage = getPromptMessage();
-			buffer.append(promptMessage);
 		}
+		String promptMessage = getPromptMessage();
+		buffer.append(promptMessage);
 		
 		return buffer.toString();
 	}

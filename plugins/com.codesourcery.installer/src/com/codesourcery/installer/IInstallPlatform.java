@@ -12,6 +12,7 @@ package com.codesourcery.installer;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.swt.widgets.Shell;
 
 /**
  * The installer platform is used to perform operating specific native
@@ -121,11 +122,16 @@ public interface IInstallPlatform {
 	 * @param arguments Command line arguments or <code>null</code>
 	 * @param workingDirectory Working directory or <code>null<code>
 	 * (Only used on Windows)
+	 * @param iconPath Path to the icon file or <code>null</code> to use the
+	 * target file (Only used on Windows)
+	 * @param iconIndex Index of icon in <code>iconPath</code> file or 0
+	 * (Only used on Windows)
 	 * @throws CoreException on failure
 	 * @see #getSpecialFolderPath(ShortcutFolder)
 	 */
 	public void createShortcut(IPath path, String linkName, 
-		IPath targetFile, String arguments, IPath workingDirectory) 
+		IPath targetFile, String arguments, IPath workingDirectory, IPath iconPath,
+		int iconIndex) 
 		throws CoreException;
 	
 	/**
@@ -222,4 +228,24 @@ public interface IInstallPlatform {
 	 * the operation system.
 	 */
 	public void installWindowsDriver(String path) throws CoreException, UnsupportedOperationException;
+	
+	/**
+	 * Updates Windows system environment by sending a broadcast message of system environment
+	 * change.
+	 * 
+	 * @param timeout Timeout for broadcast message.
+	 * @throws CoreException on failure
+	 * @throws UnsupportedOperationException if operation is not supported by
+	 * operating system.
+	 */
+	public String updateWindowsSystemEnvironment(int timeout)
+			throws CoreException, UnsupportedOperationException;
+
+	/**
+	 * If supported by the platform, this method brings the specified top-level
+	 * shell to the front.
+	 * 
+	 * @param shell Top-level shell to bring to front
+	 */
+	public void bringShellToFront(Shell shell);
 }

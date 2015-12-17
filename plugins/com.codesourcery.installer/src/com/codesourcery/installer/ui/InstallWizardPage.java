@@ -10,11 +10,18 @@
  *******************************************************************************/
 package com.codesourcery.installer.ui;
 
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.wizard.IWizardPage;
 import org.eclipse.jface.wizard.WizardPage;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.ScrolledComposite;
+import org.eclipse.swt.events.ControlAdapter;
+import org.eclipse.swt.events.ControlEvent;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.FontData;
 import org.eclipse.swt.graphics.Image;
@@ -29,15 +36,16 @@ import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.IInstallWizardPage;
 import com.codesourcery.installer.Installer;
+import com.codesourcery.installer.IInstallDescription.WizardNavigation;
 import com.codesourcery.internal.installer.ContributorRegistry;
 import com.codesourcery.internal.installer.IInstallerImages;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.ui.BusyAnimationControl;
+import com.codesourcery.internal.installer.ui.ISetupWizardPage;
 import com.codesourcery.internal.installer.ui.InstallWizard;
 import com.codesourcery.internal.installer.ui.SideBarComposite;
 import com.codesourcery.internal.installer.ui.StepsControl;
 import com.codesourcery.internal.installer.ui.pages.ProgressPage;
-import com.codesourcery.internal.installer.ui.pages.AbstractSetupPage;
 
 /**
  * Install wizard base page class.  All install wizard pages should subclass
@@ -47,18 +55,24 @@ import com.codesourcery.internal.installer.ui.pages.AbstractSetupPage;
  * A page can show a busy animation by calling {@link #showBusy(String)}.
  */
 public abstract class InstallWizardPage extends WizardPage implements IInstallWizardPage {
-	/** Default width */
+	/** Auto update delay (ms) */
+	public static final int DEFAULT_UPDATE_DELAY = 2000;
+	/** Default width in characters */
 	protected static final int DEFAULT_WIDTH = 120;
-	/** Default height */
-	protected static final int DEFAULT_HEIGHT = 23;
+	/** Default height in characters */
+	protected static final int DEFAULT_HEIGHT = 20;
 	/** Options indenting */
 	protected static final int DEFAULT_INDENT = 10;
+	/** Maximum number of lines to display in warning panel */
+	protected static final int MAX_WARNING_LINES = 3;
 	/** Page side bar */
 	private SideBarComposite sideBar;
 	/** Page top bar */
 	private StepsControl topBar;
 	/** Page label */
 	private String pageLabel;
+	/** Page container */
+	private Composite pageContainer;
 	/** Page area */
 	private Composite pageArea;
 	/** Page client area */
@@ -74,7 +88,15 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	/** Busy message or <code>null</code> if not busy */
 	private String busyMessage = null;
 	/** Page navigation */
-	private int pageNavigation = SWT.NONE;
+	private WizardNavigation pageNavigation = WizardNavigation.TOP;
+	/** <code>true</code> if page is auto updating */
+	private boolean autoUpdate = false;
+	/** Auto-update job */
+	private AutoUpdateJob updateJob;
+	/** Auto-update delay */
+	private int autoUpdateDelay;
+	/** Maximum height of warning panel */
+	private int maxWarningHeight;
 
 	/**
 	 * Constructor
@@ -86,30 +108,27 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		super(pageName, "", null); //$NON-NLS-1$
 		setPageLabel(title);
 		
-		// Set default page navigation
-		int navigation = SWT.NONE;
 		// For install default to mode specified in installer properties
 		if (Installer.getDefault().getInstallManager().getInstallMode().isInstall()) {
-			navigation = Installer.getDefault().getInstallManager().getInstallDescription().getPageNavigation();
+			setPageNavigation(Installer.getDefault().getInstallManager().getInstallDescription().getPageNavigation());
 		}
-		// For uninstall, default to top navigation
-		else {
-			navigation = SWT.TOP;
-		}
-		setPageNavigation(navigation);
+	}
+	
+	/**
+	 * Returns the install data.
+	 * 
+	 * @return Install data
+	 */
+	protected IInstallData getInstallData() {
+		return Installer.getDefault().getInstallManager().getInstallData();
 	}
 	
 	/**
 	 * Sets the page navigation.  This can be one of the following:
-	 * <ul>
-	 * <li>SWT.NONE	- No page navigation</li>
-	 * <li>SWT.TOP	- Page navigation at the top</li>
-	 * <li>SWT.LEFT	- Page navigation at the left</li>
-	 * <ul>
 	 * 
 	 * @param pageNavigation Page navigation
 	 */
-	public void setPageNavigation(int pageNavigation) {
+	public void setPageNavigation(WizardNavigation pageNavigation) {
 		this.pageNavigation = pageNavigation;
 	}
 	
@@ -118,7 +137,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	 * 
 	 * @return Page navigation
 	 */
-	public int getPageNavigation() {
+	public WizardNavigation getPageNavigation() {
 		return pageNavigation;
 	}
 	
@@ -126,6 +145,15 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	public void dispose() {
 		if (boldFont != null) {
 			boldFont.dispose();
+		}
+		// Stop any update thread
+		if (updateJob != null) {
+			updateJob.cancel();
+			try {
+				updateJob.join();
+			} catch (InterruptedException e) {
+				// Ignore
+			}
 		}
 		
 		super.dispose();
@@ -146,6 +174,14 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		return boldFont;
 	}
 
+	/**
+	 * Called to give the page a chance to make any label adjustments
+	 * based on installation mode.
+	 */
+	public void initPageLabel() {
+		// Base does nothing
+	}
+	
 	/**
 	 * Returns the page label.
 	 * 
@@ -231,37 +267,78 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	@Override
 	public final void createControl(Composite parent) {
 		initializeDialogUnits(parent);
+
+		// Compute maximum height of warning panel
+		maxWarningHeight = convertHeightInCharsToPixels(MAX_WARNING_LINES);
+		
+		boolean leftNavigation = (getPageNavigation() == WizardNavigation.LEFT) || (getPageNavigation() == WizardNavigation.LEFT_MINIMAL);
 		
 		Composite area = new Composite(parent, SWT.NONE) {
 			@Override
 			public Point computeSize(int wHint, int hHint, boolean changed) {
-				return new Point(convertWidthInCharsToPixels(DEFAULT_WIDTH), convertHeightInCharsToPixels(DEFAULT_HEIGHT));
+				Point defaultSize = super.computeSize(wHint, hHint, changed);
+				int defaultHeight = convertHeightInCharsToPixels(DEFAULT_HEIGHT);
+				// Limit the width of the page to a default so that labels wrap instead of extending the wizard dialog.
+				// Limit the height to the page contents or default height (whichever is largest) plus the maximum
+				// width of the warning panel.
+				return new Point(
+						convertWidthInCharsToPixels(DEFAULT_WIDTH), 
+						Math.max(defaultSize.y, defaultHeight) + maxWarningHeight);
 			}
 		};
 		GridData areaData = new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1);
 		area.setLayoutData(areaData);
-		GridLayout layout = new GridLayout(getPageNavigation() == SWT.LEFT ? 3 : 2, false);
+		GridLayout layout = new GridLayout(leftNavigation ? 3 : 2, false);
 		layout.marginHeight = 0;
 		layout.marginWidth = 0;
 		area.setLayout(layout);
 
 		// Top navigation bar
-		if (getPageNavigation() == SWT.TOP) { 
+		if (getPageNavigation() == WizardNavigation.TOP) { 
 			topBar = new StepsControl(area, SWT.NONE);
 			topBar.setFont(getFont());
 			topBar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
 		}
 		// Left navigation bar
-		else if (getPageNavigation() == SWT.LEFT) { 
-			sideBar = new SideBarComposite(area, SWT.NONE);
+		else if (leftNavigation) { 
+			if (getPageNavigation() == WizardNavigation.LEFT) {
+				sideBar = new SideBarComposite(
+						area, 
+						SWT.NONE,
+						Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY),
+						Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_SOLID),
+						Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_CHECKED),
+						Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ARROW),
+						Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ERROR),
+						true);
+			}
+			else {
+				sideBar = new SideBarComposite(
+						area, 
+						SWT.NONE,
+						Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY2),
+						Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_EMPTY2),
+						Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_CHECKED2),
+						Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ARROW2),
+						Installer.getDefault().getImageRegistry().get(IInstallerImages.BULLET_ERROR2),
+						false);
+			}
 			sideBar.setLayoutData(new GridData(SWT.BEGINNING, SWT.FILL, false, true, 1, 1));
 			// Vertical separator
 			Label verticalSeparator = new Label(area, SWT.SEPARATOR | SWT.VERTICAL);
 			verticalSeparator.setLayoutData(new GridData(SWT.CENTER, SWT.FILL, false, true, 1, 1));
 		}
 
+		// Page container
+		pageContainer = new Composite(area, SWT.NONE);
+		pageContainer.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
+		layout = new GridLayout(1, false);
+		layout.marginHeight = 0;
+		layout.marginWidth = 0;
+		pageContainer.setLayout(layout);
+		
 		// Page area
-		pageArea = new Composite(area, SWT.NONE);
+		pageArea = new Composite(pageContainer, SWT.NONE);
 		pageArea.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
 		layout = new GridLayout(1, false);
 		layout.marginHeight = 0;
@@ -273,14 +350,24 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		pageClientArea.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
 		layout = new GridLayout(1, false);
 		layout.marginHeight = 0;
-		layout.marginWidth = 0;
+		layout.marginWidth = 4;
 		pageClientArea.setLayout(layout);
 		
 		// Create page contents
 		createContents(pageClientArea);
 
+		// Warning area
+		final Composite warningArea = new Composite(pageArea, SWT.NONE);
+		warningArea.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
+		GridLayout warningAreaLayout = new GridLayout(1, true);
+		warningAreaLayout.marginTop = 0;
+		warningAreaLayout.marginBottom = 2;
+		warningAreaLayout.marginLeft = 0;
+		warningAreaLayout.marginRight = 2;
+		warningArea.setLayout(warningAreaLayout);
+		
 		// Warning pane (initially hidden unless a status is available)
-		warningPanel = new WarningPanel(pageArea, SWT.BORDER);
+		warningPanel = new WarningPanel(warningArea, SWT.NONE);
 		GridData warningPanelData = new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1);
 		warningPanelData.exclude = (status == null);
 		warningPanel.setLayoutData(warningPanelData);
@@ -289,7 +376,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		}
 		
 		// Waiting pane (initially hidden)
-		busyPanel = new BusyPanel(pageArea, SWT.NONE);
+		busyPanel = new BusyPanel(pageContainer, SWT.NONE);
 		GridData busyPanelData = new GridData(SWT.CENTER, SWT.CENTER, true, true, 1, 1);
 		busyPanelData.exclude = true;
 		busyPanel.setLayoutData(busyPanelData);
@@ -302,12 +389,10 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	}
 	
 	/**
-	 * Returns the page container.
-	 * 
-	 * @return Page container
+	 * @return The page container
 	 */
 	protected Composite getPageContainer() {
-		return pageArea;
+		return pageContainer;
 	}
 	
 	/**
@@ -316,6 +401,15 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	 * @return Page area
 	 */
 	protected Composite getPageArea() {
+		return pageArea;
+	}
+	
+	/**
+	 * Returns the page client area.
+	 * 
+	 * @return Page area
+	 */
+	protected Composite getPageClientArea() {
 		return pageClientArea;
 	}
 
@@ -333,7 +427,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	 *  
 	 * @return Status or <code>null</code>
 	 */
-	protected IStatus[] getStatus() {
+	public IStatus[] getStatus() {
 		return status;
 	}
 	
@@ -342,7 +436,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	 * 
 	 * @return <code>true</code> if status has errors
 	 */
-	protected boolean hasStatusError() {
+	public boolean hasStatusError() {
 		boolean isError = false;
 		if (status != null) {
 			for (IStatus stat : status) {
@@ -392,7 +486,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	 * 
 	 * @param status Status to show
 	 */
-	protected void showStatus(IStatus[] status) {
+	public void showStatus(IStatus[] status) {
 		setStatus(status);
 		
 		if (warningPanel != null) {
@@ -401,7 +495,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 			// Show pane
 			GridData data = (GridData)warningPanel.getLayoutData();
 			data.exclude = false;
-			getPageContainer().layout(true);
+			getPageArea().layout(true);
 
 			if (sideBar != null) {
 				sideBar.setState(getPageLabel(), hasStatusError() ? 
@@ -423,7 +517,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 			GridData data = (GridData)warningPanel.getLayoutData();
 			data.exclude = true;
 			warningPanel.setSize(0, 0);
-			getPageContainer().layout(true);
+			getPageArea().layout(true);
 
 			if (sideBar != null) {
 				sideBar.setState(getPageLabel(), SideBarComposite.StepState.NONE);
@@ -487,6 +581,15 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	}
 	
 	/**
+	 * Prints a line of console output.
+	 * 
+	 * @param output Output
+	 */
+	protected void printConsole(String output) {
+		System.out.println(output);
+	}
+	
+	/**
 	 * Returns if the page is currently busy.
 	 * 
 	 * @return <code>true</code> if page is busy.
@@ -502,7 +605,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		IWizardPage[] pages = getWizard().getPages();
 		for (IWizardPage page : pages) {
 			// Skip any setup page
-			if (page instanceof AbstractSetupPage)
+			if (page instanceof ISetupWizardPage)
 				continue;
 			
 			InstallWizardPage installPage = (InstallWizardPage)page;
@@ -538,7 +641,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	public IWizardPage getPreviousPage() {
 		IWizardPage previousPage = super.getPreviousPage();
 		// Don't allow moving back to a setup page if present
-		if (previousPage instanceof AbstractSetupPage) {
+		if (previousPage instanceof ISetupWizardPage) {
 			return null;
 		}
 		else {
@@ -560,7 +663,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	}
 	
 	@Override
-	public void saveInstallData(IInstallData data) {
+	public void saveInstallData(IInstallData data) throws CoreException {
 	}
 
 	@Override
@@ -585,28 +688,84 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 	}
 
 	/**
-	 * Performs a long running operation.  A waiting animation is displayed
-	 * instead of the page contents until the operation is complete.
+	 * Performs a long running operation.  If the installer is running in GUI mode, a busy animation is 
+	 * displayed instead of the page contents until the operation is complete.  If the insaller is running
+	 * in console mode, the runnable is called directly.
 	 * 
-	 * @param message Waiting message to display
+	 * @param message Busy message to display
 	 * @param runnable Operation to run
 	 */
 	protected void runOperation(String message, Runnable runnable) {
-		InstallWizard wizard = (InstallWizard)getWizard();
-		wizard.runOperation(this, message, runnable);
+		// Console mode
+		if (isConsoleMode()) {
+			runnable.run();
+		}
+		// GUI mode
+		else {
+			InstallWizard wizard = (InstallWizard)getWizard();
+			wizard.runOperation(this, message, runnable);
+		}
 	}
 	
 	/**
-	 * Removes any formatting from text.
+	 * Performs a long running operation.  A busy animation is displayed
+	 * instead of the page contents if the operation takes longer than the
+	 * specified time.
+	 * 
+	 * @param message Busy message to display
+	 * @param runnable Operation to run
+	 * @param delay Delay (ms) before showing busy animation
+	 */
+	protected void runOperation(String message, Runnable runnable, int delay) {
+		InstallWizard wizard = (InstallWizard)getWizard();
+		wizard.runOperation(this, message, runnable, delay);
+	}
+	
+	/**
+	 * @return Returns the current install mode.
+	 */
+	protected IInstallMode getInstallMode() {
+		return Installer.getDefault().getInstallManager().getInstallMode();
+	}
+
+	/**
+	 * Formats a message for the console.  Any special formatting tags are 
+	 * removed.  Copyright and trademark symbols are replaced with suitable
+	 * substitutes for the console.
 	 * 
 	 * @param text Formatted text
 	 * @return Text with formatting removed
 	 */
-	protected String removeFormatting(String text) {
+	public static String formatConsoleMessage(String text) {
+		// Remove formatting
 		text = text.replace("<b>", "");
 		text = text.replace("</b>", "");
 		text = text.replace("<i>", "");
 		text = text.replace("</i>", "");
+		text = text.replace("<u>", "");
+		text = text.replace("</u>", "");
+		text = text.replace("<strike>", "");
+		text = text.replace("</strike>", "");
+		text = text.replace("<small>", "");
+		text = text.replace("</small>", "");
+		text = text.replace("<big>", "");
+		text = text.replace("</big>", "");
+		// Replace any trademarks
+		text = replaceTrademarks(text);
+		
+		return text;
+	}
+	
+	/**
+	 * Replaces copyright and trademark symbols substitutes.
+	 * 
+	 * @param text Text to replace
+	 * @return Replaced text
+	 */
+	public static String replaceTrademarks(String text) {
+		text = text.replaceAll("(?i)\\u00a9", "Copyright");
+		text = text.replaceAll("(?i)\\u00ae", "(R)");
+		text = text.replaceAll("(?i)\\u2122", "(TM)");
 		
 		return text;
 	}
@@ -616,13 +775,109 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
 		
 		// By default, pages are supported in a new install only
-		return (mode.isInstall() && !mode.isUpdate() && !mode.isPatch());
+		return (mode.isInstall() && !mode.isUpdate() && !mode.isPatch() && !mode.isMirror());
+	}
+
+	@Override
+	public void setVisible(boolean visible) {
+		super.setVisible(visible);
+		
+		// If auto-updating
+		if (getAutoUpdate()) {
+			// Start update thread if page is visible
+			if (visible) {
+				runUpdateJob(true);
+			}
+			// else stop update thread when page is not visible
+			else {
+				runUpdateJob(false);
+			}
+		}
 	}
 
 	/**
+	 * Sets the page to start automatically updating.  If auto-update is enabled, the {@link #autoUpdate()}
+	 * method will be called periodically to update the page.
+	 * 
+	 * @see #autoUpdate()
+	 * @see #stopAutoUpdate()
+	 */
+	protected void startAutoUpdate() {
+		startAutoUpdate(DEFAULT_UPDATE_DELAY);
+	}
+	
+	/**
+	 * Sets the page to start automatically updating.  If auto-update is enabled, the {@link #autoUpdate()}
+	 * method will be called periodically to update the page.
+	 * 
+	 * @param delay Delay in milliseconds.
+	 * @see #autoUpdate()
+	 * @see #stopAutoUpdate()
+	 */
+	protected void startAutoUpdate(int delay) {
+		this.autoUpdate = true;
+		
+		if (delay < 0) {
+			delay = DEFAULT_UPDATE_DELAY;
+		}
+		this.autoUpdateDelay = delay;
+		
+		runUpdateJob(true);
+	}
+	
+	/**
+	 * Stops the page auto-updating.
+	 */
+	protected void stopAutoUpdate() {
+		this.autoUpdate = false;
+		runUpdateJob(false);
+	}
+	
+	/**
+	 * @return <code>true</code> if automatic updating is enabled.
+	 */
+	protected boolean getAutoUpdate() {
+		return autoUpdate;
+	}
+
+	/**
+	 * Starts or stops the automatic update job.
+	 * 
+	 * @param start <code>true</code> to start, <code>false</code> to stop.
+	 */
+	private void runUpdateJob(boolean start) {
+		if (start) {
+			if (updateJob == null) {
+				updateJob = new AutoUpdateJob(autoUpdateDelay);
+				updateJob.schedule();
+			}
+		}
+		else {
+			if (updateJob != null) {
+				updateJob.cancel();
+				updateJob = null;
+			}
+		}
+	}
+	
+	/**
+	 * Called periodically if auto-updating is enabled.  This method should be overridden to perform required periodic
+	 * updates the page.
+	 * 
+	 * @see {@link #startAutoUpdate()}
+	 * @see {@link #stopAutoUpdate()}
+	 */
+	protected void autoUpdate() {
+		// Base does nothing
+	}
+	
+	/**
 	 * Composite to show status.
 	 */
-	private class WarningPanel extends Composite {
+	private class WarningPanel extends ScrolledComposite {
+		/** Panel area */
+		private Composite panelArea;
+		
 		/**
 		 * Constructor
 		 * 
@@ -630,10 +885,48 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		 * @param style Style
 		 */
 		public WarningPanel(Composite parent, int style) {
-			super(parent, style);
-			setLayout(new GridLayout(2, false));
+			super(parent, style | SWT.V_SCROLL);
+			panelArea = new Composite(this, SWT.NONE);
+			GridLayout panelLayout = new GridLayout(2, false);
+			panelLayout.marginHeight = panelLayout.marginWidth = 0;
+			panelArea.setLayout(panelLayout);
+			setContent(panelArea);
+			setExpandHorizontal(true);
+			parent.addControlListener(new ControlAdapter() {
+				@Override
+				public void controlResized(ControlEvent e) {
+					updateLayout();
+				}
+			});
+		}
+		
+		/**
+		 * Returns the panel area.
+		 * 
+		 * @return Panel area
+		 */
+		private Composite getPanelArea() {
+			return panelArea;
 		}
 
+		/**
+		 * Updates the layout of the panel.
+		 */
+		private void updateLayout() {
+			if ((getPanelArea() != null) && !getPanelArea().isDisposed()) {
+				int width = getParent().getSize().x;
+				Point panelSize = getPanelArea().computeSize(width > 0 ? width : SWT.DEFAULT, SWT.DEFAULT);
+				getPanelArea().setSize(panelSize);
+				getPanelArea().layout(true);
+				// Limit height of warning panel
+				GridData data = (GridData)getLayoutData();
+				data.heightHint = (panelSize.y > maxWarningHeight) ? maxWarningHeight : SWT.DEFAULT;
+				setLayoutData(data);
+	
+				getPageArea().layout(true);
+			}
+		}
+		
 		/**
 		 * Sets the panel status.
 		 * 
@@ -642,8 +935,20 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		public void setStatus(IStatus[] statuses) {
 			clearStatus();
 			
+			// Skip warnings and information if the status has errors
+			boolean onlyErrors = false;
 			for (IStatus status : statuses) {
-				Label iconLabel = new Label(this, SWT.NONE);
+				if (status.getSeverity() == IStatus.ERROR) {
+					onlyErrors = true;
+				}
+			}
+			
+			for (IStatus status : statuses) {
+				// Show only errors
+				if (onlyErrors && (status.getSeverity() != IStatus.ERROR))
+					continue;
+				
+				Label iconLabel = new Label(getPanelArea(), SWT.NONE);
 				iconLabel.setLayoutData(new GridData(SWT.CENTER, SWT.BEGINNING, false, false, 1, 1));
 				if (status.getSeverity() == IStatus.WARNING) {
 					iconLabel.setImage(Installer.getDefault().getImageRegistry().get(IInstallerImages.WARNING));
@@ -656,13 +961,12 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 				}
 				StringBuilder buffer = new StringBuilder();
 				getStatusMessage(buffer, status);
-				Label messageLabel = new Label(this, SWT.WRAP);
+				Label messageLabel = new Label(getPanelArea(), SWT.WRAP);
 				messageLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
-				messageLabel.setFont(getBoldFont());
 				messageLabel.setText(buffer.toString());
 			}
-			
-			layout(true);
+
+			updateLayout();
 		}
 		
 		/**
@@ -685,7 +989,7 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		 * Clears the panel status.
 		 */
 		public void clearStatus() {
-			Control[] children = getChildren();
+			Control[] children = getPanelArea().getChildren();
 			for (Control child : children) {
 				child.dispose();
 			}
@@ -731,6 +1035,56 @@ public abstract class InstallWizardPage extends WizardPage implements IInstallWi
 		 */
 		public void stopBusy() {
 			waitCtrl.animate(false);
+		}
+	}
+	
+	/**
+	 * Job that periodically calls the auto-update method on the UI thread.
+	 */
+	private class AutoUpdateJob extends Job {
+		/** Update delay */
+		private int delay;
+		
+		/**
+		 * Constructs auto-update thread.
+		 * 
+		 * @param delay Delay in milliseconds.
+		 */
+		public AutoUpdateJob(int delay) {
+			super("WizardPageAutoUpdateJob");
+			this.delay = delay;
+			setSystem(true);
+		}
+
+		@Override
+		protected IStatus run(final IProgressMonitor monitor) {
+			try {
+				while (!monitor.isCanceled()) {
+					Thread.sleep(delay);
+
+					synchronized(this) {
+						if (!monitor.isCanceled()) {
+							// Run in UI thread
+							getShell().getDisplay().asyncExec(new Runnable() {
+								@Override
+								public void run() {
+									try {
+										autoUpdate();
+									}
+									catch (Exception e) {
+										Installer.log(e);
+										monitor.setCanceled(true);
+									}
+								}
+							});
+						}
+					}
+				}
+			} catch (Exception e) {
+				Installer.log(e);
+			}
+			
+			return Status.OK_STATUS;
 		}
 	}
 }

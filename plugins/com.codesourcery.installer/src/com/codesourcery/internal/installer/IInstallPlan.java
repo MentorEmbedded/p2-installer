@@ -34,9 +34,23 @@ public interface IInstallPlan {
 	
 	/**
 	 * Returns the size of the installation.  This will include the size of
-	 * the uninstaller if is included.
+	 * the uninstaller if it is included.
 	 * 
 	 * @return Installation size in bytes
 	 */
 	public long getSize();
+	
+	/**
+	 * Returns the total size required for installation.
+	 * 
+	 * @return Required size in bytes
+	 */
+	public long getRequiredSize();
+	
+	/**
+	 * Returns the usable free space.
+	 * 
+	 * @return Free space in bytes
+	 */
+	public long getAvailableSpace();
 }

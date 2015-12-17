@@ -15,6 +15,7 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Status;
 
+import com.codesourcery.installer.IInstallComponent;
 import com.codesourcery.installer.IInstallManifest;
 import com.codesourcery.installer.IInstallProduct;
 import com.codesourcery.installer.Installer;
@@ -36,18 +37,17 @@ public class SilentInstallOperation extends InstallOperation {
 		try {
 			// Install
 			if (getInstallManager().getInstallMode().isInstall()) {
-				// Installation data
-				InstallData installData = new InstallData();
-	
-				checkStatus(ContributorRegistry.getDefault().verifyInstallLocation(getInstallManager().getInstallDescription().getRootLocation()));
+				InstallManager manager = (InstallManager)Installer.getDefault().getInstallManager();
+				checkStatus(manager.verifyInstallLocation(getInstallManager().getInstallDescription().getRootLocation()));
 				
 				// Set default install location
-				getInstallManager().setInstallLocation(getInstallManager().getInstallDescription().getRootLocation());
-				// Wait for repository load
-				RepositoryManager.getDefault().waitForLoad();
+				getInstallManager().setInstallLocation(getInstallManager().getInstallDescription().getRootLocation(), null);
+				// Verify components
+				IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents(false);
+				checkStatus(manager.verifyInstallComponents(components));
 				
 				// Perform installation.
-				getInstallManager().install(installData, new NullProgressMonitor());
+				getInstallManager().install(new NullProgressMonitor());
 			}
 			// Uninstall
 			else {
@@ -62,12 +62,14 @@ public class SilentInstallOperation extends InstallOperation {
 		// Install aborted
 		catch (IllegalArgumentException e) {
 			status = new Status(IStatus.CANCEL, Installer.ID, 0, e.getLocalizedMessage(), null);
-			System.out.println(e.getMessage());
+			showError(e.getMessage());
+			cleanupInstallation();
 		}
 		catch (Exception e) {
 			status = new Status(IStatus.ERROR, Installer.ID, 0, e.getLocalizedMessage(), e);
 			Installer.log(e);
-			System.err.println(e.getLocalizedMessage());
+			showError(e.getLocalizedMessage());
+			cleanupInstallation();
 		}
 		
 		// Write status
@@ -87,5 +89,10 @@ public class SilentInstallOperation extends InstallOperation {
 			}
 		}
 		
+	}
+
+	@Override
+	public void showError(String message) {
+		System.err.println(message);
 	}
 }

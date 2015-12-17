@@ -49,6 +49,8 @@ public class InfoList extends ScrolledComposite {
 	private ListenerList selectionListeners;
 	/** Mouse listeners */
 	private ListenerList mouseListeners;
+	/** <code>true</code> if text should be shortened */
+	private boolean shortenText = false;
 
 	/**
 	 * Constructor
@@ -138,6 +140,26 @@ public class InfoList extends ScrolledComposite {
 	}
 
 	/**
+	 * Sets if the label text should be shortened if it will not fit in the
+	 * button width.  The middle of the text will be replaced with "..." to
+	 * fit the width.
+	 *  
+	 * @param shortenText <code>true</code> to shorten text
+	 */
+	public void setShortenText(boolean shortenText) {
+		this.shortenText = shortenText;
+	}
+	
+	/**
+	 * Returns if the label text should be shortened.
+	 * 
+	 * @return <code>true</code> if text will be shortened
+	 */
+	public boolean getShortenText() {
+		return shortenText;
+	}
+
+	/**
 	 * Sets the label font.
 	 * 
 	 * @param labelFont Label font
@@ -169,6 +191,7 @@ public class InfoList extends ScrolledComposite {
 	 */
 	public InfoButton addItem(Image image, String text, String description) {
 		InfoButton button = new InfoButton(getItemsArea(), SWT.RADIO);
+		button.setShortenText(getShortenText());
 		
 		button.setImage(image);
 		button.setText(text);

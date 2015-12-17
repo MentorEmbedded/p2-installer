@@ -15,6 +15,12 @@ package com.codesourcery.internal.installer;
  */
 public class IInstallConstants {
 	/**
+	 * Environment variable used by SFX to allow the user to direct where the 
+	 * installer is unpacked, overriding the default provided by TEMP
+	 */
+	public static final String P2_INSTALLER_TEMP_PATH = "P2_INSTALLER_TEMP_PATH";
+	
+	/**
 	 * Default install data folder
 	 */
 	public static final String DEFAULT_INSTALL_DATA_FOLDER = ".p2_installer";
@@ -99,6 +105,10 @@ public class IInstallConstants {
 	 * directory.
 	 * ONLY USE THIS OPTION IN A DEPLOYED PRODUCT (NOT DEVELOPMENT), OTHERWISE
 	 * IT WILL DELETE YOUR SOURCES.
+	 * This will cause all parent directories up to the point of the system
+	 * temporary directory, or the directory pointed at by the
+	 * P2_INSTALLER_TEMP_PATH environment variable (if used), to be deleted
+	 * if they are not empty.
 	 * <code>
 	 * -install.once
 	 * </code>
@@ -138,6 +148,35 @@ public class IInstallConstants {
 	public static final String COMMAND_LINE_INSTALL_PROPERTY = "-install.D";
 
 	/**
+	 * Command line option to run installer without acquiring lock.
+	 * <code>
+	 * -install.nolock
+	 * </code>
+	 */
+	public static final String COMMAND_LINE_NO_LOCK = "-install.nolock";
+
+	/**
+	 * Command line option to suppress the install wizard application window 
+	 * from forcing to front on startup (in GUI mode). 
+	 * <code>
+	 * -install.nofront
+	 * </code>
+	 */
+	public static final String COMMAND_LINE_NO_FRONT = "-install.nofront";
+
+	/**
+	 * Command line option to specify a particular P2 repositories mirror 
+	 * should be used.
+	 * See the documentation for <code>eclipse.p2.repos.mirror</code> in the
+	 * installer.properties.
+	 * The syntax for this option is:
+	 * -install.mirror=<id>
+	 * where <id> is the identifier for the mirror to use or <code>"default</code>
+	 * for the defautl mirror.
+	 */
+	public static final String COMMAND_LINE_MIRROR= "-install.mirror";
+
+	/**
 	 * Command line option to print help and exit.
 	 * <code>
 	 * -install.help
@@ -145,6 +184,22 @@ public class IInstallConstants {
 	 */
 	public static final String COMMAND_LINE_INSTALL_HELP = "-help";
 
+	/**
+	 * Command line option to save the install data to a mirror repository.
+	 * <code>
+	 * -saveInstall=<path to save installation>
+	 * </code>
+	 */
+	public static final String COMMAND_LINE_SAVE_INSTALL = "-saveInstall";
+
+	/**
+	 * Command line option to use a saved mirror repository for installation.
+	 * <code>
+	 * -loadInstall=<path to save installation>
+	 * </code>
+	 */
+	public static final String COMMAND_LINE_LOAD_INSTALL = "-loadInstall";
+	
 	/**
 	 * OSGI install area system property.
 	 */
@@ -179,21 +234,4 @@ public class IInstallConstants {
 	 * Default P2 agent directory
 	 */
 	public static final String P2_DIRECTORY = "p2";
-	
-	/** Installation folder (String) */
-	public static final String PROPERTY_INSTALL_FOLDER = "com.codesourcery.installer.folder";
-	/** Modify system PATH (Boolean) */
-	public static final String PROPERTY_MODIFY_PATHS = "com.codesourcery.installer.modifyPaths";
-	/** Create desktop shortcuts (Boolean) */
-	public static final String PROPERTY_DESKTOP_SHORTCUTS = "com.codesourcery.installer.desktopShortcuts";
-	/** Create program shortcuts (Boolean) */
-	public static final String PROPERTY_PROGRAM_SHORTCUTS = "com.codesourcery.installer.programShortcuts";
-	/** Create launcher shortcuts (Boolean) */
-	public static final String PROPERTY_LAUNCHER_SHORTCUTS = "com.codesourcery.installer.launcherShortcuts";
-	/** Program shortcuts folder (String) */
-	public static final String PROPERTY_PROGRAM_SHORTCUTS_FOLDER = "com.codesourcery.installer.programShortcutsFolder";
-	/** Install add-ons (Boolean) */
-	public static final String PROPERTY_INSTALL_ADDONS = "com.codesourcery.installer.installAddons";
-	/** Install size in bytes (Long) */
-	public static final String PROPERTY_INSTALL_SIZE = "com.codesourcery.installer.installSize";
 }

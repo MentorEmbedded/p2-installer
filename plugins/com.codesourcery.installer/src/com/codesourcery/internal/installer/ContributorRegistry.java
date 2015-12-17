@@ -11,7 +11,6 @@
 package com.codesourcery.internal.installer;
 
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Vector;
 
@@ -20,8 +19,6 @@ import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.core.runtime.IConfigurationElement;
 import org.eclipse.core.runtime.IExtension;
 import org.eclipse.core.runtime.IExtensionPoint;
-import org.eclipse.core.runtime.IPath;
-import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.jface.resource.ImageDescriptor;
@@ -30,7 +27,7 @@ import org.osgi.framework.Bundle;
 
 import com.codesourcery.installer.IInstallAction;
 import com.codesourcery.installer.IInstallModule;
-import com.codesourcery.installer.IInstallVerifier;
+import com.codesourcery.installer.IInstallPlatformActions;
 import com.codesourcery.installer.Installer;
 
 /**
@@ -45,18 +42,18 @@ public class ContributorRegistry {
 	private static final String ACTIONS_EXTENSION_ID = "actions"; //$NON-NLS-1$
 	/** Action extension element */
 	private static final String ELEMENT_ACTION = "action"; //$NON-NLS-1$
-	/** Verifiers extension identifier */
-	private static final String VERIFIERS_EXTENSION_ID = "verifiers"; //$NON-NLS-1$
-	/** Verifier extension element */
-	private static final String ELEMENT_VERIFIER = "verifier"; //$NON-NLS-1$
-	/** Class extension attribute */
-	private static final String ATTRIBUTE_CLASS = "class"; //$NON-NLS-1$
 	/** Icon extension identifier */
 	private static final String ICON_EXTENSION_ID = "icon"; //$NON-NLS-1$
 	/** Icon extension element */
 	private static final String ELEMENT_ICON = "icon"; //$NON-NLS-1$
 	/** Image extension attribute */
 	private static final String ATTRIBUTE_IMAGE = "image"; //$NON-NLS-1$
+	/** Platform actions provider extension identifier */
+	private static final String PLATFORM_ACTIONS_EXTENSION_ID = "platformActionsProvider"; //$NON-NLS-1$
+	/** Provider extension element */
+	private static final String ELEMENT_PROVIDER = "actionsProvider"; //$NON-NLS-1$
+	/** Class extension attribute */
+	private static final String ATTRIBUTE_CLASS = "class"; //$NON-NLS-1$
 
 	/** Default instance */
 	private static ContributorRegistry registry = null;
@@ -65,11 +62,9 @@ public class ContributorRegistry {
 	private IInstallModule[] modules;
 	/** Registered actions providers */
 	private ActionDescription[] actions;
-	/** Registered install verifiers */
-	private IInstallVerifier[] verifiers;
 	/** Icon image */
 	private Image iconImage;
-
+	
 	/**
 	 * Returns the default instance.
 	 * 
@@ -80,43 +75,6 @@ public class ContributorRegistry {
 			registry = new ContributorRegistry();
 
 		return registry;
-	}
-	
-	/**
-	 * Returns all registered install verifiers.
-	 * 
-	 * @return Install verifiers
-	 */
-	public IInstallVerifier[] getInstallVerifiers() {
-		if (verifiers != null)
-			return verifiers;
-
-		Vector<IInstallVerifier> contributions = new Vector<IInstallVerifier>();
-		// Loop through the registered modules
-		String plugin = Installer.getDefault().getContext().getBundle().getSymbolicName();
-		IExtensionPoint extensionPoint = Platform.getExtensionRegistry().getExtensionPoint(plugin, VERIFIERS_EXTENSION_ID);
-		IExtension[] extensions = extensionPoint.getExtensions();
-		for (int i1 = 0; i1 < extensions.length; i1++) {
-			// Loop through the extension elements
-			IConfigurationElement[] elements = extensions[i1].getConfigurationElements();
-			for (int i2 = 0; i2 < elements.length; i2++) {
-				try {
-					// Verifier element
-					IConfigurationElement confElement = elements[i2];
-					if (!(confElement.getName().equals(ELEMENT_VERIFIER))) //$NON-NLS-1$
-						continue;
-	
-					IInstallVerifier verifier = (IInstallVerifier)confElement.createExecutableExtension(ATTRIBUTE_CLASS);
-					contributions.add(verifier);
-				}
-				catch (Exception e) {
-					Installer.log(e);
-				}
-			}
-		}
-
-		verifiers = contributions.toArray(new IInstallVerifier[contributions.size()]);
-		return verifiers;
 	}
 	
 	/**
@@ -161,6 +119,44 @@ public class ContributorRegistry {
 
 		modules = contributors.toArray(new IInstallModule[0]);
 		return modules;
+	}
+	
+	/**
+	 * Returns the registered platform actions if available.  If multiple
+	 * platform actions are registered, the first is returned.
+	 * 
+	 * @return Platform actions or <code>null</code> if not available.
+	 */
+	public IInstallPlatformActions getPlatformActions() {
+		IInstallPlatformActions actionsProvider = null;
+		
+		String plugin = Installer.getDefault().getContext().getBundle().getSymbolicName();
+		IExtensionPoint extensionPoint = Platform.getExtensionRegistry().getExtensionPoint(plugin, PLATFORM_ACTIONS_EXTENSION_ID);
+		IExtension[] extensions = extensionPoint.getExtensions();
+		for (IExtension extension : extensions) {
+			IConfigurationElement[] elements = extension.getConfigurationElements();
+			for (IConfigurationElement element : elements) {
+				if (element.getName().equals(ELEMENT_PROVIDER)) {
+					try {
+						Object exe = element.createExecutableExtension(ATTRIBUTE_CLASS);
+						if (exe instanceof IInstallPlatformActions) {
+							actionsProvider = (IInstallPlatformActions)exe;
+							break;
+						}
+						else {
+							Installer.log("Extension must implement IInstallPlatformActions interface.");
+						}
+					} catch (CoreException e) {
+						Installer.log(e);
+					}
+				}
+			}
+			if (actionsProvider != null) {
+				break;
+			}
+		}
+		
+		return actionsProvider;
 	}
 
 	/**
@@ -253,46 +249,5 @@ public class ContributorRegistry {
 			}
 		}
 		return null;
-	}
-	
-	/**
-	 * Verifies an installation folder.
-	 * 
-	 * @param installLocation Install location
-	 * @return Status for the folder
-	 */
-	public IStatus[] verifyInstallLocation(IPath installLocation) {
-
-		ArrayList<IStatus> status = new ArrayList<IStatus>();
-		// Check installation location with verifiers
-		IInstallVerifier[] verifiers = ContributorRegistry.getDefault().getInstallVerifiers();
-		for (IInstallVerifier verifier : verifiers) {
-			IStatus verifyStatus = verifier.verifyInstallLocation(installLocation);
-			if ((verifyStatus != null) && !verifyStatus.isOK()) {
-				status.add(verifyStatus);
-			}
-		}
-		
-		return status.toArray(new IStatus[status.size()]);
-	}
-	
-	/**
-	 * Verify the user supplied credentials to insure they are valid
-	 * 
-	 * @param username
-	 * @param password
-	 * @return
-	 */
-	public IStatus[] verifyCredentials(String username, String password) {
-		IInstallVerifier[] verifiers = ContributorRegistry.getDefault().getInstallVerifiers();
-		ArrayList<IStatus> status = new ArrayList<IStatus>();
-		
-		for (IInstallVerifier verifier : verifiers) {
-			IStatus verifyStatus = verifier.verifyCredentials(username, password);
-			if ((verifyStatus != null) && !verifyStatus.isOK()) {
-				status.add(verifyStatus);
-			}
-		}
-		return status.toArray(new IStatus[status.size()]);
 	}
 }

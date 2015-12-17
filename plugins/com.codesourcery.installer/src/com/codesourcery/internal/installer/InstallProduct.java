@@ -11,6 +11,9 @@
 package com.codesourcery.internal.installer;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.equinox.p2.metadata.IVersionedId;
@@ -27,6 +30,8 @@ public class InstallProduct implements IInstallProduct {
 	private String id;
 	/** Product name */
 	private String name;
+	/** Uninstall name */
+	private String uninstallName;
 	/** Product version string */
 	private String versionText;
 	/** Product version */
@@ -39,6 +44,8 @@ public class InstallProduct implements IInstallProduct {
 	private IPath installLocation;
 	/** Installed units */
 	private ArrayList<IVersionedId> units = new ArrayList<IVersionedId>();
+	/** Product installation properties */
+	private HashMap<String, String> properties = new HashMap<String, String>();
 	
 	/**
 	 * Constructor
@@ -46,14 +53,16 @@ public class InstallProduct implements IInstallProduct {
 	 * @param id Product identifier
 	 * @param name Product name
 	 * @param version Product version
+	 * @param uninstallName Uninstall Name of product
 	 * @param location Product install location
 	 * @param installLocation P2 install location
 	 */
 	public InstallProduct(String id, String name, String version, 
-			IPath location, IPath installLocation) {
+			String uninstallName, IPath location, IPath installLocation) {
 		this.id = id;
 		this.name = name;
 		this.versionText = version;
+		this.uninstallName = (uninstallName != null) ? uninstallName : name;
 		this.location = location;
 		this.installLocation = installLocation;
 		this.version = InstallUtils.createVersion(version);
@@ -67,6 +76,11 @@ public class InstallProduct implements IInstallProduct {
 	@Override
 	public String getName() {
 		return name;
+	}
+
+	@Override
+	public String getUninstallName() {
+		return uninstallName;
 	}
 
 	@Override
@@ -127,5 +141,20 @@ public class InstallProduct implements IInstallProduct {
 	@Override
 	public IVersionedId[] getInstallUnits() {
 		return units.toArray(new IVersionedId[units.size()]);
+	}
+
+	@Override
+	public void setProperty(String name, String value) {
+		properties.put(name, value);
+	}
+
+	@Override
+	public String getProperty(String name) {
+		return properties.get(name);
+	}
+
+	@Override
+	public Map<String, String> getProperties() {
+		return Collections.unmodifiableMap(properties);
 	}
 }

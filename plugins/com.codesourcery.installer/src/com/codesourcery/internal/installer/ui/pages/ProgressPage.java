@@ -23,6 +23,7 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Layout;
 import org.eclipse.swt.widgets.Listener;
 
+import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.ui.FormattedLabel;
@@ -43,6 +44,8 @@ public class ProgressPage extends InstallWizardPage {
 	private BusyAnimationControl animateCtrl;
 	/** Progress label */
 	private FormattedLabel progressLabel;
+	/** Main area */
+	private Composite area;
 
 	/**
 	 * Constructor
@@ -50,14 +53,30 @@ public class ProgressPage extends InstallWizardPage {
 	 * @param pageName Page name
 	 */
 	public ProgressPage(String pageName) {
-		super(pageName, ""); 
+		super(pageName, "");
 	}
 	
 	@Override
-	public String getPageLabel() {
-		return Installer.getDefault().getInstallManager().getInstallMode().isInstall() ?
-				InstallMessages.InstallingPageTitle :
-					InstallMessages.Uninstalling;
+	public void initPageLabel() {
+		String label;
+		
+		// Installing
+		if (getInstallMode().isInstall()) {
+			IInstallDescription desc = Installer.getDefault().getInstallManager().getInstallDescription();
+			
+			if (getInstallMode().isMirror()) {
+				label = desc.getText(IInstallDescription.TEXT_PROGRESS_PAGE_NAME_MIRRORING, InstallMessages.MirroringPageTitle);
+			}
+			else {
+				label = desc.getText(IInstallDescription.TEXT_PROGRESS_PAGE_NAME_INSTALLING, InstallMessages.InstallingPageTitle);
+			}
+		}
+		// Uninstalling
+		else {
+			label = InstallMessages.Uninstalling;
+		}
+		
+		setPageLabel(label);
 	}
 
 	/**
@@ -69,9 +88,18 @@ public class ProgressPage extends InstallWizardPage {
 		return progressMonitorPart;
 	}
 	
+	/**
+	 * Returns the main page area.
+	 * 
+	 * @return Area
+	 */
+	private Composite getArea() {
+		return area;
+	}
+	
 	@Override
 	public Control createContents(Composite parent) {
-		Composite area = new Composite(parent, SWT.NONE);
+		area = new Composite(parent, SWT.NONE);
 		
 		area.setLayout(new GridLayout(2, false));
 		area.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
@@ -104,6 +132,8 @@ public class ProgressPage extends InstallWizardPage {
 			IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();		
 			String message;
 			if (mode.isInstall()) {
+				IInstallDescription desc = (IInstallDescription)Installer.getDefault().getInstallManager().getInstallDescription();
+				
 				String productName = Installer.getDefault().getInstallManager().getInstallDescription().getProductName();
 				// Upgrading
 				if (mode.isUpgrade()) {
@@ -115,7 +145,14 @@ public class ProgressPage extends InstallWizardPage {
 				}
 				// Installing
 				else {
-					message = MessageFormat.format(InstallMessages.InstallingMessage0, new Object[] { productName });
+					if (mode.isMirror()) {
+						message = desc.getText(IInstallDescription.TEXT_PROGRESS_PAGE_MESSAGE_MIRRORING, 
+								MessageFormat.format(InstallMessages.MirroringMessage0, new Object[] { productName }));
+					}
+					else {
+						message = desc.getText(IInstallDescription.TEXT_PROGRESS_PAGE_MESSAGE_INSTALLING, 
+								MessageFormat.format(InstallMessages.InstallingMessage0, new Object[] { productName }));
+					}
 				}
 			}
 			else {
@@ -123,6 +160,7 @@ public class ProgressPage extends InstallWizardPage {
 			}
 			
 			progressLabel.setText(message);
+			getArea().layout(true);
 		}
 		catch (Exception e) {
 			Installer.log(e);

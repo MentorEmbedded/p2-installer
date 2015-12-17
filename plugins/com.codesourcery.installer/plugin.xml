@@ -3,8 +3,8 @@
 <plugin>
    <extension-point id="modules" name="Installer modules" schema="schema/modules.exsd"/>
    <extension-point id="actions" name="Installer actions" schema="schema/actions.exsd"/>
-   <extension-point id="verifiers" name="Installer verifiers" schema="schema/verifiers.exsd"/>
    <extension-point id="icon" name="Wizard Icon" schema="schema/icon.exsd"/>
+   <extension-point id="platformActionsProvider" name="Platform actions provider" schema="schema/platformActionsProvider.exsd"/>
 
    <extension
          id="application"
@@ -20,10 +20,10 @@
          point="org.eclipse.core.runtime.products">
       <product
             application="com.codesourcery.installer.application"
-            name="P2 Installer">
+            name="ESD Installer">
          <property
                name="appName"
-               value="P2 Installer">
+               value="ESD Installer">
          </property>
          <property
                name="aboutImage"
@@ -31,7 +31,7 @@
          </property>
          <property
                name="aboutText"
-               value="P2 Installer">
+               value="Installer">
          </property>
          <property
                name="windowImages"
@@ -42,7 +42,7 @@
       
    <extension point="com.codesourcery.installer.modules">
    		<module
-   			id="com.codesourcery.installer.generalModule" 
+   			id="com.codesourcery.installer.module.default" 
    			class="com.codesourcery.internal.installer.GeneralInstallModule" />
    </extension>
    <extension
@@ -65,13 +65,6 @@
       <action
             id="com.codesourcery.installer.EnvironmentAction"
             class="com.codesourcery.installer.actions.EnvironmentAction" />
-   </extension>
-   <extension
-         point="com.codesourcery.installer.verifiers">
-      <verifier
-            class="com.codesourcery.internal.installer.GeneralInstallVerifier"
-            id="com.codesourcery.installVerifier">
-      </verifier>
    </extension>
 
 </plugin>

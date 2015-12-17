@@ -14,11 +14,13 @@ package com.codesourcery.internal.installer;
 
 import java.io.File;
 
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
 import org.eclipse.swt.widgets.Display;
 
+import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallMode.InstallerRunMode;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.internal.installer.ui.GUIInstallOperation;
@@ -37,21 +39,20 @@ public class InstallApplication implements IApplication {
 	private InstallOperation createInstallOperation() {
 		InstallOperation operation = null;
 
-		InstallMode mode = (InstallMode)Installer.getDefault().getInstallManager().getInstallMode();
-		
+		InstallerRunMode runMode;
 		// Silent installation
 		if (Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_SILENT)) {
-			mode.setRunMode(InstallerRunMode.SILENT);
+			runMode = InstallerRunMode.SILENT;
 			operation = createSilentInstallOperation();
 		}
 		// Console installation
 		else if (Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_CONSOLE)) {
-			mode.setRunMode(InstallerRunMode.CONSOLE);
+			runMode = InstallerRunMode.CONSOLE;
 			operation = createConsoleInstallOperation();
 		}
 		// Wizard based UI installation
 		else {
-			mode.setRunMode(InstallerRunMode.GUI);
+			runMode = InstallerRunMode.GUI;
 			operation = createGuiInstallOperation();
 			// If no display is available, use console install
 			if (operation == null) {
@@ -59,9 +60,16 @@ public class InstallApplication implements IApplication {
 			}
 		}
 		
+		// Set install mode
+		if (Installer.getDefault().getInstallManager() != null) {
+			InstallMode installMode = (InstallMode)Installer.getDefault().getInstallManager().getInstallMode();
+			installMode.setRunMode(runMode);
+		}
+		
 		// Status file option
 		if (Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_STATUS)) {
-			operation.setStatusFile(new Path(Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_STATUS)));
+			String statusFile = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_STATUS);
+			operation.setStatusFile(InstallUtils.resolvePath(statusFile));
 		}
 		
 		return operation;
@@ -75,10 +83,15 @@ public class InstallApplication implements IApplication {
 	private InstallOperation createConsoleInstallOperation() {
 		ConsoleInstallOperation consoleOperation = new ConsoleInstallOperation();
 
-		// Set maximum number of lines to display
-		String consoleArg = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_CONSOLE);
-		if (consoleArg != null) {
-			consoleOperation.setMaxLines(Integer.parseInt(consoleArg));
+		try {
+			// Set maximum number of lines to display
+			String consoleArg = Installer.getDefault().getCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_CONSOLE);
+			if (consoleArg != null) {
+				consoleOperation.setMaxLines(Integer.parseInt(consoleArg));
+			}
+		}
+		catch (NumberFormatException e) {
+			consoleOperation.showError(InstallMessages.Error_InvalidNumberOfLines);
 		}
 		
 		return consoleOperation;
@@ -121,11 +134,20 @@ public class InstallApplication implements IApplication {
 	@Override
 	public Object start(IApplicationContext appContext) {
 		// Run once then delete installer
+		File selfDirectory = null;
 		boolean runOnce = Installer.getDefault().hasCommandLineOption(IInstallConstants.COMMAND_LINE_INSTALL_ONCE);
 		if (runOnce) {
 			try {
-				File selfDirectory = Installer.getDefault().getInstallFile("");
+				selfDirectory = Installer.getDefault().getInstallFile("");
 				ShutdownHandler.getDefault().addDirectoryToRemove(selfDirectory.getAbsolutePath(), false);
+
+			    String tempDir = System.getenv(IInstallConstants.P2_INSTALLER_TEMP_PATH);
+				if (tempDir == null) {
+					 tempDir = System.getProperty("java.io.tmpdir");
+				}
+				if (tempDir != null) {
+					removeParentDirectories(selfDirectory, tempDir);
+				}
 			}
 			catch (Exception e) {
 				Installer.log(e);
@@ -146,6 +168,7 @@ public class InstallApplication implements IApplication {
 		// Set application running
 		appContext.applicationRunning();
 
+		initializeNetworkSettings();
 		initializeProxySupport();
 
 		// Create install operation
@@ -153,10 +176,60 @@ public class InstallApplication implements IApplication {
 		if (installOperation == null) {
 			Installer.logError(InstallMessages.Error_InstallOperation);
 		}
+		
+		// Another instance is already running
+		if (!Installer.getDefault().hasLock()) {
+			installOperation.showError(InstallMessages.Error_AlreadyRunning);
+		}
 		// Run install operation
-		installOperation.run();
+		else {
+			installOperation.run();
+		}
+		
+		// If run once and an unlocked repos directory is present, delete it before shutting down as it may contain
+		// P2 repository files larger than instmon can handle currently (> 2GB).
+		if (runOnce && (selfDirectory != null)) {
+			try {
+				File reposDirectory = new File(selfDirectory, "repos");
+				if (reposDirectory.exists()) {
+					FileUtils.deleteDirectory(reposDirectory.toPath());
+				}
+			}
+			catch (Exception e) {
+				Installer.log(e);
+			}
+		}
 		
 		return IApplication.EXIT_OK;
+	}
+
+	/**
+	 * Remove any parent directories in the temporary path above the installer. This is to 
+	 * remove any temporary directories created by SFX. Note the installerDir itself will 
+	 * be removed before any parent directories are removed. Furthermore, none of the additional
+	 * parent directories will be removed if they are not already empty. If the temp directory
+	 * is not a prefix of the installer directory, no parent directories are removed.
+	 * 
+	 * @param installerDirectory - Directory containing the installer
+	 * @param tempDir - Temp directory used to extract installer
+	 */
+	private void removeParentDirectories(File installerDirectory,
+			String tempDir) {
+		IPath tempDirPath = new Path(tempDir);
+		IPath installDirPath = new Path(installerDirectory.getAbsolutePath());
+		
+		if (tempDirPath.isPrefixOf(installDirPath)) {
+			// The following segment was already removed by the calling method
+			installDirPath = installDirPath.removeLastSegments(1);
+			File tempDirFile = tempDirPath.toFile();
+	        while (!installDirPath.toFile().equals(tempDirFile)) {
+					ShutdownHandler.getDefault().addDirectoryToRemove(installDirPath.toOSString(), true);
+					installDirPath = installDirPath.removeLastSegments(1);
+			}
+		}
+		else {
+			Installer.log("Parent temp directory for installer not removed because \"" + tempDirPath.toOSString() + "\" is not a prefix of \"" + installDirPath.toOSString() + "\".");
+		}
 	}
 	
 	/**
@@ -165,6 +238,37 @@ public class InstallApplication implements IApplication {
 	private void initializeProxySupport() {
 		// Note: Proxies are not currently supported.  If this functionality
 		// is required, see the original P2 stand-alone installer.
+	}
+
+	/**
+	 * Initialize network settings.
+	 */
+	private void initializeNetworkSettings() {
+		try {
+			IInstallDescription desc = Installer.getDefault().getInstallManager().getInstallDescription();
+			if (desc != null) {
+				int timeout = desc.getNetworkTimeout();
+				if (timeout != -1) {
+					String timeoutValue = Integer.toString(timeout);
+					System.setProperty("org.eclipse.ecf.provider.filetransfer.retrieve.connectTimeout", timeoutValue);
+					System.setProperty("org.eclipse.ecf.provider.filetransfer.retrieve.closeTimeout", timeoutValue);
+					System.setProperty("org.eclipse.ecf.provider.filetransfer.retrieve.readTimeout", timeoutValue);
+					System.setProperty("org.eclipse.ecf.provider.filetransfer.httpclient.browse.connectTimeout", timeoutValue);
+					System.setProperty("org.eclipse.ecf.provider.filetransfer.httpclient.retrieve.connectTimeout", timeoutValue);
+					System.setProperty("org.eclipse.ecf.provider.filetransfer.httpclient.retrieve.connectTimeout", timeoutValue);
+					System.setProperty("org.eclipse.ecf.provider.filetransfer.httpclient.retrieve.readTimeout", timeoutValue);
+				}
+				int retry = desc.getNetworkRetry();
+				if (retry != -1) {
+					String retryValue = Integer.toString(retry);
+					System.setProperty("org.eclipse.ecf.provider.filetransfer.retrieve.retryAttempts", retryValue);
+					System.setProperty("org.eclipse.equinox.p2.transport.ecf.retry", retryValue);				
+				}
+			}
+		}
+		catch (Exception e) {
+			Installer.log(e);
+		}
 	}
 
 	/* (non-Javadoc)

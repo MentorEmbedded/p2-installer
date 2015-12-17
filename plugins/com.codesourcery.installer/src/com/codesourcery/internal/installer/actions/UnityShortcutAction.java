@@ -18,7 +18,6 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
-import org.eclipse.osgi.util.NLS;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -36,7 +35,11 @@ public class UnityShortcutAction extends ShortcutAction {
 	private static final String ID = "com.codesourcery.installer.unityShortcutAction";
 	/** Dash attribute */
 	private static final String ATTRIBUTE_LAUNCHER = "launcher";
+	/** Unity desktop file attribute */
+	private static final String ATTRIBUTE_DESKTOP = "desktop";
 	
+	/** <code>true</code> if this a unity desktop file */
+	protected boolean isDesktopFile = true;
 	/** <code>true</code> if Ubuntu Unity Dash short-cut, <code>false</code>
 	 * if desktop short-cut.
 	 */
@@ -143,42 +146,62 @@ public class UnityShortcutAction extends ShortcutAction {
 			throws CoreException {
 		
 		try {
+			IPath shortcutPath = null;
+
 			// Install
-			if (mode.isInstall()) {
-				if (isDashShortcut) {
+			if (mode.isInstall() && doesTargetExist()) {
+				// Normal short-cut for folders
+				if (isTargetDirectory()) {
+					isDesktopFile = false;
+					super.run(agent, product, mode, pm);
+				}
+				// Desktop file for applications
+				else {
+					isDesktopFile = true;
+					
 					// Register application with Unity by creating a .desktop file in the default 
 					// launcher path. This means that the application will show up in the Unity Dash.
-					
 					// TODO: Also install desktop file to launcher panel using DBUS.
-					if (!new File (getDashRegistrationPath().append(getLauncherName()).toOSString()).exists()) {
-						new File (getDashRegistrationPath().toOSString()).mkdirs();
-						writeLauncherFile(getDashRegistrationPath().append(getLauncherName()), product);	
-					}
-				} else {
+					if (isDashShortcut) {
+						if (!new File (getDashRegistrationPath().append(getLauncherName()).toOSString()).exists()) {
+							new File (getDashRegistrationPath().toOSString()).mkdirs();
+							shortcutPath = getDashRegistrationPath().append(getLauncherName());
+						}
 					// This is a desktop link - write .desktop file to ~/Desktop.
-					String taskName = NLS.bind(InstallMessages.CreatingLink0, getName());
-					pm.beginTask(taskName, 1);
-					pm.setTaskName(taskName);
-					writeLauncherFile(getPath().append(getLauncherName()), product);
-					pm.worked(1);
+					} else {
+						shortcutPath = getPath().append(getLauncherName());
+					}
+	
+					if (shortcutPath != null) {
+						pm.beginTask(InstallMessages.CreatingShortcut, 1);
+						pm.setTaskName(InstallMessages.CreatingShortcut);
+						writeLauncherFile(shortcutPath, product);
+						pm.worked(1);
+					}
 				}
 			}
 			// Uninstall
 			else {
-				if (isDashShortcut) {
-					if (new File (getDashRegistrationPath().append(getLauncherName()).toOSString()).exists()) {
-						String taskName = NLS.bind(InstallMessages.RemovingLink0, getDashRegistrationPath().append(getLauncherName()));
-						pm.beginTask(taskName, 1);
-						pm.setTaskName(taskName);
-						deleteLauncherFile(getDashRegistrationPath().append(getLauncherName()));
+				// Desktop file
+				if (isDesktopFile) {
+					if (isDashShortcut) {
+						if (new File (getDashRegistrationPath().append(getLauncherName()).toOSString()).exists()) {
+							shortcutPath = getDashRegistrationPath().append(getLauncherName());
+						}
+					} else {
+						shortcutPath = getPath().append(getLauncherName());
+					}
+					
+					if (shortcutPath != null) {
+						pm.beginTask(InstallMessages.RemovingShortcut, 1);
+						pm.setTaskName(InstallMessages.RemovingShortcut);
+						deleteLauncherFile(shortcutPath);
 						pm.worked(1);
 					}
-				} else {
-					String taskName = NLS.bind(InstallMessages.RemovingLink0, getPath().append(getLauncherName()));
-					pm.beginTask(taskName, 1);
-					pm.setTaskName(taskName);
-					deleteLauncherFile(getPath().append(getLauncherName()));
-					pm.worked(1);
+				}
+				// Normal short-cut
+				else {
+					super.run(agent, product, mode, pm);
 				}
 			}
 		}
@@ -191,6 +214,7 @@ public class UnityShortcutAction extends ShortcutAction {
 	public void save(Document document, Element element) throws CoreException {
 		super.save(document, element);
 		element.setAttribute(ATTRIBUTE_LAUNCHER, new Boolean(isDashShortcut).toString());
+		element.setAttribute(ATTRIBUTE_DESKTOP, new Boolean(isDesktopFile).toString());
 	}
 	
 	@Override
@@ -198,6 +222,8 @@ public class UnityShortcutAction extends ShortcutAction {
 		super.load(element);
 		String value = element.getAttribute(ATTRIBUTE_LAUNCHER);
 		isDashShortcut = Boolean.parseBoolean(value);
+		value = element.getAttribute(ATTRIBUTE_DESKTOP);
+		isDesktopFile = (value == null ? true : Boolean.parseBoolean(value));
 	}
 	
 	@Override

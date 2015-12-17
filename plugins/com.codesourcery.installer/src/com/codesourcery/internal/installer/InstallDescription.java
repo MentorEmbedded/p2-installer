@@ -20,8 +20,11 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -41,98 +44,114 @@ import org.eclipse.equinox.p2.metadata.IVersionedId;
 import org.eclipse.equinox.p2.metadata.Version;
 import org.eclipse.equinox.p2.metadata.VersionRange;
 import org.eclipse.equinox.p2.metadata.VersionedId;
-import org.eclipse.osgi.util.NLS;
-import org.eclipse.swt.SWT;
 
+import com.codesourcery.installer.IInstallConstraint;
 import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallPlatform.ShortcutFolder;
 import com.codesourcery.installer.IProductRange;
+import com.codesourcery.installer.IRepositoryLocation;
 import com.codesourcery.installer.InstallPageTitle;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LaunchItem;
+import com.codesourcery.installer.LaunchItem.LaunchItemPresentation;
 import com.codesourcery.installer.LaunchItem.LaunchItemType;
 import com.codesourcery.installer.LicenseDescriptor;
 import com.codesourcery.installer.LinkDescription;
+import com.codesourcery.installer.UninstallMode;
 import com.codesourcery.installer.UpdateSite;
 
 @SuppressWarnings("restriction") // Accesses internal P2 API's
 public class InstallDescription implements IInstallDescription {
 	/** P2 profile properties prefix */
 	public static final String PROP_P2_PROFILE_PREFIX = "p2."; //$NON-NLS-1$
+	/** Install data defaults propert */
+	public static final String PROP_DATA_PREFIX = "eclipse.p2.default.";//$NON-NLS-1$
 	/** Artifact repositories property */
-	public static final String PROP_ARTIFACT_REPOSITORY = "eclipse.p2.artifacts";//$NON-NLS-1$
-	/** Add-on repositories property */
-	public static final String PROP_ADDON_REPOSITORY = "eclipse.p2.addons";//$NON-NLS-1$
-	/** Add-on description property */
-	public static final String PROP_ADDON_DESCRIPTION = "eclipse.p2.addons.description";//$NON-NLS-1$
+	public static final String PROP_ARTIFACT_REPOSITORY = "eclipse.p2.repos.artifacts";//$NON-NLS-1$
 	/** Install location property */
-	public static final String PROP_INSTALL_LOCATION = "eclipse.p2.installLocation";//$NON-NLS-1$
+	public static final String PROP_INSTALL_LOCATION = "eclipse.p2.location.install";//$NON-NLS-1$
 	/** Meta-data repositories property */
-	public static final String PROP_METADATA_REPOSITORY = "eclipse.p2.metadata";//$NON-NLS-1$
+	public static final String PROP_METADATA_REPOSITORY = "eclipse.p2.repos.metadata";//$NON-NLS-1$
 	/** Profile name property */
-	public static final String PROP_PROFILE_NAME = "eclipse.p2.profileName";//$NON-NLS-1$
+	public static final String PROP_PROFILE_NAME = "eclipse.p2.profile.name";//$NON-NLS-1$
 	/** <code>true</code> to remove profile on uninstall property */
-	public static final String PROP_REMOVE_PROFILE = "eclipse.p2.removeProfile";//$NON-NLS-1$
+	public static final String PROP_REMOVE_PROFILE = "eclipse.p2.profile.remove";//$NON-NLS-1$
 	/** Required roots property */
-	public static final String PROP_REQUIRED_ROOTS = "eclipse.p2.requiredRoots";//$NON-NLS-1$
+	public static final String PROP_REQUIRED_ROOTS = "eclipse.p2.roots.required";//$NON-NLS-1$
 	/** Optional roots property */
-	public static final String PROP_OPTIONAL_ROOTS = "eclipse.p2.optionalRoots";//$NON-NLS-1$
+	public static final String PROP_OPTIONAL_ROOTS = "eclipse.p2.roots.optional";//$NON-NLS-1$
+	/** Relationships property */
+	public static final String PROP_ROOTS_CONSTRAINTS = "eclipse.p2.roots.constraints";//$NON-NLS-1$
 	/** License property */
 	public static final String PROP_LICENSE = "eclipse.p2.license";//$NON-NLS-1$
 	/** License installable units property */
-	public static final String PROP_LICENSE_IU = "eclipse.p2.licenseIU";//$NON-NLS-1$
+	public static final String PROP_LICENSE_IU = "eclipse.p2.license.iu";//$NON-NLS-1$
 	/** Install information property */
-	public static final String PROP_INFORMATION = "eclipse.p2.information";//$NON-NLS-1$
+	public static final String PROP_INFORMATION = "eclipse.p2.wizard.text.information";//$NON-NLS-1$
 	/** Optional roots default property */
-	public static final String PROP_OPTIONAL_ROOTS_DEFAULT = "eclipse.p2.optionalRootsDefault";//$NON-NLS-1$
+	public static final String PROP_OPTIONAL_ROOTS_DEFAULT = "eclipse.p2.roots.optional.default";//$NON-NLS-1$
 	/** Product identifier property */
-	public static final String PROP_PRODUCT_ID = "eclipse.p2.productId";//$NON-NLS-1$
+	public static final String PROP_PRODUCT_ID = "eclipse.p2.product.id";//$NON-NLS-1$
 	/** Product name property */
-	public static final String PROP_PRODUCT_NAME = "eclipse.p2.productName";//$NON-NLS-1$
+	public static final String PROP_PRODUCT_NAME = "eclipse.p2.product.name";//$NON-NLS-1$
+	/** Product category property */
+	public static final String PROP_PRODUCT_CATEGORY = "eclipse.p2.product.category";//$NON-NLS-1$
 	/** Vendor name property */
-	public static final String PROP_PRODUCT_VENDOR = "eclipse.p2.productVendor";//$NON-NLS-1$
+	public static final String PROP_PRODUCT_VENDOR = "eclipse.p2.product.vendor";//$NON-NLS-1$
 	/** Product version property */
-	public static final String PROP_PRODUCT_VERSION = "eclipse.p2.productVersion";//$NON-NLS-1$
+	public static final String PROP_PRODUCT_VERSION = "eclipse.p2.product.version";//$NON-NLS-1$
 	/** Product help link property */
-	public static final String PROP_PRODUCT_HELP = "eclipse.p2.productHelp";//$NON-NLS-1$
+	public static final String PROP_PRODUCT_HELP = "eclipse.p2.product.help";//$NON-NLS-1$
+	/** Product root property */
+	public static final String PROP_PRODUCT_ROOT = "eclipse.p2.product.root";//$NON-NLS-1$
+	/** Product uninstall name */
+	public static final String PROP_PRODUCT_UNINSTALL_NAME = "eclipse.p2.product.uninstall.name";//$NON-NLS-1$
 	/** Root install location property */
-	public static final String PROP_ROOT_LOCATION_PREFIX = "eclipse.p2.rootLocation";//$NON-NLS-1$
+	public static final String PROP_ROOT_LOCATION_PREFIX = "eclipse.p2.location.root";//$NON-NLS-1$
+	/** Wizard text prefix property */
+	public static final String PROP_WIZARD_TEXT_PREFIX = "eclipse.p2.wizard.text";//$NON-NLS-1$
 	/** Uninstall files property */
-	public static final String PROP_UNINSTALL_FILES = "eclipse.p2.uninstallFiles";//$NON-NLS-1$
+	public static final String PROP_UNINSTALL_FILES = "eclipse.p2.uninstall.files";//$NON-NLS-1$
 	/** Links property */
 	public static final String PROP_LINKS = "eclipse.p2.links";//$NON-NLS-1$
 	/** Links location property */
-	public static final String PROP_LINKS_LOCATION = "eclipse.p2.linksLocation";//$NON-NLS-1$
+	public static final String PROP_LINKS_LOCATION = "eclipse.p2.location.links";//$NON-NLS-1$
 	/** Links default property */
-	public static final String PROP_LINKS_DEFAULT = "eclipse.p2.linksDefault";//$NON-NLS-1$
+	public static final String PROP_LINKS_DEFAULT = "eclipse.p2.links.default";//$NON-NLS-1$
 	/** Environment paths property */
-	public static final String PROP_ENV_PATHS = "eclipse.p2.env.paths";//$NON-NLS-1$
+	public static final String PROP_ENV_PATHS = "eclipse.p2.location.paths";//$NON-NLS-1$
 	/** Launch items property */
-	public static final String PROP_LAUNCH = "eclipse.p2.launch";//$NON-NLS-1$
+	public static final String PROP_LAUNCH = "eclipse.p2.wizard.launch";//$NON-NLS-1$
+	/** Launch presentation property */
+	public static final String PROP_LAUNCH_PRESENTATION = "eclipse.p2.wizard.launch.presentation";//$NON-NLS-1$
 	/** Installer window title property */
-	public static final String PROP_WINDOW_TITLE = "eclipse.p2.windowTitle";//$NON-NLS-1$
+	public static final String PROP_WINDOW_TITLE = "eclipse.p2.window.title";//$NON-NLS-1$
 	/** Installer title property */
-	public static final String PROP_TITLE = "eclipse.p2.title";//$NON-NLS-1$
+	public static final String PROP_TITLE = "eclipse.p2.wizard.title";//$NON-NLS-1$
 	/** Installer title image property */
-	public static final String PROP_TITLE_IMAGE = "eclipse.p2.titleImage";//$NON-NLS-1$
+	public static final String PROP_TITLE_IMAGE = "eclipse.p2.wizard.image";//$NON-NLS-1$
 	/** Installer wizard pages property */
-	public static final String PROP_WIZARD_PAGES = "eclipse.p2.wizardPages";//$NON-NLS-1$
+	public static final String PROP_WIZARD_PAGES_ORDER = "eclipse.p2.wizard.pages.order";//$NON-NLS-1$
+	/** Installer wizard pages excluded property */
+	public static final String PROP_WIZARD_PAGES_EXCLUDE = "eclipse.p2.wizard.pages.exclude";//$NON-NLS-1$
 	/** Progress regular expression prefix */
 	public static final String PROP_PROGRESS_PREFIX = "eclipse.p2.progress";//$NON-NLS-1$
 	/** Installer modules property */
 	public static final String PROP_MODULES = "eclipse.p2.modules";//$NON-NLS-1$
 	/** Update sites property */
 	private static final String PROP_UPDATE = "eclipse.p2.update";//$NON-NLS-1$
-	/** Hide Components version property */
-	public static final String PROP_HIDE_COMPONENTS_VERSION = "eclipse.p2.hideComponentsVersion";//$NON-NLS-1$
-	/** Add-ons require login property */
-	public static final String PROP_ADDONS_REQUIRE_LOGIN = "eclipse.p2.addons.requiresLogin";//$NON-NLS-1$
+	/** Show Components version property */
+	public static final String PROP_SHOW_COMPONENT_VERSIONS = "eclipse.p2.wizard.components.showVersion";//$NON-NLS-1$
+	/** Show optional components first property */
+	public static final String PROP_SHOW_OPTIONAL_FIRST = "eclipse.p2.wizard.components.showOptionalFirst";//$NON-NLS-1$
+	/** Default expanded roots property */
+	public static final String PROP_EXPAND_ROOTS = "eclipse.p2.wizard.components.expand";//$NON-NLS-1$
 	/** Install wizard page navigation property */
-	public static final String PROP_WIZARD_NAVIGATION = "org.eclipse.p2.wizardNavigation";//$NON-NLS-1$
+	public static final String PROP_WIZARD_NAVIGATION = "org.eclipse.p2.wizard.navigation";//$NON-NLS-1$
 	/** Install wizard page titles property */
-	public static final String PROP_WIZARD_PAGE_TITLES = "eclipse.p2.wizardPageTitles";//$NON-NLS-1$
-	/** Welcome text property */
-	public static final String PROP_WELCOME_TEXT = "eclipse.p2.welcomeText";//$NON-NLS-1$
+	public static final String PROP_WIZARD_PAGE_TITLES = "eclipse.p2.wizard.pages.titles";//$NON-NLS-1$
+	/** Excluded actions property */
+	public static final String PROP_EXCLUDED_ACTIONS = "eclipse.p2.actions.exclude";//$NON-NLS-1$
 	/** Patch property */
 	public static final String PROP_PATCH = "eclipse.p2.patch";//$NON-NLS-1$
 	/** Requires property */
@@ -147,23 +166,35 @@ public class InstallDescription implements IInstallDescription {
 	public static final String PROP_INCLUDE_ALL_REPOSITORIES = "eclipse.p2.includeAllRepositories";//$NON-NLS-1$
 	/** Use install registry property */
 	public static final String PROP_USE_INSTALL_REGISTRY = "eclipse.p2.useInstallRegistry";//$NON-NLS-1$
-	/** Installer  property */
-	public static final String PROP_DATA_LOCATION = "eclipse.p2.dataLocation";//$NON-NLS-1$
-		
+	/** Installer  data location property */
+	public static final String PROP_DATA_LOCATION = "eclipse.p2.location.data";//$NON-NLS-1$
+	/** Order planner property */
+	public static final String PROP_ORDER_PLANNER = "eclipse.p2.orderPlanner";//$NON-NLS-1$
+	/** Install mode */
+	public static final String PROP_INSTALL = "eclipse.p2.install";//$NON-NLS-1$
+	/** Install size format */
+	public static final String PROP_INSTALL_SIZE_FORMAT = "eclipse.p2.install.size.format";//$NON-NLS-1$
+	/** Uninstall mode */
+	public static final String PROP_UNINSTALL = "eclipse.p2.uninstall";//$NON-NLS-1$
+	/** Show product in uninstaller property */
+	public static final String UNINSTALL_SHOW_UNINSTALL = "SHOW_UNINSTALL";//$NON-NLS-1$
+	/** Create add/remove entry property */
+	public static final String UNINSTALL_ADDREMOVE = "CREATE_ADD_REMOVE";//$NON-NLS-1$
+	/** Remove installation directories on uninstall property */
+	public static final String UNINSTALL_REMOVE_DIRS = "REMOVE_DIRS";//$NON-NLS-1$
+	/** Minimum version that can be upgraded property  **/
+	public static final String PROP_MINIMUM_UPGRADE_VERSION = "eclipse.p2.install.upgrade.minVersion";//$NON-NLS-1$
+	/** Network time-out property  **/
+	public static final String PROP_NETWORK_TIMEOUT = "eclipse.p2.network.timeout";//$NON-NLS-1$
+	/** Network retry property  **/
+	public static final String PROP_NETWORK_RETRY = "eclipse.p2.network.retry";//$NON-NLS-1$
+	
 	/** Base location for installer */
 	private URI base;
 	/** Installer properties */
 	private Map<String, String> properties = new HashMap<String, String>();
 	/** P2 profile properties */
 	private Map<String, String> profileProperties = new HashMap<String, String>();
-	/** P2 artifact repository locations */
-	private URI[] artifactRepos;
-	/** P2 meta-data repository locations */
-	private URI[] metadataRepos;
-	/** Add-ons repository locations */
-	private URI[] addonRepos;
-	/** Add-ons description */
-	private String addonDescription;
 	/** Root install location */
 	private IPath rootLocation;
 	/** P2 install location */
@@ -176,6 +207,8 @@ public class InstallDescription implements IInstallDescription {
 	private String productId;
 	/** Product name */
 	private String productName;
+	/** Product category */
+	private String productCategory;
 	/** Product vendor */
 	private String productVendor;
 	/** Product original version text */
@@ -184,18 +217,18 @@ public class InstallDescription implements IInstallDescription {
 	private Version productVersion;
 	/** Product help URL */
 	private String productHelp;
+	/** Product name used during uninstall*/
+	private String uninstallproductName;
 	/** Required root installable units */
 	private IVersionedId[] requiredRoots;
 	/** Optional root installable units */
 	private IVersionedId[] optionalRoots;
 	/** Default optional root installable units */
 	private IVersionedId[] optionalRootsDefault;
+	/** Roots that should be expanded in the wizard by default */
+	private IVersionedId[] expandedRoots;
 	/** Product licenses */
 	private LicenseDescriptor[] licenses;
-	/** Include license IU */
-	private boolean licenseIU;
-	/** Install information text */
-	private String informationText;
 	/** P2 profile identifier */
 	private String profileName;
 	/** <code>true</code> to remove entire profile on uninstall */
@@ -218,22 +251,22 @@ public class InstallDescription implements IInstallDescription {
 	private IPath titleImage;
 	/** Install wizard pages */
 	private String[] wizardPages;
+	/** Install wizard pages order */
+	private String[] wizardPagesOrder;
 	/** Progress regular expression find patterns */
 	private String[] progressFindPatterns;
 	/** Progress regular expression replace patterns */
 	private String[] progressReplacePatterns;
 	/** Active module identifiers */
 	private String[] moduleIDs;
-	/** <code>true</code> to hide components version */
-	private boolean hideComponentsVersion = false;
-	/** <code>true</code> if add-ons require login */
-	private boolean addonsRequiresLogin;
+	/** <code>true</code> to show components version */
+	private boolean showComponentVersions = false;
+	/** <code>true</code> to show optional components first */
+	private boolean showOptionalComponentsFirst = false;
 	/** Install wizard page navigation */
-	private int pageNavigation;
+	private WizardNavigation pageNavigation;
 	/** Wizard page titles */
 	private InstallPageTitle[] pageTitles;
-	/** Text for wizard welcome page */
-	private String welcomeText;
 	/** Missing requirement find/replace regular expressions */
 	private String[][] missingRequirementExpressions;
 	/** <code>true</code> to include remote repositories during installation */
@@ -246,6 +279,36 @@ public class InstallDescription implements IInstallDescription {
 	private boolean useInstallRegistry = true;
 	/** Installer data location */
 	private IPath dataLocation;
+	/** Uninstall mode or <code>null</code> if no uninstaller */
+	private UninstallMode uninstallMode;
+	/** <code>true</code> to use ordered planner */
+	private boolean orderPlanner=true;
+	/** Install relationships */
+	private IInstallConstraint[] relationships;
+	/** <code>true</code> if product upgrades are supported */
+	private boolean supportsUpgrade = true;
+	/** <code>true</code> if product upgrades are supported */
+	private boolean supportsUpdate = true;
+	/** Excluded actions */
+	private String[] excludedActions;
+	/** Install data defaults */
+	private Map<String, String> installDataDefaults;
+	/** Check installer directory **/
+	private boolean checkEmtptyInstallDirectory=false;
+	/** Minimum version of product that can be upgraded */
+	private Version minimumUpgradeVersion;
+	/** Size format specification */
+	private String sizeFormat;
+	/** Installer text */
+	private HashMap<String, String> installerText = new HashMap<String, String>();
+	/** Mirror mode */
+	private MirrorMode mirrorMode = MirrorMode.NONE;
+	/** Network time-out */
+	private int networkTimeout = -1;
+	/** Network retry */
+	private int networkRetry = -1;
+	/** <code>true</code> to create product root IU */
+	private boolean productRoot = true;
 
 	/**
 	 * Loads an install description.
@@ -290,15 +353,79 @@ public class InstallDescription implements IInstallDescription {
 			
 			base = getBase(site);
 			// Load properties
-			initialize(properties);
+			initialize();
 			// Load profile properties
-			initializeProfileProperties(properties);
-			// Override the properties from anything interesting in system properties
-			initialize(CollectionUtils.toMap(System.getProperties()));
+			initializeProfileProperties();
+			// Load install data defaults
+			initializeDataDefaults();
 		}
 		catch (Exception e) {
 			Installer.fail("Failed to load install description.", e);
 		}
+	}
+
+	/**
+	 * Reads a property value and performs any special processing specified in a prefix.  The property name can specify
+	 * the following prefixes:
+	 * <ul>
+	 * <li>filename: - Converts the property value to a file system safe format.</li>
+	 * <li>nospace:  - Replaces any spaces in the property value with underscores.</li>
+	 * <li>nonum:    - Removes any numbers or periods from the property value.</li>
+	 * <li>upper:    - Converts the property value to uppercase.</li>
+	 * <li>lower:    - Converts the property value to lowercase.</li>
+	 * </ul>
+	 * 
+	 * If the property name contains no prefix, the property value will be returned as is.
+	 * 
+	 * @param variable Property name optionally containing a prefix
+	 * @return Property value
+	 */
+	private String resolvePrefixedProperty(String variable) {
+		String prefix = null;
+		
+		// Check if special prefix is present
+		int prefixIndex = variable.indexOf(':');
+		if (prefixIndex != -1) {
+			prefix = variable.substring(0, prefixIndex);
+			variable = variable.substring(prefixIndex + 1);
+		}
+		
+		// Read the property value
+		String propertyValue = readProperty(variable);
+		// If property is not available, try system
+		// environment variable
+		if (propertyValue == null) {
+			propertyValue = System.getenv(variable);
+		}
+
+		// Handle any prefix processing
+		if ((prefix != null) && (propertyValue != null)) {
+			switch (prefix) {
+			// Replace characters that are no a-z, A-Z, 0-9, or a space
+			// with dashes.
+			case "filename":
+				propertyValue = propertyValue.replaceAll("[^a-zA-Z0-9 ]", "-");
+				break;
+			// Replace any spaces with underscores
+			case "nospace":
+				propertyValue = propertyValue.replaceAll("[ ]", "_");
+				break;
+			// Remove any number characters
+			case "nonum":
+				propertyValue = propertyValue.replaceAll("[^a-zA-Z ]", "");
+				break;
+			// Convert all characters to upper case
+			case "upper":
+				propertyValue = propertyValue.toUpperCase();
+				break;
+			// Convert all characters to lower case
+			case "lower":
+				propertyValue = propertyValue.toLowerCase();
+				break;
+			}
+		}
+		
+		return propertyValue;
 	}
 	
 	/**
@@ -323,11 +450,21 @@ public class InstallDescription implements IInstallDescription {
 							if (index2 != -1) {
 								// Property to replace
 								String property = value.substring(index + 2, index2);
-								// Property value
-								String sub = properties.get(property);
-								// Replace variable
-								value = value.substring(0, index) + sub + value.substring(index2 + 1);
-								entry.setValue(value);
+								
+								// Defer resolving late binding properties
+								if (property.equals(PROP_REPOS_MIRROR) || property.equals(PROP_EXISTING_VERSION)) {
+									start ++;
+								}
+								// Resolve property references
+								else {
+									// Property value
+									String sub = resolvePrefixedProperty(property);
+									// Replace variable
+									value = value.substring(0, index) + 
+											(sub != null ? sub : "") + 
+											value.substring(index2 + 1);
+									entry.setValue(value);
+								}
 							}
 							else {
 								Installer.log("Error in resolving macros: No matching \"}\" for \"${\".");
@@ -360,32 +497,12 @@ public class InstallDescription implements IInstallDescription {
 	
 	/**
 	 * Initializes the install description.
-	 * 
-	 * @param properties Properties
 	 */
-	protected void initialize(Map<String, String> properties) {
-		// P2 artifact repositories
-		String property = properties.get(PROP_ARTIFACT_REPOSITORY);
-		if (property != null)
-			setArtifactRepositories(getURIs(property, getBase()));
-
-		// P2 meta-data repositories
-		property = properties.get(PROP_METADATA_REPOSITORY);
-		if (property != null)
-			setMetadataRepositories(getURIs(property, getBase()));
-
-		// P2 add-on repositories
-		property = properties.get(PROP_ADDON_REPOSITORY);
-		if (property != null)
-			setAddonRepositories(getURIs(property, getBase()));
-
-		// P2 add-ons description
-		property = properties.get(PROP_ADDON_DESCRIPTION);
-		if (property != null)
-			setAddonDescription(property);
-
+	protected void initialize() {
+		String property;
+		
 		// Update sites
-		property = properties.get(PROP_UPDATE);
+		property = readProperty(PROP_UPDATE);
 		if (property != null) {
 			ArrayList<UpdateSite> updateSites = new ArrayList<UpdateSite>();
 			String[] sites = getArrayFromString(property, ",");
@@ -397,195 +514,268 @@ public class InstallDescription implements IInstallDescription {
 			setUpdateSites(updateSites.toArray(new UpdateSite[updateSites.size()]));
 		}
 		
+		// Presentation property (used by launch property below)
+		String presentationProperty = readProperty(PROP_LAUNCH_PRESENTATION);
+		HashMap<String, LaunchItemPresentation>presentationMap = null;
+		if (presentationProperty != null) {
+			presentationMap = new HashMap<String, LaunchItemPresentation>();
+			String [] presentationPairs = getArrayFromString(presentationProperty, ",");
+			for (String presentationPair: presentationPairs) {
+				String [] presentationPairParts = getArrayFromString(presentationPair, ":");
+				if (presentationPairParts.length == 2) {
+					presentationMap.put(presentationPairParts[0], LaunchItemPresentation.fromString(presentationPairParts[1]));
+				}
+			}			
+		}
+		
 		// Items to launch
-		property = properties.get(PROP_LAUNCH);
+		property = readProperty(PROP_LAUNCH);
 		if (property != null) {
 			ArrayList<LaunchItem> launchItems = new ArrayList<LaunchItem>();
+			boolean restartOrLogoutPresent = false;
 			
 			String[] programs = getArrayFromString(property, ",");
 			for (String program : programs) {
 				String[] parts = getArrayFromString(program, ";");
 
 				// Launch type
-				LaunchItemType type;
+				LaunchItemType type = null;
+
 				// Executable
-				if (parts[2].equals("exe"))
+				if (parts[2].equals(LaunchItemType.EXECUTABLE.getName()))
 					type = LaunchItemType.EXECUTABLE;
 				// File
-				else if (parts[2].equals("file"))
+				else if (parts[2].equals(LaunchItemType.FILE.getName()))
 					type = LaunchItemType.FILE;
 				// URL
-				else 
+				else if (parts[2].equals(LaunchItemType.HTML.getName()))
 					type = LaunchItemType.HTML;
+				//RESTART and LOGOUT
+				else if (parts[2].equals(LaunchItemType.RESTART.getName()) ||
+						parts[2].equals(LaunchItemType.LOGOUT.getName()))
+				{
+					/* If multiple restart and logout items are specified, skip
+					 * them. 
+					 */
+					if (restartOrLogoutPresent)
+						continue;
+
+					type = parts[2].equals(LaunchItemType.RESTART.getName()) ? LaunchItemType.RESTART: LaunchItemType.LOGOUT;
+					restartOrLogoutPresent = true;
+				}
 				
 				parts[1] = parts[1].replace("{exe}", Installer.isWindows() ? ".exe" : "");
 				
-				// Default selection
-				boolean selected = true;
-				if (parts.length > 3)
-					selected = Boolean.parseBoolean(parts[3]);
-				
-				LaunchItem item = new LaunchItem(type, parts[0], parts[1], selected);
+				// Presentation
+				LaunchItemPresentation presentation = null;
+				if (presentationMap != null) {
+					LaunchItemPresentation overrideType = presentationMap.get(type.getName());
+					if (overrideType != null) {
+						presentation = overrideType;
+					}					
+				}
+				if (presentation == null) {
+					if (parts.length > 3) {
+						/* Older installer.properties use false and true flags */
+						if (parts[3].equals(LaunchItemPresentation.UNCHECKED.getName()) |
+							parts[3].equals(Boolean.FALSE.toString())) {
+							presentation = LaunchItemPresentation.UNCHECKED;
+						} 
+						else if (parts[3].equals(LaunchItemPresentation.LINK.getName())) {
+							presentation = LaunchItemPresentation.LINK;
+						}
+					}
+				}
+				if (presentation == null) {
+					presentation = LaunchItemPresentation.CHECKED;
+				}
+								
+				LaunchItem item = new LaunchItem(type, parts[0], parts[1], presentation);
 				launchItems.add(item);
 			}
 			setLaunchItems(launchItems.toArray(new LaunchItem[launchItems.size()]));
 		}
 
 		// Default install location
-		property = properties.get(PROP_INSTALL_LOCATION);
+		property = readProperty(PROP_INSTALL_LOCATION);
 		if (property != null) {
-			setInstallLocation(getPath(property));
+			setInstallLocation(InstallUtils.resolvePath(property));
 		}
 
 		// Profile name
-		property = properties.get(PROP_PROFILE_NAME);
+		property = readProperty(PROP_PROFILE_NAME);
 		if (property != null)
 			setProfileName(property);
 		
 		// Remove profile
-		property = properties.get(PROP_REMOVE_PROFILE);
+		property = readProperty(PROP_REMOVE_PROFILE);
 		if (property != null)
 			setRemoveProfile(property.trim().toLowerCase().equals("true"));
 
 		// Product identifier
-		property = properties.get(PROP_PRODUCT_ID);
+		property = readProperty(PROP_PRODUCT_ID);
 		if (property != null)
 			setProductId(property);
 
 		// Product name
-		property = properties.get(PROP_PRODUCT_NAME);
+		property = readProperty(PROP_PRODUCT_NAME);
 		if (property != null)
 			setProductName(property);
 		
+		// Product category
+		property = readProperty(PROP_PRODUCT_CATEGORY);
+		if (property != null)
+			setProductCategory(property);
+		
 		// Product vendor
-		property = properties.get(PROP_PRODUCT_VENDOR);
+		property = readProperty(PROP_PRODUCT_VENDOR);
 		if (property != null)
 			setProductVendor(property);
 		
 		// Product version
-		property = properties.get(PROP_PRODUCT_VERSION);
+		property = readProperty(PROP_PRODUCT_VERSION);
 		if (property != null)
 			setProductVersionString(property);
 		
 		// Product help
-		property = properties.get(PROP_PRODUCT_HELP);
+		property = readProperty(PROP_PRODUCT_HELP);
 		if (property != null)
 			setProductHelp(property);
+		
+		// Product root IU property
+		property = readProperty(PROP_PRODUCT_ROOT);
+		if (property != null) {
+			setProductRoot(Boolean.parseBoolean(property));
+		}
+		
+		// Product Uninstall Name
+		property = readProperty(PROP_PRODUCT_UNINSTALL_NAME);
+		if (property != null)
+			setProductUninstallName(property);
 
 		// Required roots
-		String rootSpec = properties.get(PROP_REQUIRED_ROOTS);
-		if (rootSpec != null) {
-			String[] rootList = getArrayFromString(rootSpec, ","); //$NON-NLS-1$
-			ArrayList<IVersionedId> roots = new ArrayList<IVersionedId>(rootList.length);
-			for (int i = 0; i < rootList.length; i++) {
-				try {
-					roots.add(VersionedId.parse(rootList[i]));
-				} catch (IllegalArgumentException e) {
-					LogHelper.log(new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_InvalidInstallDescriptionVersion + rootList[i], e)); //$NON-NLS-1$
-				}
-			}
-			if (!roots.isEmpty()) {
-				setRequiredRoots(roots.toArray(new IVersionedId[roots.size()]));
-			}
-		}
+		setRequiredRoots(readRootsProperty(PROP_REQUIRED_ROOTS));
 		
 		// Optional roots
-		rootSpec = properties.get(PROP_OPTIONAL_ROOTS);
-		if (rootSpec != null) {
-			String[] rootList = getArrayFromString(rootSpec, ",");
-			ArrayList<IVersionedId> roots = new ArrayList<IVersionedId>(rootList.length);
-			// Loop through optional roots
-			for (String root : rootList) {
-				// Add optional root
-				try {
-					roots.add(VersionedId.parse(root));
-				} catch (IllegalArgumentException e) {
-					LogHelper.log(new Status(IStatus.ERROR, Installer.ID, "Invalid version in install description: " + root, e)); //$NON-NLS-1$
-				}
-			}
-			// Set optional roots
-			if (!roots.isEmpty()) {
-				setOptionalRoots(roots.toArray(new IVersionedId[roots.size()]));
-			}
-		}
+		setOptionalRoots(readRootsProperty(PROP_OPTIONAL_ROOTS));
 
 		// Default optional roots
-		rootSpec = properties.get(PROP_OPTIONAL_ROOTS_DEFAULT);
-		if (rootSpec != null) {
-			String[] rootList = getArrayFromString(rootSpec, ","); //$NON-NLS-1$
-			ArrayList<IVersionedId> roots = new ArrayList<IVersionedId>(rootList.length);
-			for (int i = 0; i < rootList.length; i++) {
-				try {
-					roots.add(VersionedId.parse(rootList[i]));
-				} catch (IllegalArgumentException e) {
-					LogHelper.log(new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_InvalidInstallDescriptionVersion + rootList[i], e)); //$NON-NLS-1$
-				}
-			}
-			if (!roots.isEmpty())
-				setDefaultOptionalRoots(roots.toArray(new IVersionedId[roots.size()]));
-		}
-		
-		// Licenses
-		property = properties.get(PROP_LICENSE);
-		if (property != null) {
-			ArrayList<LicenseDescriptor> licenses = new ArrayList<LicenseDescriptor>();
-			
-			String[] licenseInfos = getArrayFromString(property, ",");  //$NON-NLS-1$
-			int licenseCounter = 0;
-			for (String licenseInfo : licenseInfos) {
-				String licenseName = null;
+		setDefaultOptionalRoots(readRootsProperty(PROP_OPTIONAL_ROOTS_DEFAULT));
 
-				int index = licenseInfo.indexOf(':');
-				if (index != -1) {
-					licenseName = licenseInfo.substring(index + 1);
-					licenseInfo = licenseInfo.substring(0, index);
-				}
-				
-				URI[] licenseLocations = getURIs(licenseInfo, getBase());
-				if (licenseLocations.length > 0) {
-					try {
-						String contents = readFile(licenseLocations[0]);
-						if (contents != null) {
-							// License Name is not provided
-							if (licenseName == null) {
-								licenseName = NLS.bind(InstallMessages.LicensePageTitle0, Integer.toString(++licenseCounter));
+		// Expanded roots
+		setWizardExpandedRoots(readRootsProperty(PROP_EXPAND_ROOTS));
+
+		// Root constraints
+		property = readProperty(PROP_ROOTS_CONSTRAINTS);
+		if (property != null) {
+			ArrayList<IInstallConstraint> relations = new ArrayList<IInstallConstraint>();
+			// Get relation specs
+			String[] relationSpecs = InstallUtils.getArrayFromString(property, ";");
+			for (String relationSpec : relationSpecs) {
+				int start = relationSpec.indexOf('(');
+				if (start != -1) {
+					String typeSpec = relationSpec.substring(0, start);
+					IInstallConstraint.Constraint type = IInstallConstraint.Constraint.valueOf(typeSpec);
+					if (type != null) {
+						int end = relationSpec.indexOf(')');
+						if (end != -1) {
+							String rootsSpec = relationSpec.substring(start + 1, end);
+							ArrayList<IVersionedId> roots = new ArrayList<IVersionedId>();
+							String[] parts = InstallUtils.getArrayFromString(rootsSpec, ",");
+							for (String part : parts) {
+								VersionedId id = new VersionedId(part, Version.emptyVersion);
+								roots.add(id);
 							}
-							LicenseDescriptor license = new LicenseDescriptor(readFile(licenseLocations[0]), licenseName);
-							licenses.add(license);
+							// Add relation
+							IInstallConstraint relation = new InstallConstraint(roots.toArray(new IVersionedId[roots.size()]), type);
+							relations.add(relation);
 						}
-						else {
-							Installer.log("Failed to read license file: " + licenseLocations[0]);
-						}
-					} catch (IOException e) {
-						LogHelper.log(new Status(IStatus.ERROR, Installer.ID, "Failed to read license file: " + licenseLocations[0], e)); //$NON-NLS-1$
 					}
 				}
 			}
-			
+			// Set relations
+			setInstallConstraints(relations.toArray(new IInstallConstraint[relations.size()]));
+		}
+		
+		// Licenses
+		ArrayList<LicenseDescriptor> licenses = new ArrayList<LicenseDescriptor>();
+		// Licenses from files
+		readLicenses(licenses, PROP_LICENSE, true);
+		// Install units for licenses
+		readLicenses(licenses, PROP_LICENSE_IU, false);
+		if (licenses.size() > 0) {
 			setLicenses(licenses.toArray(new LicenseDescriptor[licenses.size()]));
 		}
 		
-		// License IUs
-		property = properties.get(PROP_LICENSE_IU);
-		if (property != null) {
-			setLicenseIU(property.trim().toLowerCase().equals("true"));
+		// Installer text
+		Map<String, String> wizardText = getPrefixedProperties(PROP_WIZARD_TEXT_PREFIX);
+		for (Entry<String, String> entry : wizardText.entrySet()) {
+			String prop = entry.getKey();
+			String value = entry.getValue();
+			
+			// Information
+			if (PROP_INFORMATION.equals(prop)) {
+				URI[] informationLocations = getURIs(value, getBase());
+				if (informationLocations.length > 0) {
+					try {
+						setText(stripIdentifierPrefix(PROP_INFORMATION, PROP_WIZARD_TEXT_PREFIX), 
+								readFile(informationLocations[0]));
+					} catch (IOException e) {
+						LogHelper.log(new Status(IStatus.ERROR, Installer.ID, 
+								"Failed to read information file: " + informationLocations[0], e)); //$NON-NLS-1$
+					}
+				}
+			}
+			else {
+				this.setText(stripIdentifierPrefix(prop, PROP_WIZARD_TEXT_PREFIX), value);
+			}
 		}
-		
-		// Information
-		property = properties.get(PROP_INFORMATION);
+
+		// Install mode
+		property = readProperty(PROP_INSTALL);
 		if (property != null) {
-			URI[] informationLocations = getURIs(property, getBase());
-			if (informationLocations.length > 0) {
-				try {
-					setInformationText(readFile(informationLocations[0]));
-				} catch (IOException e) {
-					LogHelper.log(new Status(IStatus.ERROR, Installer.ID, "Failed to read information file: " + informationLocations[0], e)); //$NON-NLS-1$
+			String[] flags = getArrayFromString(property, "|");
+			for (String flag : flags) {
+				if (flag.equals("NO_UPGRADE")) {
+					setSupportsUpgrade(false);
+				}
+				else if (flag.equals("NO_UPDATE")) {
+					setSupportsUpdate(false);
+				}
+				else if (flag.equals("EMPTY_DIRECTORY")) {
+					setRequireEmptyInstallDirectory(true);
+				}
+				else if (flag.equals("MIRROR")) {
+					setMirrorMode(MirrorMode.ALL);
+				}
+				else if (flag.equals("MIRROR_REMOTE")) {
+					setMirrorMode(MirrorMode.REMOTE_ONLY);
 				}
 			}
 		}
 		
+		// Uninstall mode
+		property = readProperty(PROP_UNINSTALL);
+		if (property != null) {
+			boolean showUninstall = false;
+			boolean createAddRemove = false;
+			boolean removeDirectories = false;
+			String[] flags = getArrayFromString(property, "|");
+			for (String flag : flags) {
+				if (flag.equals(UNINSTALL_ADDREMOVE))
+					createAddRemove = true;
+				else if (flag.equals(UNINSTALL_REMOVE_DIRS))
+					removeDirectories = true;
+				else if (flag.equals(UNINSTALL_SHOW_UNINSTALL))
+					showUninstall = true;
+			}
+			UninstallMode mode = new UninstallMode(showUninstall, createAddRemove, removeDirectories);
+			setUninstallMode(mode);
+		}
+
 		// Uninstall files
-		property = properties.get(PROP_UNINSTALL_FILES);
+		property = readProperty(PROP_UNINSTALL_FILES);
+		// Include uninstaller
 		if (property != null) {
 			String[] uninstallFiles = getArrayFromString(property, ","); //$NON-NLS-1$
 			String uninstallFile;
@@ -602,30 +792,57 @@ public class InstallDescription implements IInstallDescription {
 			}
 			setUninstallFiles(uninstallFiles);
 			setUninstallerName(uninstallerFileName);
+			
+			// If the description did not set an uninstall mode, but is including
+			// uninstaller files, set a default uninstall mode.
+			if (getUninstallMode() == null) {
+				setUninstallMode(new UninstallMode(false, true, true));
+			}
 		}
 
 		// Root location
-		property = readPlatformProperty(PROP_ROOT_LOCATION_PREFIX);
+		property = readProperty(PROP_ROOT_LOCATION_PREFIX);
 		if (property != null) {
-			setRootLocation(getPath(property));
+			setRootLocation(InstallUtils.resolvePath(property));
 		}
 		
 		// Data location
-		property = properties.get(PROP_DATA_LOCATION);
+		property = readProperty(PROP_DATA_LOCATION);
 		if (property != null) {
-			setDataLocation(getPath(property));
+			setDataLocation(InstallUtils.resolvePath(property));
 		}
 		
-		// Short-cuts links location
-		property = properties.get(PROP_LINKS_LOCATION);
+		// Network timeout
+		property = readProperty(PROP_NETWORK_TIMEOUT);
 		if (property != null) {
-			String safeName = InstallUtils.makeFileNameSafe(property);
-			setLinksLocation(new Path(safeName));
+			try {
+				setNetworkTimeout(Integer.parseInt(property));
+			}
+			catch (Exception e) {
+				Installer.log(e);
+			}
+		}
+		
+		// Network retry
+		property = readProperty(PROP_NETWORK_RETRY);
+		if (property != null) {
+			try {
+				setNetworkRetry(Integer.parseInt(property));
+			}
+			catch (Exception e) {
+				Installer.log(e);
+			}
+		}
+
+		// Short-cuts links location
+		property = readProperty(PROP_LINKS_LOCATION);
+		if (property != null) {
+			setLinksLocation(new Path(property));
 		}
 		
 		// Default short-cut link folders
 		ArrayList<ShortcutFolder> defaultShortcutFolders = new ArrayList<ShortcutFolder>();
-		property = properties.get(PROP_LINKS_DEFAULT);
+		property = readProperty(PROP_LINKS_DEFAULT);
 		if (property != null) {
 			String[] folders = getArrayFromString(property, ",");
 			for (String folder : folders) {
@@ -639,7 +856,7 @@ public class InstallDescription implements IInstallDescription {
 		}
 
 		// Short-cut links
-		property = properties.get(PROP_LINKS);
+		property = readProperty(PROP_LINKS);
 		if (property != null) {
 			ArrayList<LinkDescription> linkDescriptions = new ArrayList<LinkDescription>();
 			
@@ -648,6 +865,9 @@ public class InstallDescription implements IInstallDescription {
 				String[] parts = getArrayFromString(link, ";");
 				// Replace executable extension (if specified)
 				parts[3] = parts[3].replace("{exe}", Installer.isWindows() ? ".exe" : "");
+				// Replace icon extension (if specified)
+				parts[4] = parts[4].replace("{exe}", Installer.isWindows() ? ".exe" : "");
+				parts[4] = parts[4].replace("{icon}", Installer.isWindows() ? ".ico" : ".png");
 				String folderSpec = parts[0].trim();
 				ShortcutFolder folder = null;
 				if (folderSpec.equals("programs"))
@@ -667,7 +887,13 @@ public class InstallDescription implements IInstallDescription {
 					}
 				}
 				
-				String[] args = getArrayFromString(parts[5], ",");
+				String[] args;
+				if (parts.length > 5) {
+					args = getArrayFromString(parts[5], " ");
+				}
+				else {
+					args = new String[0];
+				}
 				
 				// Add link description
 				LinkDescription linkDescription = new LinkDescription(
@@ -685,21 +911,21 @@ public class InstallDescription implements IInstallDescription {
 		}
 		
 		// Environment path variables
-		property = properties.get(PROP_ENV_PATHS);
+		property = readProperty(PROP_ENV_PATHS);
 		if (property != null) {
 			String[] paths = getArrayFromString(property, ",");
 			setEnvironmnetPaths(paths);
 		}
 		
 		// Title
-		property = properties.get(PROP_TITLE);
+		property = readProperty(PROP_TITLE);
 		if (property != null) {
 			setTitle(property);
 		}
 		
 		// Title image
 		try {
-			property = properties.get(PROP_TITLE_IMAGE);
+			property = readProperty(PROP_TITLE_IMAGE);
 			if (property != null) {
 				URI titleImageLocation = getURI(property, getBase());
 				File imageFile = URIUtil.toFile(titleImageLocation);
@@ -713,20 +939,34 @@ public class InstallDescription implements IInstallDescription {
 		}
 		
 		// Window title
-		property = properties.get(PROP_WINDOW_TITLE);
+		property = readProperty(PROP_WINDOW_TITLE);
 		if (property != null) {
 			setWindowTitle(property);
 		}
 		
-		// Wizard pages
-		property = properties.get(PROP_WIZARD_PAGES);
+		// Excluded actions
+		property = readProperty(PROP_EXCLUDED_ACTIONS);
+		if (property != null) {
+			String[] actions = getArrayFromString(property, ",");
+			setExcludedActions(actions);
+		}
+		
+		// Wizard pages excluded
+		property = readProperty(PROP_WIZARD_PAGES_EXCLUDE);
+		if (property != null) {
+			String[] pages = getArrayFromString(property, ",");
+			setWizardPagesExcluded(pages);
+		}
+		
+		// Wizard pages order
+		property = readProperty(PROP_WIZARD_PAGES_ORDER);
 		if (property != null) {
 			String[] pages = getArrayFromString(property, ",");
 			setWizardPagesOrder(pages);
 		}
 		
 		// Wizard page titles
-		property = properties.get(PROP_WIZARD_PAGE_TITLES);
+		property = readProperty(PROP_WIZARD_PAGE_TITLES);
 		if (property != null) {
 			ArrayList<InstallPageTitle> titles = new ArrayList<InstallPageTitle>();
 			
@@ -744,67 +984,57 @@ public class InstallDescription implements IInstallDescription {
 		}
 
 		// P2 progress find/replace
-		String[] find = readIndexedProperties(PROP_PROGRESS_PREFIX + PROP_FIND_SUFFIX);
+		String[] find = getIndexedProperties(PROP_PROGRESS_PREFIX + PROP_FIND_SUFFIX);
 		if (find != null) {
-			String[] replace = readIndexedProperties(PROP_PROGRESS_PREFIX + PROP_REPLACE_SUFFIX);
+			String[] replace = getIndexedProperties(PROP_PROGRESS_PREFIX + PROP_REPLACE_SUFFIX);
 			if ((replace != null) && (replace.length == find.length)) {
 				setProgressPatterns(find, replace);
 			}
 		}
 		
 		// P2 missing requirement message find/replace expressions
-		find = readIndexedProperties(PROP_MISSING_REQUIREMENT_PREFIX + PROP_FIND_SUFFIX);
+		find = getIndexedProperties(PROP_MISSING_REQUIREMENT_PREFIX + PROP_FIND_SUFFIX);
 		if (find != null) {
-			String[] replace = readIndexedProperties(PROP_MISSING_REQUIREMENT_PREFIX + PROP_REPLACE_SUFFIX);
+			String[] replace = getIndexedProperties(PROP_MISSING_REQUIREMENT_PREFIX + PROP_REPLACE_SUFFIX);
 			if ((replace != null) && (replace.length == find.length)) {
 				setMissingRequirementExpressions(find, replace);
 			}
 		}
 		
-		property = properties.get(PROP_MODULES);
+		// Installer modules
+		property = readProperty(PROP_MODULES);
 		if (property != null) {
 			String[] moduleList = getArrayFromString(property, ","); //$NON-NLS-1$
 			setModuleIDs(moduleList);
 		}
 		
 		// Show/Hide components version on components page
-		property = properties.get(PROP_HIDE_COMPONENTS_VERSION);
+		property = readProperty(PROP_SHOW_COMPONENT_VERSIONS);
 		if (property != null) {
-			setHideComponentsVersion(property.trim().toLowerCase().equals("true"));
-		}
-
-		// Add-ons require login
-		property = properties.get(PROP_ADDONS_REQUIRE_LOGIN);
-		if (property != null) {
-			setAddonsRequireLogin(property.trim().toLowerCase().equals("true"));
+			setShowComponentVersions(property.trim().toLowerCase().equals("true"));
 		}
 		
-		// Wizard page navigation
-		property = properties.get(PROP_WIZARD_NAVIGATION);
+		// Show optional components first on components page
+		property = readProperty(PROP_SHOW_OPTIONAL_FIRST);
 		if (property != null) {
-			int navigation = SWT.NONE;
-			property = property.trim().toLowerCase();
-			if (property.equals("top"))
-				navigation = SWT.TOP;
-			else if (property.equals("left"))
-				navigation = SWT.LEFT;
+			setShowOptionalComponentsFirst(property.trim().toLowerCase().equals("true"));
+		}
+
+		// Wizard page navigation
+		property = readProperty(PROP_WIZARD_NAVIGATION);
+		if (property != null) {
+			WizardNavigation navigation = WizardNavigation.fromString(property);
 			setPageNavigation(navigation);
 		}
 		
-		// Welcome text
-		property = properties.get(PROP_WELCOME_TEXT);
-		if (property != null) {
-			setWelcomeText(property);
-		}
-
 		// Patch
-		property = properties.get(PROP_PATCH);
+		property = readProperty(PROP_PATCH);
 		if (property != null) {
 			setPatch(property.trim().equals(Boolean.TRUE.toString()));
 		}
 		
 		// Requires
-		property = properties.get(PROP_REQUIRES);
+		property = readProperty(PROP_REQUIRES);
 		if (property != null) {
 			try {
 				ArrayList<IProductRange> productRanges = new ArrayList<IProductRange>();
@@ -828,35 +1058,126 @@ public class InstallDescription implements IInstallDescription {
 		}
 
 		// Include remote repositories
-		property = properties.get(PROP_INCLUDE_ALL_REPOSITORIES);
+		property = readProperty(PROP_INCLUDE_ALL_REPOSITORIES);
 		if (property != null)
 			setIncludeAllRepositories(property.trim().toLowerCase().equals(Boolean.TRUE.toString()));
 
 		// Use install registry
-		property = properties.get(PROP_USE_INSTALL_REGISTRY);
+		property = readProperty(PROP_USE_INSTALL_REGISTRY);
 		if (property != null)
 			setUseInstallRegistry(property.trim().toLowerCase().equals(Boolean.TRUE.toString()));
+		
+		// Order planner
+		setOrderPlanner(true);
+		property = readProperty(PROP_ORDER_PLANNER);
+		if (property != null)
+			setOrderPlanner(property.trim().toLowerCase().equals(Boolean.TRUE.toString()));
+		
+		// Minimum version that can be upgraded
+		property = readProperty(PROP_MINIMUM_UPGRADE_VERSION);
+		if (property != null) {
+			Version minVersion = InstallUtils.createVersion(property);
+			setMinimumUpgradeVersion(minVersion);
+		}
+		
+		// Size format
+		property = readProperty(PROP_INSTALL_SIZE_FORMAT);
+		// Default formatting
+		if (property == null) {
+			setInstallSizeFormat(InstallMessages.InstallSizeFormat);
+		}
+		// Format specified
+		else if (!property.trim().isEmpty()) {
+			setInstallSizeFormat(property);
+		}
 	}
 	
 	/**
-	 * Reads indexed property values.  The format of the property names should
-	 * be:
-	 *   <prefix>.0=
-	 *   <prefix>.1=
-	 *   ...
+	 * Reads license descriptions from an installer property.
 	 * 
-	 * @param prefix Property name prefix
-	 * @return Property value or <code>null</code> if property is not found
+	 * @param licenses Collection for license descriptions
+	 * @param propertyName Installer property name
+	 * @param files <code>true</code> if the property is for file based licenses, <code>false</code> if property is
+	 * for install unit based licenses.
 	 */
-	private String[] readIndexedProperties(String prefix) {
+	private void readLicenses(List<LicenseDescriptor> licenses, String propertyName, boolean files) {
+		String property = readProperty(propertyName);
+		if (property != null) {
+			String[] licenseInfos = getArrayFromString(property, ",");  //$NON-NLS-1$
+			for (String licenseInfo : licenseInfos) {
+				String licenseName = null;
+				// License name specified
+				int index = licenseInfo.lastIndexOf(':');
+				if (index != -1) {
+					licenseName = licenseInfo.substring(index + 1);
+					licenseInfo = licenseInfo.substring(0, index);
+				}
+				
+				// License from file
+				if (files) {
+					URI[] licenseLocations = getURIs(licenseInfo, getBase());
+					if (licenseLocations.length > 0) {
+						try {
+							String contents = readFile(licenseLocations[0]);
+							if (contents != null) {
+								LicenseDescriptor license = new LicenseDescriptor(readFile(licenseLocations[0]), licenseName);
+								licenses.add(license);
+							}
+							else {
+								Installer.log("Failed to read license file: " + licenseLocations[0]);
+							}
+						} catch (IOException e) {
+							LogHelper.log(new Status(IStatus.ERROR, Installer.ID, "Failed to read license file: " + licenseLocations[0], e)); //$NON-NLS-1$
+						}
+					}
+				}
+				// License for installable unit
+				else {
+					VersionedId id = new VersionedId(licenseInfo, Version.emptyVersion);
+					LicenseDescriptor license = new LicenseDescriptor(id, licenseName);
+					licenses.add(license);
+				}
+			}
+		}
+	}
+	
+	/**
+	 * Reads versioned roots specified in a property.
+	 * 
+	 * @param property Property
+	 * @return Roots or <code>null</code>
+	 */
+	private IVersionedId[] readRootsProperty(String property) {
+		IVersionedId[] readRoots = null;
+		String rootSpec = readProperty(property);
+		if (rootSpec != null) {
+			String[] rootList = getArrayFromString(rootSpec, ","); //$NON-NLS-1$
+			ArrayList<IVersionedId> roots = new ArrayList<IVersionedId>(rootList.length);
+			for (int i = 0; i < rootList.length; i++) {
+				try {
+					roots.add(VersionedId.parse(rootList[i]));
+				} catch (IllegalArgumentException e) {
+					LogHelper.log(new Status(IStatus.ERROR, Installer.ID, InstallMessages.Error_InvalidInstallDescriptionVersion + rootList[i], e)); //$NON-NLS-1$
+				}
+			}
+			if (!roots.isEmpty()) {
+				readRoots = roots.toArray(new IVersionedId[roots.size()]);
+			}
+		}
+		
+		return readRoots;
+	}
+	
+	@Override
+	public String[] getIndexedProperties(String prefix) {
 		String[] values = null;
 		
-		if (properties.get(prefix + ".0") != null) {
+		if (readProperty(prefix + ".0") != null) {
 			int index = 0;
 			ArrayList<String> patterns = new ArrayList<String>();
 			for (;;) {
 				String indexPostfix = Integer.toString(index);
-				String value = properties.get(prefix + "." + indexPostfix);
+				String value = readProperty(prefix + "." + indexPostfix);
 				if (value == null)
 					break;
 				patterns.add(value);
@@ -866,12 +1187,35 @@ public class InstallDescription implements IInstallDescription {
 		}
 		return values;
 	}
-
+	
+	@Override
+	public Map<String, String> getPrefixedProperties(String prefix) {
+		LinkedHashMap<String, String> prefixedProperties = new LinkedHashMap<String, String>();
+		
+		// Put the default property first
+		String defaultPropertyValue = readProperty(prefix);
+		if (defaultPropertyValue != null) {
+			prefixedProperties.put(prefix, defaultPropertyValue);
+		}
+		// Put the remaining properties
+		for (Entry<String, String> property : properties.entrySet()) {
+			String propertyName = property.getKey();
+			// If property is prefixed but not the default value
+			if (propertyName.startsWith(prefix) && !propertyName.equals(prefix)) {
+				String propertyValue = readProperty(propertyName);
+				prefixedProperties.put(propertyName, propertyValue);
+			}
+		}
+		
+		return prefixedProperties;
+	}
+	
 	/**
-	 * Reads an operating specific and/or architecture specific property value.
-	 * This method returns a value for a property that can optionally include
-	 * the operating system and/or architecture in the name.  It will attempt
-	 * to read properties with names in the following order:
+	 * Reads a property set in the install description.  This method will first
+	 * attempt to read the value for an operating specific and/or architecture 
+	 * specific property.  If those are not found, it will attempt to read the
+	 * default property value.  The properties will be read in the following
+	 * order:
 	 * 
 	 * <ul>
 	 * <li>prefix.os.arch</li>
@@ -882,26 +1226,63 @@ public class InstallDescription implements IInstallDescription {
 	 * @param prefix Prefix for the property name
 	 * @return Property value or <code>null</code>
 	 */
-	private String readPlatformProperty(String prefix) {
+	private String readProperty(String prefix) {
+		final String[] PROPS_OLD = new String[] {
+				"eclipse.p2.metadata", "eclipse.p2.artifacts", "eclipse.p2.welcomeText",
+				"eclipse.p2.installFolderText", "eclipse.p2.windowTitle", "eclipse.p2.title",
+				"eclipse.p2.information", "eclipse.p2.rootLocation", "eclipse.p2.installLocation",
+				"eclipse.p2.productId", "eclipse.p2.productName", "eclipse.p2.productCategory",
+				"eclipse.p2.productVendor", "eclipse.p2.productVersion", "eclipse.p2.productHelp",
+				"eclipse.p2.profileName", "eclipse.p2.removeProfile", "eclipse.p2.launch",
+				"eclipse.p2.linksLocation", "eclipse.p2.linksDefault", "eclipse.p2.requiredRoots",
+				"eclipse.p2.optionalRoots", "eclipse.p2.optionalRootsDefault", "eclipse.p2.licenseIU",
+				"org.eclipse.p2.wizardNavigation", "eclipse.p2.wizardPages", "eclipse.p2.wizardPageTitles",
+				"eclipse.p2.hideComponentsVersion", "eclipse.p2.titleImage", "eclipse.p2.dataLocation",
+				"eclipse.p2.env.paths"
+		};
+		final String[] PROPS_NEW = new String[] {
+				PROP_METADATA_REPOSITORY, PROP_ARTIFACT_REPOSITORY, PROP_WIZARD_TEXT_PREFIX + ".welcome",
+				PROP_WIZARD_TEXT_PREFIX + ".installFolder", PROP_WINDOW_TITLE, PROP_TITLE,
+				PROP_INFORMATION, PROP_ROOT_LOCATION_PREFIX, PROP_INSTALL_LOCATION,
+				PROP_PRODUCT_ID, PROP_PRODUCT_NAME, PROP_PRODUCT_CATEGORY,
+				PROP_PRODUCT_VENDOR, PROP_PRODUCT_VERSION, PROP_PRODUCT_HELP,
+				PROP_PROFILE_NAME, PROP_REMOVE_PROFILE, PROP_LAUNCH,
+				PROP_LINKS_LOCATION, PROP_LINKS_DEFAULT, PROP_REQUIRED_ROOTS,
+				PROP_OPTIONAL_ROOTS, PROP_OPTIONAL_ROOTS_DEFAULT, PROP_LICENSE_IU,
+				PROP_WIZARD_NAVIGATION, PROP_WIZARD_PAGES_ORDER, PROP_WIZARD_PAGE_TITLES,
+				PROP_SHOW_COMPONENT_VERSIONS, PROP_TITLE_IMAGE, PROP_DATA_LOCATION,
+				PROP_ENV_PATHS
+		};
 		String value = null;
 		
-		String os = Platform.getOS();
-		if (!os.equals(Platform.OS_UNKNOWN)) {
-			String osProperty = prefix + "." + os;
-			String archProperty = osProperty + "." + Platform.getOSArch();
-			// Attempt to get value for property that includes operating system 
-			// and architecture in the name
-			value = properties.get(archProperty);
-			// If no property is defined, attempt to get value for property with 
-			// only operating system in the name
-			if (value == null) {
-				value = properties.get(osProperty);
+		if (prefix != null) {
+			String os = Platform.getOS();
+			if (!os.equals(Platform.OS_UNKNOWN)) {
+				String osProperty = prefix + "." + os;
+				String archProperty = osProperty + "." + Platform.getOSArch();
+				// Attempt to get value for property that includes operating system 
+				// and architecture in the name
+				value = properties.get(archProperty);
+				// If no property is defined, attempt to get value for property with 
+				// only operating system in the name
+				if (value == null) {
+					value = properties.get(osProperty);
+				}
 			}
-		}
-		// If OS or OS & ARCH property was not found, get the default property
-		// value
-		if (value == null) {
-			value = properties.get(prefix);
+			// If OS or OS & ARCH property was not found, get the default property
+			// value
+			if (value == null) {
+				value = properties.get(prefix);
+			}
+			// Attempt to read older changed property names
+			if (value == null) {
+				for (int index = 0; index < PROPS_NEW.length; index ++) {
+					if (PROPS_NEW[index].equals(prefix)) {
+						value = properties.get(PROPS_OLD[index]);
+						break;
+					}
+				}
+			}
 		}
 		
 		return value;
@@ -911,9 +1292,8 @@ public class InstallDescription implements IInstallDescription {
 	 * Add all of the given properties to profile properties of the given description 
 	 * after removing the keys known to be for the installer.  This allows install descriptions 
 	 * to also set random profile properties.
-	 * @param properties
 	 */
-	private void initializeProfileProperties(Map<String, String> properties) {
+	private void initializeProfileProperties() {
 		// Load profile properties
 		Map<String, String> profileProperties = new HashMap<String, String>();
 		Set<Entry<String, String>> entries = properties.entrySet();
@@ -926,6 +1306,23 @@ public class InstallDescription implements IInstallDescription {
 			}
 		}
 		setProfileProperties(profileProperties);
+	}
+	
+	/**
+	 * Sets all install data defaults specified in install description.
+	 */
+	private void initializeDataDefaults() {
+		Map<String, String> dataDefaults = new HashMap<String, String>();
+		Set<Entry<String, String>> entries = properties.entrySet();
+		int prefixLength = PROP_DATA_PREFIX.length();
+		for (Entry<String, String> entry : entries) {
+			String key = entry.getKey();
+			if (key.startsWith(PROP_DATA_PREFIX)) {
+				String property = key.substring(prefixLength);
+				dataDefaults.put(property, entry.getValue());
+			}
+		}
+		setInstallDataDefaults(dataDefaults);
 	}
 	
 	/**
@@ -945,22 +1342,6 @@ public class InstallDescription implements IInstallDescription {
 			return uri;
 
 		return URI.create(uriString.substring(0, slashIndex + 1));
-	}
-
-	/**
-	 * Normalizes a path to have platform
-	 * directory separators.
-	 * 
-	 * @param path Path
-	 * @return Normalized path
-	 */
-	protected static IPath getPath(String path) {
-		path = path.trim().replace('\\', File.separatorChar);
-		path = path.replace('/', File.separatorChar);
-		// Replace home directory
-		path = path.replace("~", System.getProperty("user.home"));
-		
-		return new Path(path);
 	}
 
 	/**
@@ -1007,6 +1388,10 @@ public class InstallDescription implements IInstallDescription {
 	 * @return URI or <code>null</code>
 	 */
 	protected URI getURI(String spec, URI base) {
+		// Bad specification
+		if (spec.startsWith("@"))
+			return null;
+		
 		URI uri = null;
 		try {
 			uri = URIUtil.fromString(spec);
@@ -1030,19 +1415,23 @@ public class InstallDescription implements IInstallDescription {
 	/**
 	 * Returns an array of URIs from the given comma-separated list
 	 * of URLs. Returns <code>null</code> if the given spec does not contain any URLs.
+	 * @param specs Repository specifications
 	 * @param base Base location 
 	 * @return An array of URIs in the given spec, or <code>null</code>
 	 */
-	protected URI[] getURIs(String spec, URI base) {
-		if (spec.trim().isEmpty())
+	protected URI[] getURIs(String specs, URI base) {
+		if (specs.trim().isEmpty())
 			return new URI[0];
 		
-		String[] urlSpecs = getArrayFromString(spec, ","); //$NON-NLS-1$
+		String[] urlSpecs = getArrayFromString(specs, ","); //$NON-NLS-1$
 		ArrayList<URI> result = new ArrayList<URI>(urlSpecs.length);
 		for (int i = 0; i < urlSpecs.length; i++) {
-			URI uri = getURI(urlSpecs[i], base);
-			if (uri != null) {
-				result.add(uri);
+			String spec = urlSpecs[i].trim();
+			if (!spec.isEmpty()) {
+				URI uri = getURI(spec, base);
+				if (uri != null) {
+					result.add(uri);
+				}
 			}
 		}
 		if (result.isEmpty())
@@ -1078,7 +1467,7 @@ public class InstallDescription implements IInstallDescription {
 				end = list.indexOf(separator, start);
 			}
 			if (start < list.length()) {
-				part = list.substring(start);
+				part = list.substring(start).trim();
 				parts.add(part);
 			}
 			
@@ -1089,7 +1478,7 @@ public class InstallDescription implements IInstallDescription {
 
 	@Override
 	public String getProperty(String propertyName) {
-		return properties.get(propertyName);
+		return readProperty(propertyName);
 	}
 
 	@Override
@@ -1097,6 +1486,25 @@ public class InstallDescription implements IInstallDescription {
 		properties.put(name, value);
 	}
 	
+	@Override
+	public Map<String, String> getProperties(String prefix) {
+		int prefixLength = prefix.length();
+		HashMap<String, String> properties = new HashMap<String, String>();
+		Iterator<Entry<String, String>> iter = getProperties().entrySet().iterator();
+		while (iter.hasNext()) {
+			Entry<String, String> entry = iter.next();
+			String propertyName = entry.getKey(); 
+			if (propertyName.startsWith(prefix)) {
+				propertyName = propertyName.substring(prefixLength);
+				if (!propertyName.isEmpty()) {
+					properties.put(propertyName, entry.getValue());
+				}
+			}
+		}
+		
+		return properties;
+	}
+
 	/**
 	 * Returns all installer properties.
 	 * 
@@ -1157,16 +1565,6 @@ public class InstallDescription implements IInstallDescription {
 	}
 	
 	@Override
-	public void setArtifactRepositories(URI[] value) {
-		this.artifactRepos = value;
-	}
-
-	@Override
-	public URI[] getArtifactRepositories() {
-		return artifactRepos;
-	}
-
-	@Override
 	public void setInstallLocation(IPath location) {
 		this.p2Location = location;
 	}
@@ -1177,6 +1575,16 @@ public class InstallDescription implements IInstallDescription {
 	}
 
 	@Override
+	public void setRequireEmptyInstallDirectory(boolean requireEmptyCheck) {
+		this.checkEmtptyInstallDirectory = requireEmptyCheck;
+	}
+
+	@Override
+	public boolean getRequireEmptyInstallDirectory() {
+		return checkEmtptyInstallDirectory;
+	}
+
+	@Override
 	public void setLaunchItems(LaunchItem[] value) {
 		this.launchItems = value;
 	}
@@ -1184,36 +1592,6 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public LaunchItem[] getLaunchItems() {
 		return launchItems;
-	}
-
-	@Override
-	public void setMetadataRepositories(URI[] value) {
-		this.metadataRepos = value;
-	}
-
-	@Override
-	public URI[] getMetadataRepositories() {
-		return metadataRepos;
-	}
-
-	@Override
-	public void setAddonRepositories(URI[] value) {
-		this.addonRepos = value;
-	}
-	
-	@Override
-	public URI[] getAddonRepositories() {
-		return addonRepos;
-	}
-
-	@Override
-	public void setAddonDescription(String addonDescription) {
-		this.addonDescription = addonDescription;
-	}
-
-	@Override
-	public String getAddonDescription() {
-		return addonDescription;
 	}
 
 	@Override
@@ -1244,6 +1622,16 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public String getProductName() {
 		return productName;
+	}
+
+	@Override
+	public void setProductCategory(String category) {
+		this.productCategory = category;
+	}
+
+	@Override
+	public String getProductCategory() {
+		return productCategory;
 	}
 
 	@Override
@@ -1283,6 +1671,16 @@ public class InstallDescription implements IInstallDescription {
 	}
 
 	@Override
+	public void setProductUninstallName(String value) {
+		uninstallproductName = value;
+	}
+
+	@Override
+	public String getProductUninstallName() {
+		return uninstallproductName;
+	}
+
+	@Override
 	public void setProfileName(String value) {
 		profileName = value;
 	}
@@ -1310,16 +1708,6 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public LicenseDescriptor[] getLicenses() {
 		return licenses;
-	}
-
-	@Override
-	public void setInformationText(String value) {
-		informationText = value;
-	}
-	
-	@Override
-	public String getInformationText() {
-		return informationText;
 	}
 
 	@Override
@@ -1413,13 +1801,23 @@ public class InstallDescription implements IInstallDescription {
 	}
 	
 	@Override
-	public void setWizardPagesOrder(String[] wizardPages) {
+	public void setWizardPagesExcluded(String[] wizardPages) {
 		this.wizardPages = wizardPages;
+	}
+
+	@Override
+	public String[] getWizardPagesExcluded() {
+		return wizardPages;
+	}
+
+	@Override
+	public void setWizardPagesOrder(String[] wizardPages) {
+		this.wizardPagesOrder = wizardPages;
 	}
 	
 	@Override
 	public String[] getWizardPagesOrder() {
-		return wizardPages;
+		return wizardPagesOrder;
 	}
 	
 	@Override
@@ -1439,43 +1837,23 @@ public class InstallDescription implements IInstallDescription {
 	}
 	
 	@Override
-	public void setHideComponentsVersion(boolean hideComponentsVersion) {
-		this.hideComponentsVersion = hideComponentsVersion;
+	public void setShowComponentVersions(boolean showComponentsVersion) {
+		this.showComponentVersions = showComponentsVersion;
 	}
 
 	@Override
-	public boolean getHideComponentsVersion() {
-		return this.hideComponentsVersion;
+	public boolean getShowComponentVersions() {
+		return this.showComponentVersions;
 	}
 
 	@Override
-	public void setAddonsRequireLogin(boolean requiresLogin) {
-		this.addonsRequiresLogin = requiresLogin;
-	}
-
-	@Override
-	public boolean getAddonsRequireLogin() {
-		return addonsRequiresLogin;
-	}
-
-	@Override
-	public void setPageNavigation(int pageNavigation) {
+	public void setPageNavigation(WizardNavigation pageNavigation) {
 		this.pageNavigation = pageNavigation;
 	}
 
 	@Override
-	public int getPageNavigation() {
+	public WizardNavigation getPageNavigation() {
 		return pageNavigation;
-	}
-
-	@Override
-	public void setLicenseIU(boolean value) {
-		this.licenseIU = value;
-	}
-
-	@Override
-	public boolean getLicenseIU() {
-		return licenseIU;
 	}
 
 	@Override
@@ -1486,16 +1864,6 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public InstallPageTitle[] getPageTitles() {
 		return pageTitles;
-	}
-
-	@Override
-	public void setWelcomeText(String welcomeText) {
-		this.welcomeText = welcomeText;
-	}
-
-	@Override
-	public String getWelcomeText() {
-		return welcomeText;
 	}
 
 	@Override
@@ -1560,5 +1928,298 @@ public class InstallDescription implements IInstallDescription {
 	@Override
 	public IPath getDataLocation() {
 		return dataLocation;
+	}
+
+	@Override
+	public void setUninstallMode(UninstallMode mode) {
+		this.uninstallMode = mode;
+	}
+
+	@Override
+	public UninstallMode getUninstallMode() {
+		return uninstallMode;
+	}
+
+	@Override
+	public void setOrderPlanner(boolean ordered) {
+		this.orderPlanner = ordered;
+	}
+
+	@Override
+	public boolean getOrderPlanner() {
+		return orderPlanner;
+	}
+
+	@Override
+	public void setWizardExpandedRoots(IVersionedId[] expandedRoots) {
+		this.expandedRoots = expandedRoots;
+	}
+	
+	@Override
+	public IVersionedId[] getWizardExpandedRoots() {
+		return expandedRoots;
+	}
+
+	@Override
+	public void setInstallConstraints(IInstallConstraint[] relationships) {
+		this.relationships = relationships;
+	}
+
+	@Override
+	public IInstallConstraint[] getInstallConstraints() {
+		return relationships;
+	}
+
+	@Override
+	public void setSupportsUpgrade(boolean supportsUpgrade) {
+		this.supportsUpgrade = supportsUpgrade;
+	}
+
+	@Override
+	public boolean getSupportsUpgrade() {
+		return supportsUpgrade;
+	}
+
+	@Override
+	public void setSupportsUpdate(boolean supportsUpdate) {
+		this.supportsUpdate = supportsUpdate;
+	}
+
+	@Override
+	public boolean getSupportsUpdate() {
+		return supportsUpdate;
+	}
+
+	@Override
+	public void setExcludedActions(String[] actions) {
+		this.excludedActions = actions;
+	}
+
+	@Override
+	public String[] getExcludedActions() {
+		return excludedActions;
+	}
+
+	@Override
+	public void setInstallDataDefaults(Map<String, String> installData) {
+		this.installDataDefaults = installData;
+	}
+
+	@Override
+	public Map<String, String> getInstallDataDefaults() {
+		return installDataDefaults;
+	}
+
+	@Override
+	public void setMinimumUpgradeVersion(Version version) {
+		this.minimumUpgradeVersion = version;
+	}
+
+	@Override
+	public Version getMinimumUpgradeVersion() {
+		return minimumUpgradeVersion;
+	}
+
+	@Override
+	public void setInstallSizeFormat(String format) {
+		this.sizeFormat = format;
+	}
+
+	@Override
+	public String getInstallSizeFormat() {
+		return sizeFormat;
+	}
+
+	/**
+	 * Resolves the value of a repository location property to a set of URI locations.  The variables are replaced and 
+	 * the ${eclipse.p2.repos.mirror} variable is replaced with the value of the specified mirror property.
+	 * 
+	 * @param propertyName Name of property to replace value
+	 * @param mirrorProperty Mirror property to use for the ${eclipse.p2.repos.mirror} value
+	 * @return Resolved URI
+	 */
+	private URI[] resolveRepositoryLocation(String propertyName, String mirrorProperty) {
+		URI[] locations = null;
+		// Get the repository location property value
+		String value = readProperty(propertyName);
+		if (value != null) {
+			// Get the mirror property value
+			String reposPropertyValue = readProperty(mirrorProperty);
+			// If it is not specified, just use the default mirror (if available)
+			if (reposPropertyValue == null) {
+				reposPropertyValue = readProperty(PROP_REPOS_MIRROR);
+			}
+			// Replace the ${eclipse.p2.repos.mirror} value
+			if (reposPropertyValue != null) {
+				value = value.replace("${" + PROP_REPOS_MIRROR + "}", reposPropertyValue);
+			}
+			
+			// Resolve the repository locations
+			locations = getURIs(value, getBase());
+		}
+
+		return locations;
+	}
+
+	@Override
+	public List<IRepositoryLocation> getRepositoryLocations() {
+		ArrayList<IRepositoryLocation> locations = new ArrayList<IRepositoryLocation>();
+		
+		// Mirror(s) defined
+		if (properties.containsKey(PROP_REPOS_MIRROR)) {
+			// Get the mirror properties
+			Map<String, String> mirrorProperties = getPrefixedProperties(PROP_REPOS_MIRROR);
+
+			// Add the mirror locations
+			for (Entry<String, String> property : mirrorProperties.entrySet()) {
+				String propertyName = property.getKey();
+				// Strip off the mirror property prefix to get mirror identifier
+				String groupId = stripIdentifierPrefix(propertyName, PROP_REPOS_MIRROR);
+				// If no identifier, it is the default mirror
+				if (groupId.isEmpty()) {
+					groupId = DEFAULT_MIRROR;
+				}
+				
+				URI[] metadata = resolveRepositoryLocation(PROP_METADATA_REPOSITORY, propertyName);
+				URI[] artifact = resolveRepositoryLocation(PROP_ARTIFACT_REPOSITORY, propertyName);
+				locations.add(new RepositoryLocation(groupId, metadata, artifact));
+			}
+		}
+		// No mirrors defined
+		else {
+			URI[] metadata = resolveRepositoryLocation(PROP_METADATA_REPOSITORY, null);
+			URI[] artifact = resolveRepositoryLocation(PROP_ARTIFACT_REPOSITORY, null);
+			locations.add(new RepositoryLocation(DEFAULT_MIRROR, metadata, artifact));
+		}
+		
+		return Collections.unmodifiableList(locations);
+	}
+	
+	/**
+	 * Strips an identifier prefix from a property name, including the '.' is present.
+	 * 
+	 * @param propertyName Property name
+	 * @param prefix Property identifier prefix
+	 * @return Property name after prefix
+	 */
+	private String stripIdentifierPrefix(String propertyName, String prefix) {
+		if ((propertyName == null) || (prefix == null))
+			return null;
+		
+		String stripped = propertyName.substring(prefix.length());
+		if (!stripped.isEmpty() && stripped.startsWith(".")) {
+			stripped = stripped.substring(1);
+		}
+		
+		return stripped;
+	}
+	
+	/**
+	 * Repository location
+	 */
+	private class RepositoryLocation implements IRepositoryLocation {
+		/** Mirror identifier */
+		private String id;
+		/** Mirror meta-data locations */
+		private URI[] metadataLocations;
+		/** Mirror artifact locations */
+		private URI[] artifactLocations;
+		
+		/**
+		 * Constructor
+		 * 
+		 * @param id Identifier
+		 * @param metadataLocations Meta-data locations
+		 * @param artifactLocations Artifact locations
+		 */
+		public RepositoryLocation(String id, URI[] metadataLocations, URI[] artifactLocations) {
+			this.id = id;
+			this.metadataLocations = metadataLocations;
+			this.artifactLocations = artifactLocations;
+		}
+
+		@Override
+		public String getId() {
+			return id;
+		}
+
+		@Override
+		public URI[] getMetadataLocations() {
+			return metadataLocations;
+		}
+
+		@Override
+		public URI[] getArtifactLocations() {
+			return artifactLocations;
+		}
+
+		@Override
+		public String toString() {
+			return getId();
+		}
+	}
+
+	@Override
+	public void setText(String type, String text) {
+		installerText.put(type, text);
+	}
+
+	@Override
+	public String getText(String type, String message) {
+		String text = installerText.get(type);
+		if (text == null) {
+			text = message;
+		}
+		return text;
+	}
+
+	@Override
+	public void setShowOptionalComponentsFirst(boolean showOptional) {
+		this.showOptionalComponentsFirst = showOptional;
+	}
+
+	@Override
+	public boolean getShowOptionalComponentsFirst() {
+		return showOptionalComponentsFirst;
+	}
+
+	@Override
+	public void setMirrorMode(MirrorMode mirrorMode) {
+		this.mirrorMode = mirrorMode;
+	}
+
+	@Override
+	public MirrorMode getMirrorMode() {
+		return mirrorMode;
+	}
+
+	@Override
+	public void setNetworkTimeout(int timeout) {
+		this.networkTimeout = timeout;
+	}
+
+	@Override
+	public int getNetworkTimeout() {
+		return networkTimeout;
+	}
+
+	@Override
+	public void setNetworkRetry(int retries) {
+		this.networkRetry = retries;
+	}
+
+	@Override
+	public int getNetworkRetry() {
+		return networkRetry;
+	}
+
+	@Override
+	public void setProductRoot(boolean root) {
+		this.productRoot = root;
+	}
+
+	@Override
+	public boolean getProductRoot() {
+		return productRoot;
 	}
 }

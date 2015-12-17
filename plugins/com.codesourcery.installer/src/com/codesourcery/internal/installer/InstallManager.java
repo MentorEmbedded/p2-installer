@@ -12,29 +12,46 @@ package com.codesourcery.internal.installer;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 
-import org.apache.commons.io.FileUtils;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.ListenerList;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Platform;
+import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.core.runtime.SubProgressMonitor;
+import org.eclipse.equinox.p2.core.IProvisioningAgent;
+import org.eclipse.equinox.p2.engine.IProfile;
+import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.jface.wizard.IWizardPage;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.program.Program;
 
 import com.codesourcery.installer.IInstallAction;
+import com.codesourcery.installer.IInstallComponent;
 import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallManager;
@@ -42,6 +59,7 @@ import com.codesourcery.installer.IInstallManifest;
 import com.codesourcery.installer.IInstallMode;
 import com.codesourcery.installer.IInstallModule;
 import com.codesourcery.installer.IInstallProduct;
+import com.codesourcery.installer.IInstallVerifier;
 import com.codesourcery.installer.IInstallWizardPage;
 import com.codesourcery.installer.IInstalledProduct;
 import com.codesourcery.installer.IProductRange;
@@ -49,6 +67,7 @@ import com.codesourcery.installer.InstallPageTitle;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.LaunchItem;
 import com.codesourcery.installer.LaunchItem.LaunchItemType;
+import com.codesourcery.installer.UninstallMode;
 import com.codesourcery.installer.ui.InstallWizardPage;
 import com.codesourcery.internal.installer.actions.InstallIUAction;
 
@@ -65,13 +84,19 @@ public class InstallManager implements IInstallManager {
 	private static final int PRODUCT_PROGRESS = 100;
 	/** Install registry filename */
 	private static final String INSTALL_REGISTRY_FILENAME = ".registry";
+	/** Mirror information filename */
+	private static final String MIRROR_INFO_FILENAME = "mirror.info";
 	/** Installed product to update with installation */
 	private IInstalledProduct installedProduct;
+	/** Cached wizard pages */
+	private IInstallWizardPage[] wizardPages;
+	/** Install verifiers*/
+	private ListenerList installVerifiers = new ListenerList();
+	/** Install data */
+	private IInstallData installData;
+	/** Start time */
+	private Date startTime;
 	
-	/**
-	 * Locations manager
-	 */
-	private LocationsManager locationsManager = new LocationsManager();
 	/**
 	 * Install description
 	 */
@@ -96,6 +121,8 @@ public class InstallManager implements IInstallManager {
 	 * Install registry
 	 */
 	private InstallRegistry installRegistry = new InstallRegistry();
+	/** Restart or re-login required or not. **/
+	private boolean needsResetOrRelogin = false;
 
 	/**
 	 * Constructor
@@ -103,8 +130,6 @@ public class InstallManager implements IInstallManager {
 	public InstallManager() {
 		// Create default new install manifest
 		installManifest = new InstallManifest();
-		// Load install locations
-		locationsManager.load();
 		// Install registry
 		installRegistry = new InstallRegistry();
 		IPath path = Installer.getDefault().getDataFolder().append(INSTALL_REGISTRY_FILENAME);
@@ -116,14 +141,13 @@ public class InstallManager implements IInstallManager {
 			}
 		}
 		
+		installData = new InstallData();
 	}
 	
 	/**
 	 * Disposes of the install manager.
 	 */
 	public void dispose() {
-		// Save install locations
-		getLocationsManager().save();
 		// Save install registry
 		try {
 			IPath path = Installer.getDefault().getDataFolder().append(INSTALL_REGISTRY_FILENAME);
@@ -137,6 +161,9 @@ public class InstallManager implements IInstallManager {
 	@Override
 	public void setInstallDescription(IInstallDescription installDescription) {
 		this.installDescription = installDescription;
+
+		// Load install modules
+		loadModules();
 	}
 	
 	@Override
@@ -155,15 +182,6 @@ public class InstallManager implements IInstallManager {
 	}
 	
 	/**
-	 * Returns the locations manager.
-	 * 
-	 * @return Locations manager
-	 */
-	private LocationsManager getLocationsManager() {
-		return locationsManager;
-	}
-	
-	/**
 	 * Returns the install registry.
 	 * 
 	 * @return Install registry
@@ -172,8 +190,31 @@ public class InstallManager implements IInstallManager {
 		return installRegistry;
 	}
 	
+	/**
+	 * Verifies install components.
+	 * 
+	 * @return Error message or <code>null</code>
+	 * @throws CoreException on error
+	 */
+	protected void verifyInstallComponents() throws CoreException {
+		IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents(false);
+		IStatus[] status = verifyInstallComponents(components);
+		for (IStatus s : status) {
+			if (s.getSeverity() == IStatus.ERROR) {
+				throw new CoreException(new Status(IStatus.ERROR, Installer.ID, s.getMessage()));
+			}
+		}
+	}
+
 	@Override
-	public void setInstallLocation(IPath path) throws CoreException {
+	public void setInstallLocation(IPath path, IProgressMonitor monitor) throws CoreException {
+		// Mirror has already been set
+		if (getInstallMode().isMirror())
+			return;
+		
+		if (monitor == null)
+			monitor = new NullProgressMonitor();
+		
 		getInstallDescription().setRootLocation(path);
 		
 		// Load existing manifest if available
@@ -181,25 +222,210 @@ public class InstallManager implements IInstallManager {
 
 		// Location changed
 		if ((path == null) || !path.equals(installLocation)) {
-			// Remove old location
 			if (installLocation != null) {
+				// Stop the P2 agent
 				RepositoryManager.getDefault().stopAgent();
-				if (!getInstallMode().isUpdate() && !getInstallMode().isUpgrade()) {
-					getLocationsManager().deleteInstallLocation(installLocation);
-				}
+				// Remove the old install location.  This will include any artifacts created by the P2 agent.
+				removeInstallLocation();
 			}
 			this.installLocation = path;
 		
 			// Create new location
 			if (installLocation != null) {
-				if (!getInstallMode().isUpdate() && !getInstallMode().isUpgrade()) {
-					getLocationsManager().createInstallLocation(installLocation);
+				if (getInstallMode().isInstall() && !getInstallMode().isUpdate() && !getInstallMode().isUpgrade()) {
+					createInstallLocation(installLocation);
 				}
-				// Create new P2 agent
-				// Note, if this is not an existing installation, it will result 
-				// in agent files being created in the location.
-				RepositoryManager.getDefault().createAgent(getInstallDescription().getInstallLocation());
+				
+				// Create the P2 agent.
+				try {
+					createAgent(getInstallDescription().getInstallLocation(), monitor);
+				}
+				catch (Exception e) {
+					removeInstallLocation();
+
+					this.installLocation = null;
+					throw e;
+				}
 			}
+		}
+		
+		if (installLocation != null) {
+			// Verify install
+			verifyInstall(RepositoryManager.getDefault().getAgent(), RepositoryManager.getDefault().getInstallProfile());
+			// Verify install components
+			verifyInstallComponents();
+		}
+	}
+
+	@Override
+	public void setMirrorLocation(IPath path, IProgressMonitor monitor)
+			throws CoreException {
+		// Install location has already been set
+		if (getInstallLocation() != null)
+			return;
+		
+		if (monitor == null)
+			monitor = new NullProgressMonitor();
+
+		// Set mirror install mode
+		installMode.setMirror();
+
+		// Set repository manager to create mirror of install
+		RepositoryManager.getDefault().setCacheLocation(path);
+		RepositoryManager.getDefault().setUpdateCache(true);
+		RepositoryManager.getDefault().setCacheOnly(false);
+		
+		// Create default agent
+		createAgent(null, monitor);
+		
+		verifyInstallComponents();
+	}
+	
+	@Override
+	public void setSourceLocation(IPath path) throws CoreException {
+		MirrorDescription desc = new MirrorDescription();
+		IPath mirrorInfo = path.append(MIRROR_INFO_FILENAME);
+		File mirrorInfoFile = mirrorInfo.toFile();
+		if (!mirrorInfoFile.exists()) {
+			Installer.fail(InstallMessages.Error_WrongMirror);
+		}
+		desc.load(mirrorInfoFile);
+		
+		// Check that the mirror was made with this installer
+		if (!getInstallDescription().getProductId().equals(desc.getProductId()) || 
+			!getInstallDescription().getProductVersionString().equals(desc.getProductVersion())) {
+			Installer.fail(InstallMessages.Error_WrongMirror);
+		}
+		
+		// Set repository manager to install from mirror only
+		RepositoryManager.getDefault().setCacheLocation(path);
+		RepositoryManager.getDefault().setUpdateCache(false);
+		RepositoryManager.getDefault().setCacheOnly(true);
+	}
+
+	/**
+	 * Creates the directories for an install location and records the levels of directories created in the install
+	 * manifest.
+	 * 
+	 * @param path Path to install location
+	 * @throws CoreException on failure to create install location
+	 */
+	public void createInstallLocation(IPath path) throws CoreException {
+		String[] segments = path.segments();
+		IPath location = new Path(path.getDevice(), "/");
+
+		ArrayList<String> createdDirectories = new ArrayList<String>();
+		
+		for (String segment : segments) {
+			location = location.append(segment);
+		
+			File directory = location.toFile();
+			// If directory does not exist then create it and increment the level
+			// of directories that should be removed on uninstall.
+			if (!directory.exists()) {
+				directory.mkdir();
+				if (!directory.exists()) {
+					Installer.fail(InstallMessages.NoWritePermissions);
+				}
+				else {
+					createdDirectories.add(directory.getName());
+				}
+			}
+		}
+		// Record the directories created
+		String[] directories = createdDirectories.toArray(new String[createdDirectories.size()]);
+		((InstallManifest)installManifest).setDirectories(directories);
+	}
+
+	/**
+	 * Removes the directories for an install location.
+	 * 
+	 * @throws CoreException on failure to remove install location
+	 */
+	public void removeInstallLocation() throws CoreException {
+		// Remove created install artifacts if not an update or upgrade of existing installation
+		boolean removeInstallLocation = !getInstallMode().isUpdate() && !getInstallMode().isUpgrade();
+		// Or if there are other products installed at location
+		if ((getInstallManifest() != null) && (getInstallManifest().getProducts().length != 0)) {
+			removeInstallLocation = false;
+		}
+		if (!removeInstallLocation) {
+			return;
+		}
+
+		// Get install location to remove
+		IPath path = getInstallLocation();
+		if (path == null) {
+			return;
+		}
+
+		String[] directories = (getInstallManifest() != null) ? ((InstallManifest)getInstallManifest()).getDirectories() : null; 
+
+		try {
+			// Remove directories
+			if (directories != null) {
+				// Delete created directories if they are empty
+				for (int index = directories.length - 1; index >= 0; index --) {
+					// Make sure parent directory name matches
+					if (!path.lastSegment().equals(directories[index])) {
+						break;
+					}
+					File dir = path.toFile();
+					// Except for the first directory, delete only if it is empty
+					if ((index != directories.length - 1) && dir.listFiles().length != 0)
+						break;
+					FileUtils.deleteDirectory(dir.toPath());
+					path = path.removeLastSegments(1);
+				}
+			}
+			// Otherwise remove files in directory
+			else {
+				File[] files = path.toFile().listFiles();
+				for (File file : files) {
+					if (file.isDirectory())
+						FileUtils.deleteDirectory(file.toPath());
+					else
+						file.delete();
+				}
+			}
+		}
+		catch (Exception e) {
+			Installer.fail("Failed to remove install location.", e);
+		}
+	}
+
+	/**
+	 * Creates and initializes the provisioning agent.
+	 * 
+	 * @param installLocation Install location
+	 * @param monitor Progress monitor
+	 * @throws CoreException on failure
+	 */
+	private void createAgent(IPath installLocation, IProgressMonitor monitor) throws CoreException {
+		// Create new P2 agent
+		// Note, if this is not an existing installation, it will result 
+		// in agent files being created in the location.
+		IProvisioningAgent agent = RepositoryManager.getDefault().createAgent(installLocation, monitor);
+
+		// Let install modules perform any agent initialization
+		if (agent != null) {
+			for (IInstallModule module : getModules()) {
+				try {
+					module.initAgent(agent);
+				}
+				catch (Exception e) {
+					Installer.log(e);
+				}
+			}
+		}
+		
+		// Load repositories
+		try {
+			RepositoryManager.getDefault().loadInstallRepositories(monitor);
+		}
+		catch (Exception e) {
+			RepositoryManager.getDefault().stopAgent();
+			throw e;
 		}
 	}
 	
@@ -222,9 +448,120 @@ public class InstallManager implements IInstallManager {
 		return installMode;
 	}
 	
+	/**
+	 * Logs a time stamp.
+	 * 
+	 * @param message Message for time stamp.
+	 * @param date Time stamp
+	 */
+	private void logTimeStamp(String message, Date date) {
+		try {
+			final SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			Installer.log(message + ": " + format.format(date));
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	/**
+	 * Logs start time.
+	 * 
+	 * @param message Message for time stamp.
+	 */
+	private void logStartTime(String message) {
+		try {
+			startTime = Calendar.getInstance().getTime();
+			logTimeStamp(message, startTime);
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * Logs end time.
+	 * 
+	 * @param message Message for time stamp.
+	 */
+	private void logEndTime(String message) {
+		try {
+			Date endTime = Calendar.getInstance().getTime();
+			logTimeStamp(message, endTime);
+			
+			long elapsed = endTime.getTime() - startTime.getTime();
+			long secondsInMilliseconds = 1000;
+			long minutesInMilliseconds = secondsInMilliseconds * 60;
+			long hoursInMilliseconds = minutesInMilliseconds * 60;
+			long daysInMilliseconds = hoursInMilliseconds * 24;
+			
+			long elapsedDays = elapsed / daysInMilliseconds;
+			elapsed = elapsed % daysInMilliseconds;
+			long elapsedHours = elapsed / hoursInMilliseconds;
+			elapsed = elapsed % hoursInMilliseconds;
+			long elapsedMinutes = elapsed / minutesInMilliseconds;
+			elapsed = elapsed % minutesInMilliseconds;
+			long elapsedSeconds = elapsed / secondsInMilliseconds;
+			
+			Installer.log("Total Time: " + 
+					((elapsedDays > 0) ? Long.toString(elapsedDays) + " days " : "") +
+					((elapsedHours > 0) ? Long.toString(elapsedHours) + " hours " : "") +
+					((elapsedMinutes > 0) ? Long.toString(elapsedMinutes) + " minutes " : "") +
+					((elapsedSeconds > 0) ? Long.toString(elapsedSeconds) + " seconds " : "")
+					);
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
 	@Override
-	public void install(IInstallData installData, IProgressMonitor monitor)
-			throws CoreException {
+	public void install(IProgressMonitor monitor) throws CoreException {
+		logStartTime("Install Started");
+
+		if (Installer.getDefault().getInstallManager().getInstallMode().isMirror()) {
+			doMirror(monitor);
+		}
+		else {
+			doInstall(monitor);
+		}
+		
+		logEndTime("Install Completed");
+	}
+
+	/**
+	 * Performs a mirror operation.
+	 * 
+	 * @param monitor Progress monitor
+	 * @throws CoreException on failure
+	 */
+	protected void doMirror(IProgressMonitor monitor) throws CoreException {
+		if (monitor.isCanceled())
+			return;
+
+		// Units to add
+		ArrayList<IInstallableUnit> toAdd = new ArrayList<IInstallableUnit>();
+
+		// Get the install plan
+		RepositoryManager.getDefault().getAllInstallUnits(toAdd);
+		// Peform the provision
+		RepositoryManager.getDefault().provision(null, toAdd, null, false, monitor);
+		
+		// Save mirror information
+		MirrorDescription desc = new MirrorDescription();
+		desc.setProductId(getInstallDescription().getProductId());
+		desc.setProductVersion(getInstallDescription().getProductVersionString());
+		IPath infoPath = RepositoryManager.getDefault().getCacheLocation().append(MIRROR_INFO_FILENAME);
+		desc.save(infoPath.toFile());
+	}
+	
+	/**
+	 * Performs an install operation.
+	 * 
+	 * @param monitor Progress monitor
+	 * @throws CoreException on failure
+	 */
+	protected void doInstall(IProgressMonitor monitor) throws CoreException {
 		// Installation mode
 		InstallMode mode = (InstallMode)Installer.getDefault().getInstallManager().getInstallMode();
 		
@@ -243,6 +580,8 @@ public class InstallManager implements IInstallManager {
 						if (isActionSupported(action)) {
 							action.run(RepositoryManager.getDefault().getAgent(), 
 									product, new InstallMode(false), new NullProgressMonitor());
+							if (action.needsRestartOrRelogin())
+								needsResetOrRelogin = true;
 						}
 					}
 					
@@ -261,8 +600,26 @@ public class InstallManager implements IInstallManager {
 					getInstallDescription().getProductId(),
 					getInstallDescription().getProductName(),
 					getInstallDescription().getProductVersionString(),
+					getInstallDescription().getProductUninstallName(),
 					getInstallDescription().getRootLocation(),
 					getInstallDescription().getInstallLocation());
+			
+			// Save if installation directories should be removed for the product
+			UninstallMode uninstallMode = getInstallDescription().getUninstallMode();
+			product.setProperty(IInstallProduct.PROPERTY_REMOVE_DIRS, 
+					uninstallMode != null ? 
+							Boolean.toString(getInstallDescription().getUninstallMode().getRemoveDirectories()) : 
+							Boolean.FALSE.toString());
+			// Save if product should be shown in uninstaller
+			product.setProperty(IInstallProduct.PROPERTY_SHOW_UNINSTALL, 
+					uninstallMode != null ? 
+							Boolean.toString(getInstallDescription().getUninstallMode().getShowUninstall()) : 
+							Boolean.FALSE.toString());
+			// Save product additional uninstallation text (if any)
+			String productUninstallText = getInstallDescription().getText(IInstallDescription.TEXT_UNINSTALL_ADDENDUM, null);
+			if (productUninstallText != null) {
+				product.setProperty(IInstallProduct.PROPERTY_UNINSTALL_TEXT, productUninstallText);
+			}
 		}
 
 		// Compute action ticks
@@ -285,6 +642,10 @@ public class InstallManager implements IInstallManager {
 				action.run(RepositoryManager.getDefault().getAgent(), 
 						product, mode, subMonitor);
 				
+				// Set reset or relogin if it is required for action.
+				if (action.needsRestartOrRelogin())
+					needsResetOrRelogin = true;
+				
 				// Add the action to the product unless the installation mode
 				// is update or it is the install IU's action
 				if (!getInstallMode().isUpdate() || !(action instanceof InstallIUAction)) {
@@ -299,21 +660,27 @@ public class InstallManager implements IInstallManager {
 		if (monitor.isCanceled()) {
 			monitor.setTaskName(InstallMessages.CleanupInstallation);
 			
-			if (getInstallManifest().getProducts().length == 0) {
-				mode.setRootUninstall(true);
-			}
-			
-			// Uninstall performed actions
-			for (int rollbackIndex = 0; rollbackIndex <= index; rollbackIndex ++) {
-				if (isActionSupported(actions[rollbackIndex])) {
-					actions[rollbackIndex].run(RepositoryManager.getDefault().getAgent(), 
-							product, mode, new NullProgressMonitor());
+			// If not update, roll back performed actions.  For an update, the P2 provisioning operation would have been
+			// cancelled and IU's rolled back.
+			if (!getInstallMode().isUpdate()) {
+				InstallMode rollbackMode = new InstallMode(mode);
+				rollbackMode.setInstall(false);
+				
+				// Uninstall performed actions
+				for (int rollbackIndex = 0; rollbackIndex <= index; rollbackIndex ++) {
+					if (isActionSupported(actions[rollbackIndex])) {
+						actions[rollbackIndex].run(RepositoryManager.getDefault().getAgent(), 
+								product, rollbackMode, new NullProgressMonitor());
+						
+						// Set reset or relogin if it is required for action.
+						if (actions[rollbackIndex].needsRestartOrRelogin())
+							needsResetOrRelogin = true;
+					}
 				}
 			}
 			
-			// Remove product directory
-			SubMonitor removeProgress = SubMonitor.convert(monitor, CLEANUP_PROGRESS);
-			removeProductDirectory(product, removeProgress);
+			// Remove install location
+			setInstallLocation(null, null);
 		}
 		// Installation completed
 		else {
@@ -323,7 +690,15 @@ public class InstallManager implements IInstallManager {
 			getInstallManifest().addProduct(product);
 			// Update install registry
 			if (getInstallDescription().getUseInstallRegistry()) {
-				getInstallRegistry().addProduct(new InstalledProduct(product.getId(), product.getName(), product.getVersionString(), product.getLocation()));
+				getInstallRegistry().addProduct(
+						new InstalledProduct(
+								product.getId(), 
+								product.getName(), 
+								product.getVersionString(), 
+								product.getLocation(), 
+								getInstallDescription().getProductCategory()
+								)
+						);
 			}
 	
 			// Install manifest path
@@ -339,7 +714,7 @@ public class InstallManager implements IInstallManager {
 						// the latest version is included.
 						if (uninstallLocation.toFile().exists()) {
 							try {
-								FileUtils.deleteDirectory(uninstallLocation.toFile());
+								FileUtils.deleteDirectory(uninstallLocation.toFile().toPath());
 							} catch (IOException e) {
 								Installer.fail(InstallMessages.Error_CopyInstaller, e);
 							}
@@ -356,7 +731,9 @@ public class InstallManager implements IInstallManager {
 			}
 			
 			// Save manifest
-			getInstallManifest().save(manifestPath.toFile());
+			if (getInstallDescription().getUninstallMode() != null) {
+				getInstallManifest().save(manifestPath.toFile());
+			}
 		}
 		
 		monitor.worked(UNINSTALL_SETUP_PROGRESS);
@@ -371,44 +748,46 @@ public class InstallManager implements IInstallManager {
 
 		InstallMode mode = (InstallMode)Installer.getDefault().getInstallManager().getInstallMode();
 		
-		// Removing all products
-		if (getInstallManifest().getProducts().length == products.length) {
-			mode.setRootUninstall(true);
-		}
-		
-		if (!mode.isRootUninstall()) {
-			// Update manifest
-			getInstallManifest().save();
-		}
-
-		// Run product actions
+		// Remove the products from the registry. It is important that the products be removed before the actions
+		// are run as InstallIUActions checks remaining products.
 		for (IInstallProduct product : products) {
-			RepositoryManager.getDefault().createAgent(product.getInstallLocation());
-			
-			int work = PRODUCT_PROGRESS / product.getActions().length;
-			for (IInstallAction action : product.getActions()) {
-				if (isActionSupported(action)) {
-					action.run(RepositoryManager.getDefault().getAgent(), product, mode, progress.newChild(work));
-				}
-				if (monitor.isCanceled())
-					break;
-			}
-			
-			if (monitor.isCanceled())
-				break;
-		
 			// Remove product from manifest
 			getInstallManifest().removeProduct(product);
 			// Remove product from install registry
 			getInstallRegistry().removeProduct(product.getId());
-
-			// Remove product directory
-			removeProductDirectory(product, progress.newChild(PRODUCT_PROGRESS));
 		}
 		
-		if (!mode.isRootUninstall()) {
-			// Update manifest
+		// Remove products actions
+		for (IInstallProduct product : products) {
+			RepositoryManager.getDefault().createAgent(product.getInstallLocation(), monitor);
+			RepositoryManager.getDefault().loadInstallRepositories(monitor);
+			
+			if (monitor.isCanceled())
+				break;
+
+			// Remove product actions
+			int work = PRODUCT_PROGRESS / product.getActions().length;
+			for (IInstallAction action : product.getActions()) {
+				if (isActionSupported(action)) {
+					action.run(RepositoryManager.getDefault().getAgent(), product, mode, progress.newChild(work));
+					
+					// Set reset or re-login if it is required for any action.
+					if (action.needsRestartOrRelogin())
+						needsResetOrRelogin = true;
+				}
+				if (monitor.isCanceled())
+					break;
+			}
+		}
+		
+		// Update manifest if there are still products installed
+		if (getInstallManifest().getProducts().length > 0) {
 			getInstallManifest().save();
+			monitor.worked(PRODUCT_PROGRESS);
+		}
+		// Else remove product directory if all products have been uninstalled
+		else {
+			removeProductLocation(products[0], progress.newChild(PRODUCT_PROGRESS));
 		}
 	}
 
@@ -424,24 +803,18 @@ public class InstallManager implements IInstallManager {
 				if (!toRun.toFile().exists())
 					Installer.fail(InstallMessages.Error_FileNotFound + toRun.toOSString());
 				
-				// Add paths to environment and launch.
 				ProcessBuilder pb = new ProcessBuilder();
-				String[] paths = installDescription.getEnvironmentPaths();
-				
-				if (paths != null) {
-					Map <String, String> env = pb.environment();
-					String pathKey = "PATH";
-					String pathVar = env.get(pathKey);
-					
-					if (pathVar == null) {
-						pathVar = "";
+
+				// Set up environment
+				Map<String, String> environment = pb.environment();
+				IInstallModule[] modules = getModules();
+				for (IInstallModule module : modules) {
+					try {
+						module.setEnvironmentVariables(environment);
 					}
-					
-					for (String path : paths) {
-						IPath resolvedPath = installDescription.getRootLocation().append(path);
-						pathVar = resolvedPath.toString() + File.pathSeparatorChar + pathVar;
+					catch (Exception e) {
+						Installer.log(e);
 					}
-					env.put(pathKey, pathVar);
 				}
 				
 				program = toRun.toOSString();
@@ -462,6 +835,29 @@ public class InstallManager implements IInstallManager {
 				program = item.getPath();
 				Program.launch(program);
 			}
+			//RESTART item
+			else if (item.getType() == LaunchItemType.RESTART) {
+				if (Installer.isWindows()) {
+					restart("shutdown -r");
+				}
+				else
+					Installer.log(NLS.bind(InstallMessages.Error_UnsupportedOS, "Restart", System.getProperty("os.name")));
+			}
+			//LOGOUT item
+			else if (item.getType() == LaunchItemType.LOGOUT) {
+				if (Installer.isWindows()) {
+					restart("shutdown -l");
+				}
+				else if (Installer.isLinux()) {
+					final String user = System.getProperty("user.name");
+					if (user == null) {
+						Installer.log("Unable to obtain user.name");
+					}
+					else {
+						restart("pkill -KILL -u " + user.toLowerCase());
+					}
+				}
+			}
 			else {
 				throw new NullPointerException(InstallMessages.Error_NoLaunchItemType);
 			}
@@ -476,6 +872,25 @@ public class InstallManager implements IInstallManager {
 		}
 	}
 
+	/**
+	 * Runs a restart command at the end of the installation.
+	 * 
+	 * @param command Command to run
+	 */
+	private void restart(final String command) {
+		ShutdownHandler.getDefault().addOperation(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					Runtime.getRuntime().exec(command);
+				}
+				catch (Exception e) {
+					Installer.log(e);
+				}
+			}
+		});
+	}
+	
 	/**
 	 * Returns the wizard pages from all install modules.  This method ensures
 	 * that wizard pages with the same name are not returned.
@@ -496,77 +911,106 @@ public class InstallManager implements IInstallManager {
 		return pages.values().toArray(new IInstallWizardPage[pages.size()]);
 	}
 	
+	/**
+	 * Returns if a wizard page is excluded.
+	 * 
+	 * @param wizardPage Wizard page
+	 * @return <code>true</code> if wizard page is excluded
+	 */
+	private boolean isWizardPageExcluded(InstallWizardPage wizardPage) {
+		boolean excluded = false;
+		String[] excludedPages = getInstallDescription().getWizardPagesExcluded();
+		if (excludedPages != null) {
+			for (String excludedPage : excludedPages) {
+				if (wizardPage.getName().equals(excludedPage)) {
+					excluded = true;
+					break;
+				}
+			}
+		}
+		
+		return excluded;
+	}
+	
 	@Override
 	public IInstallWizardPage[] getWizardPages() {
 		if (getInstallDescription() == null)
 			return new IInstallWizardPage[0];
 		
-		ArrayList<IInstallWizardPage> pages = new ArrayList<IInstallWizardPage>();
-		
-		// Wizard page order
-		String[] wizardPageNames = getInstallDescription().getWizardPagesOrder();
-		// First pages to insert
-		IInstallWizardPage[] firstPages = wizardPageNames != null ? 
-				new IInstallWizardPage[wizardPageNames.length] : new IInstallWizardPage[0];
-		// Remaining pages to insert
-		ArrayList<IInstallWizardPage> remainingPages = new ArrayList<IInstallWizardPage>();
-
-		// Page titles
-		InstallPageTitle[] pageTitles = getInstallDescription().getPageTitles();
-
-		IInstallWizardPage[] modulePages = getModulePages();
-		// Loop through pages from all modules
-		for (IInstallWizardPage modulePage : modulePages) {
-			// Verify page base class
-			if (modulePage instanceof InstallWizardPage) {
-				InstallWizardPage page = (InstallWizardPage)modulePage;
-				
-				// Set page title if available
-				if (pageTitles != null) {
-					for (InstallPageTitle pageTitle : pageTitles) {
-						if (pageTitle.getPageName().equals(modulePage.getName())) {
-							page.setPageLabel(pageTitle.getPageTitle());
-							break;
+		if (wizardPages == null) {
+			ArrayList<IInstallWizardPage> pages = new ArrayList<IInstallWizardPage>();
+			
+			// Wizard page order
+			String[] wizardPagesOrder = getInstallDescription().getWizardPagesOrder();
+			// First pages to insert
+			IInstallWizardPage[] firstPages = wizardPagesOrder != null ? 
+					new IInstallWizardPage[wizardPagesOrder.length] : new IInstallWizardPage[0];
+			// Remaining pages to insert
+			ArrayList<IInstallWizardPage> remainingPages = new ArrayList<IInstallWizardPage>();
+	
+			// Page titles
+			InstallPageTitle[] pageTitles = getInstallDescription().getPageTitles();
+	
+			IInstallWizardPage[] modulePages = getModulePages();
+			// Loop through pages from all modules
+			for (IInstallWizardPage modulePage : modulePages) {
+				// Verify page base class
+				if (modulePage instanceof InstallWizardPage) {
+					InstallWizardPage page = (InstallWizardPage)modulePage;
+					
+					// Excluded page
+					if (isWizardPageExcluded(page))
+						continue;
+					
+					// Set page title if available
+					if (pageTitles != null) {
+						for (InstallPageTitle pageTitle : pageTitles) {
+							if (pageTitle.getPageName().equals(modulePage.getName())) {
+								page.setPageLabel(pageTitle.getPageTitle());
+								break;
+							}
 						}
 					}
-				}
-
-				// Check if the page is found in the order
-				int pos = -1;
-				if (wizardPageNames != null) {
-					for (int index = 0; index < wizardPageNames.length; index ++) {
-						String modulePageName = modulePage.getName();
-						if ((modulePageName != null) && modulePageName.equals(wizardPageNames[index])) {
-							pos = index;
-							break;
+	
+					// Check if the page is found in the order
+					int pos = -1;
+					if (wizardPagesOrder != null) {
+						for (int index = 0; index < wizardPagesOrder.length; index ++) {
+							String modulePageName = modulePage.getName();
+							if ((modulePageName != null) && modulePageName.equals(wizardPagesOrder[index])) {
+								pos = index;
+								break;
+							}
 						}
 					}
+					// First page
+					if (pos != -1) {
+						firstPages[pos] = modulePage;
+					}
+					// Remaining page
+					else {
+						remainingPages.add(modulePage);
+					}
 				}
-				// First page
-				if (pos != -1) {
-					firstPages[pos] = modulePage;
-				}
-				// Remaining page
 				else {
-					remainingPages.add(modulePage);
+					Installer.log(modulePage.getName() + " does not extend InstallWizardPage.");
 				}
 			}
-			else {
-				Installer.log(modulePage.getName() + " does not extend InstallWizardPage.");
+			// Add first pages
+			for (IInstallWizardPage page : firstPages) {
+				if (page != null) {
+					pages.add(page);
+				}
 			}
-		}
-		// Add first pages
-		for (IInstallWizardPage page : firstPages) {
-			if (page != null) {
+			// Add remaining pages
+			for (IInstallWizardPage page : remainingPages) {
 				pages.add(page);
 			}
-		}
-		// Add remaining pages
-		for (IInstallWizardPage page : remainingPages) {
-			pages.add(page);
+			
+			wizardPages = pages.toArray(new IInstallWizardPage[pages.size()]);
 		}
 		
-		return pages.toArray(new IInstallWizardPage[pages.size()]);
+		return wizardPages;
 	}
 
 	/**
@@ -641,39 +1085,295 @@ public class InstallManager implements IInstallManager {
 	private boolean isActionSupported(IInstallAction action) {
 		return action.isSupported(Platform.getOS(), Platform.getOSArch());
 	}
+
 	
 	/**
-	 * Schedules the product directory to be removed on shutdown.
-	 * If all products are removed, the root installation directory is
-	 * also removed.
+	 * This method removes the created directories for a product installation.  Files in the product directory will be
+	 * removed and the product directory will be scheduled for removal after the uninstaller exits.  Any parent
+	 * directories created during the installation will be scheduled for removal if they are empty.
+	 * Before a directory is scheduled for removal, it is scanned for existing installed products.  If any products are 
+	 * found, those products will be adjusted so that they remove the directories instead when they are uninstalled 
+	 * (regardless if that product created the directory during its installation).
+	 * 
+	 * Example:
+	 *   Product 1 is installed to /parent/product1 and creates the 'parent' and 'product1' directories.
+	 *   Product 2 is then installed to /parent/product2 and only creates the 'product2' directory.
+	 *   
+	 *   Product 1 records that it should remove two parent directories.  Product 2 records that it should only remove
+	 *   one parent directory.
+	 *   Uninstalling Product 1 will remove the 'product1' directory then adjust the Product 2 directories to remove
+	 *   two parent directories when it is uninstalled.
 	 * 
 	 * @param product Product
 	 * @param monitor Progress monitor
 	 * @throws CoreException on failure to remove product directory
 	 */
-	private void removeProductDirectory(IInstallProduct product, IProgressMonitor monitor) throws CoreException {
+	public void removeProductLocation(IInstallProduct product, IProgressMonitor monitor) throws CoreException {
 		if (getInstallManifest().getProducts().length == 0) {
-			getLocationsManager().deleteProductLocation(product, monitor);
+			// If the product installation directories should be removed on uninstall
+			String propRemoveDirs = product.getProperty(IInstallProduct.PROPERTY_REMOVE_DIRS);
+			boolean removeDirs = ((propRemoveDirs == null) || Boolean.parseBoolean(propRemoveDirs));
+
+			// Products directory
+			IPath productPath = getInstallManifest().getInstallLocation();
+
+			// Remove installation directories
+			boolean removed = false;
+			if (removeDirs) {
+				// Created directories to remove
+				String[] directories = (installManifest != null) ? ((InstallManifest)installManifest).getDirectories() : new String[0];
+
+				IStatus removeStatus = Status.OK_STATUS;
+
+				// Remove files in the product directory (except for uninstaller)
+				removeStatus = deleteProductFiles(productPath, monitor);
+				if (removeStatus.isOK()) {
+					// Schedule the directory to be removed after the uninstaller has exited
+					ShutdownHandler.getDefault().addDirectoryToRemove(productPath.toOSString(), false);
+					removed = true;
+			
+					// Schedule created parent directories to be removed if they are empty
+					IPath path = productPath.removeLastSegments(1);
+					for (int index = directories.length - 2; index >= 0; index--) {
+						String pathName = directories[index];
+						// Verify parent directory is correct (installation was not moved)
+						if (!path.lastSegment().equals(pathName)) {
+							break;
+						}
+						
+						// Find any nested products (skipping this product directory)
+						InstallManifest[] nestedProducts = findProducts(path, productPath);
+						// If nested products were found, adjust them so that the directories will be removed when
+						// they are uninstalled instead and stop removing directories.
+						if (nestedProducts.length != 0) {
+							try {
+								for (InstallManifest nestedProduct : nestedProducts) {
+									ArrayList<String> nestedDirectories = new ArrayList<String>();
+									// Added remaining parent directories that need to be removed
+									for (int i = 0; i <= index; i++) {
+										nestedDirectories.add(directories[i]);
+									}
+									
+									// Get product directory (parent of uninstall directory containing manifest)
+									IPath nestedProductDirectory = nestedProduct.getInstallLocation();
+									String[] nestedSegments = nestedProductDirectory.removeFirstSegments(path.segmentCount()).segments();
+									// Add the nested product directories that need to be removed
+									for (String nestedSegment : nestedSegments) {
+										nestedDirectories.add(nestedSegment);
+									}
+
+									// Save the nested product manifest
+									nestedProduct.setDirectories(nestedDirectories.toArray(new String[nestedDirectories.size()]));
+									nestedProduct.save();
+								}
+							}
+							catch (Exception e) {
+								Installer.log(e);
+							}
+							// Stop removing created parent directories
+							break;
+						}
+						
+						// Schedule the directory to be removed if empty
+						ShutdownHandler.getDefault().addDirectoryToRemove(path.toOSString(), true);
+						path = path.removeLastSegments(1);
+					}
+				}
+				
+				if (!removeStatus.isOK()) {
+					Installer.fail(removeStatus.getMessage());
+				}
+			}
+			
+			// If product directory was not removed then just schedule the uninstall directory to be removed
+			if (!removed) {
+				IPath uninstallPath = productPath.append(IInstallConstants.UNINSTALL_DIRECTORY);
+				if (uninstallPath.toFile().exists()) {
+					// Make any read-only files writable so they can be removed
+					try {
+						FileUtils.setWritable(uninstallPath.toFile().toPath());
+					} catch (IOException e) {
+						Installer.log(e);
+					}
+					// Add directory for removal on shutdown
+					ShutdownHandler.getDefault().addDirectoryToRemove(uninstallPath.toOSString(), false);
+				}
+			}
 		}
 	}
 
 	/**
-	 * Returns the registered install modules that are specified in the
-	 * install description.
+	 * Finds installed products in a directory.
 	 * 
-	 * @return Install modules
+	 * @param directory Directory to search
+	 * @param skipDirectory Directory to skip
+	 * @return Installed product manifests or empty if no products were found.
 	 */
-	private IInstallModule[] getModules() {
+	private InstallManifest[] findProducts(final IPath directory, final IPath skipDirectory) {
+		final ArrayList<InstallManifest> products = new ArrayList<InstallManifest>();
+		final boolean[] removed = new boolean[] { true };
+		final java.nio.file.Path startPath = directory.toFile().toPath();
+		final java.nio.file.Path skipPath = (skipDirectory != null) ? skipDirectory.toFile().toPath() : null;
+		
+		try {
+			Files.walkFileTree(startPath, new SimpleFileVisitor<java.nio.file.Path>() {
+
+				@Override
+				public FileVisitResult preVisitDirectory(
+						java.nio.file.Path dir, BasicFileAttributes attrs)
+						throws IOException {
+					
+					// Skip product directory files
+					if (skipPath != null) {
+						return dir.equals(skipPath) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+					}
+					else {
+						return FileVisitResult.CONTINUE;
+					}
+				}
+				
+				@Override
+				public FileVisitResult postVisitDirectory(
+						java.nio.file.Path dir, IOException exc)
+						throws IOException {
+
+					FileVisitResult result = FileVisitResult.CONTINUE;
+					try {
+						// Load the other products manifest
+						IPath productPath = new Path(dir.toFile().getAbsolutePath());
+						InstallManifest manifest = InstallManifest.loadManifest(productPath);
+						if (manifest != null) {
+							products.add(manifest);
+						}
+					}
+					catch (Exception e) {
+						Installer.log(e);
+						result = FileVisitResult.TERMINATE;
+					}
+					return result;
+				
+				}
+			});
+		}
+		catch (Exception e) {
+			Installer.log(e);
+		}
+		
+		// If no nested products were found, schedule the directory to be removed if it is empty
+		if (removed[0]) {
+			ShutdownHandler.getDefault().addDirectoryToRemove(directory.toOSString(), true);
+		}
+		
+		return products.toArray(new InstallManifest[products.size()]);
+	}
+	
+	/**
+	 * Deletes files in a product directory.  The uninstall directory and the
+	 * product directory itself will not be removed.
+	 * 
+	 * @param path Product directory
+	 * @param monitor Progress monitor
+	 * @return <code>IStatus.OK</code> on success, <code>IStatus.ERROR</code>
+	 * on failure and the message will contain files that could not be removed. 
+	 */
+	private IStatus deleteProductFiles(IPath path, IProgressMonitor monitor) {
+		// Collect files to be removed
+		final File uninstallDirectory = new File(path.append(IInstallConstants.UNINSTALL_DIRECTORY).toOSString());
+		// Remove the files except for the uninstall directory (as it can't be removed on Windows while
+		// the uninstaller is running).
+		File[] filesNotRemoved = FileUtils.deleteFiles(path.toFile().toPath(), new java.nio.file.Path[] { uninstallDirectory.toPath() }, monitor);
+		
+		// Some files could not be removed
+		if ((filesNotRemoved != null) && (filesNotRemoved.length > 0)) {
+			// Report files that could not be removed
+			StringBuffer message = new StringBuffer(InstallMessages.Error_FilesNotRemoved);
+			int count = 0;
+			for (File fileNotRemoved : filesNotRemoved) {
+				// Only report up to ten files
+				if (++count > 10) {
+					message.append('\n');
+					message.append(NLS.bind(InstallMessages.More0, filesNotRemoved.length - 10));
+					break;
+				}
+				message.append('\n');
+				message.append("  ");
+				message.append(fileNotRemoved.getAbsolutePath());
+			}
+			return new Status(IStatus.ERROR, Installer.ID, 0, message.toString(), null);
+		}
+		// All files were removed
+		else {
+			return Status.OK_STATUS;
+		}
+	}
+	
+	/**
+	 * Loads registered install modules that are specified in the install
+	 * description.
+	 */
+	private void loadModules() {
 		if (modules == null) {
-			String[] ids = installDescription.getModuleIDs();
+			final String[] ids;
+			String[] moduleIds = installDescription.getModuleIDs();
+			// If no modules specified, use default module
+			if (moduleIds == null) {
+				ids = new String[] { GeneralInstallModule.ID };
+			}
+			else {
+				ids = moduleIds;
+			}
+			
+			IInstallData installData = getInstallData();
+			
 			List<String> idList = (ids != null && ids.length > 0) ? Arrays.asList(ids) : null;
 			modules = ContributorRegistry.getDefault().getModules(idList);
 			// Initialize modules
 			for (IInstallModule module : modules) {
 				module.init(getInstallDescription());
+				module.setDataDefaults(installData);
 			}
+			
+			// Set data defaults from install description
+			IInstallDescription description = Installer.getDefault().getInstallManager().getInstallDescription();
+			if (description != null) {
+				Map<String, String> defaultData = description.getInstallDataDefaults();
+				if (defaultData != null) {
+					for (Entry<String, String> entry : defaultData.entrySet()) {
+						installData.setProperty(entry.getKey(), entry.getValue());
+					}
+				}
+			}
+			
+			// Sort modules according to order in install description
+			Arrays.sort(modules, new Comparator<IInstallModule>() {
+				@Override
+				public int compare(IInstallModule arg0, IInstallModule arg1) {
+					int arg0i = -1;
+					int arg1i = -1;
+					for (int index = 0; index < ids.length; index ++) {
+						if (arg0.getId().equals(ids[index]))
+							arg0i = index;
+						if (arg1.getId().equals(ids[index]))
+							arg1i = index;
+					}
+					
+					if (arg0i < arg1i)
+						return -1;
+					else if (arg0i > arg1i)
+						return 1;
+					else
+						return 0;
+				}
+			});
 		}
-		
+	}
+
+	/**
+	 * Returns install modules.
+	 * 
+	 * @return Install modules
+	 */
+	private IInstallModule[] getModules() {
 		return modules;
 	}
 	
@@ -688,9 +1388,25 @@ public class InstallManager implements IInstallManager {
 	private IInstallAction[] getInstallActions(IInstallData installData) {
 		List <IInstallAction> actions = new ArrayList<IInstallAction>();
 		for (IInstallModule module : getModules()) {
+			// Get module actions
 			IInstallAction[] moduleActions = module.getInstallActions(RepositoryManager.getDefault().getAgent(), installData, getInstallMode());
 			if (moduleActions != null) {
-				actions.addAll(Arrays.asList(moduleActions));
+				// Add actions that are not excluded
+				for (IInstallAction moduleAction : moduleActions) {
+					boolean addAction = true;
+					String[] excludedActions = getInstallDescription().getExcludedActions();
+					if (excludedActions != null) {
+						for (String excludedAction : excludedActions) {
+							if (moduleAction.getId().equals(excludedAction)) {
+								addAction = false;
+								break;
+							}
+						}
+					}
+					if (addAction) {
+						actions.add(moduleAction);
+					}
+				}
 			}
 		}
 		
@@ -737,30 +1453,26 @@ public class InstallManager implements IInstallManager {
 						File destFile = destPath.toFile();
 						
 						if (srcFile.isDirectory()) {
-							FileUtils.copyDirectory(srcFile, destFile);
+							FileUtils.copyDirectory(srcFile.toPath(), destFile.toPath(), true);
 						}
 						else {
-							FileUtils.copyFile(srcFile, destFile);
+							FileUtils.copyFile(srcFile.toPath(), destFile.toPath(),true);
 						}
-						
-						// Set permissions
-						destFile.setExecutable(srcFile.canExecute(), false);
-						destFile.setReadable(srcFile.canRead(), false);
-						destFile.setWritable(srcFile.canWrite(), false);
 					}
 				}
 			}
 		}
 		catch (Exception e) {
 			Installer.log("Failed to copy installer.  This could be because you are running from the Eclipse workbench and the exported RCP binary files are not available.");
+			Installer.log(e);
 		}
 	}
 
 	@Override
-	public void setInstalledProduct(IInstalledProduct product) throws CoreException {
+	public void setInstalledProduct(IInstalledProduct product, IProgressMonitor monitor) throws CoreException {
 		this.installedProduct = product;
 		if (product != null) {
-			setInstallLocation(product.getInstallLocation());
+			setInstallLocation(product.getInstallLocation(), monitor);
 		}
 	}
 	
@@ -780,7 +1492,7 @@ public class InstallManager implements IInstallManager {
 	}
 
 	@Override
-	public IInstalledProduct[] getInstalledProducts(IProductRange[] ranges, boolean uniqueLocations) {
+	public IInstalledProduct[] getInstalledProductsByRange(IProductRange[] ranges, boolean uniqueLocations) {
 		ArrayList<IInstalledProduct> products = new ArrayList<IInstalledProduct>();
 		HashMap<IPath, IInstalledProduct> locations = new HashMap<IPath, IInstalledProduct>();
 		
@@ -806,6 +1518,31 @@ public class InstallManager implements IInstallManager {
 			return products.toArray(new IInstalledProduct[products.size()]);
 		}
 	}
+	
+	@Override
+	public IInstalledProduct[] getInstalledProductsByCategory(String category,
+			boolean uniqueLocations) {
+		ArrayList<IInstalledProduct> products = new ArrayList<IInstalledProduct>();
+		HashMap<IPath, IInstalledProduct> locations = new HashMap<IPath, IInstalledProduct>();
+
+		IInstalledProduct[] installedProducts = getInstallRegistry().getProducts();
+		for (IInstalledProduct installedProduct : installedProducts) {
+			if (category.equals(installedProduct.getCategory())) {
+				if (uniqueLocations) {
+					if (locations.get(installedProduct.getInstallLocation()) == null) {
+						locations.put(installedProduct.getInstallLocation(), installedProduct);
+						products.add(installedProduct);
+					}
+					else {
+						products.add(installedProduct);
+					}
+				}
+			}
+		}
+		
+		return products.toArray(new IInstalledProduct[products.size()]);
+	}
+	
 
 	@Override
 	public IInstallProduct getExistingProduct(IInstallManifest manifest) {
@@ -844,5 +1581,181 @@ public class InstallManager implements IInstallManager {
 		}
 		
 		return product;
+	}
+	
+	/**
+	 * Returns whether restart or re-login required at the end of installation.
+	 * 
+	 * @return <code>true</code> if restart or re-login is required, Otherwise returns
+	 * <code>false</code> 
+	 */
+	public boolean needsRestartOrRelogin() {
+		return needsResetOrRelogin;
+	}
+
+	@Override
+	public void addInstallVerifier(IInstallVerifier verifier) {
+		installVerifiers.add(verifier);
+	}
+
+	@Override
+	public void removeInstallVerifier(IInstallVerifier verifier) {
+		installVerifiers.remove(verifier);
+	}
+
+	/**
+	 * Verifies an installation folder.
+	 * 
+	 * @param installLocation Install location
+	 * @return Status for the folder
+	 */
+	public IStatus[] verifyInstallLocation(IPath installLocation) {
+		ArrayList<IStatus> status = new ArrayList<IStatus>();
+		for (Object listener : installVerifiers.getListeners()) {
+			try {
+				IStatus verifyStatus = ((IInstallVerifier)listener).verifyInstallLocation(installLocation);
+				if ((verifyStatus != null) && !verifyStatus.isOK()) {
+					status.add(verifyStatus);
+				}
+			}
+			catch (Exception e) {
+				Installer.log(e);
+			}
+		}
+		
+		return status.toArray(new IStatus[status.size()]);
+	}
+	
+	/**
+	 * Verifies an install.
+	 * 
+	 * @param agent Provisioning agent
+	 * @param profile Install profile
+	 * @throws CoreException if install is not valid
+	 */
+	public void verifyInstall(IProvisioningAgent agent, IProfile profile) throws CoreException {
+		for (Object listener : installVerifiers.getListeners()) {
+			IStatus status = ((IInstallVerifier)listener).verifyInstall(agent, profile);
+			if (status.getSeverity() == IStatus.ERROR) {
+				throw new CoreException(new Status(IStatus.ERROR, Installer.ID, status.getMessage()));
+			}
+		}
+	}
+	
+	/**
+	 * Verify the user supplied credentials to insure they are valid
+	 * 
+	 * @param username
+	 * @param password
+	 * @return
+	 */
+	public IStatus[] verifyCredentials(String username, String password) {
+		ArrayList<IStatus> status = new ArrayList<IStatus>();
+		for (Object listener : installVerifiers.getListeners()) {
+			try {
+				IStatus verifyStatus = ((IInstallVerifier)listener).verifyCredentials(username, password);
+				if ((verifyStatus != null) && !verifyStatus.isOK()) {
+					status.add(verifyStatus);
+				}
+			}
+			catch (Exception e) {
+				Installer.log(e);
+			}
+		}
+		
+		return status.toArray(new IStatus[status.size()]);
+	}
+
+	/**
+	 * Verifies loaded components.
+	 * 
+	 * @param components Components
+	 * @return Status for components
+	 */
+	public IStatus[] verifyInstallComponents(IInstallComponent[] components) {
+		ArrayList<IStatus> status = new ArrayList<IStatus>();
+		for (Object listener : installVerifiers.getListeners()) {
+			try {
+				IStatus verifyStatus = ((IInstallVerifier)listener).verifyInstallComponents(components);
+				if ((verifyStatus != null) && !verifyStatus.isOK()) {
+					status.add(verifyStatus);
+				}
+			}
+			catch (Exception e) {
+				Installer.log(e);
+			}
+		}
+		
+		return status.toArray(new IStatus[status.size()]);
+	}
+
+	/**
+	 * Verifies component selection.
+	 * 
+	 * @param components Selected components
+	 * @return Status for components selection
+	 */
+	public IStatus[] verifyInstallComponentSelection(IInstallComponent[] components) {
+		ArrayList<IStatus> status = new ArrayList<IStatus>();
+		for (Object listener : installVerifiers.getListeners()) {
+			try {
+				IStatus verifyStatus = ((IInstallVerifier)listener).verifyInstallComponentSelection(components);
+				if ((verifyStatus != null) && !verifyStatus.isOK()) {
+					status.add(verifyStatus);
+				}
+			}
+			catch (Exception e) {
+				Installer.log(e);
+			}
+		}
+		
+		return status.toArray(new IStatus[status.size()]);
+	}
+
+	@Override
+	public IInstallData getInstallData() {
+		return installData;
+	}
+
+	@Override
+	public boolean isLaunchItemAvailable(LaunchItem item) {
+		boolean available = false;
+		IPath installLocation = getInstallLocation();
+		
+		if (item.getType() == LaunchItemType.EXECUTABLE) {
+			if (installLocation != null) {
+				IPath path = installLocation.append(item.getPath());
+				available = (path.toFile().exists());
+			}
+		}
+		// File item
+		else if (item.getType() == LaunchItemType.FILE) {
+			if (installLocation != null) {
+				IPath path = installLocation.append(item.getPath());
+				available = path.toFile().exists();
+			}
+		}
+		// HTML item
+		else if (item.getType() == LaunchItemType.HTML){
+			URI uri = null;
+			try {
+				uri = new URI(item.getPath());
+			} catch (URISyntaxException e) {
+				Installer.log(e);
+			}
+			if (uri != null && uri.getScheme().toLowerCase().equals("file")) {
+				File file = new File(uri.toString());
+				available = file.exists();
+			}
+			else {
+				available = true;
+			}
+		}
+		//RESTART and LOGOUT items
+		else if (item.getType() == LaunchItemType.RESTART || item.getType() == LaunchItemType.LOGOUT) {
+			available = true;
+		}
+		
+		return available;
 	}
 }

@@ -10,13 +10,10 @@
  *******************************************************************************/
 package com.codesourcery.internal.installer.ui.pages;
 
-import java.io.File;
-import java.text.MessageFormat;
-
-import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.jface.wizard.IWizardPage;
+import org.eclipse.osgi.util.NLS;
 
 import com.codesourcery.installer.IInstallConsoleProvider;
 import com.codesourcery.installer.IInstallMode;
@@ -27,7 +24,7 @@ import com.codesourcery.installer.ui.IInstallSummaryProvider;
 import com.codesourcery.internal.installer.IInstallPlan;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.RepositoryManager;
-import com.codesourcery.internal.installer.ui.UIUtils;
+import com.codesourcery.internal.installer.ui.InstallWizard;
 
 /**
  * A page that shows summary information from all pages that support
@@ -43,9 +40,9 @@ public class SummaryPage extends InformationPage implements IInstallConsoleProvi
 	 */
 	public SummaryPage(String pageName, String title) {
 		super(pageName, title);
-		
-		// Set information title
-		setInformationTitle(InstallMessages.SummaryMessage);
+
+		// Title will be updated when page is shown
+		setInformationTitle("");
 		// Enable scrolling
 		setScrollable(true);
 	}
@@ -64,20 +61,25 @@ public class SummaryPage extends InformationPage implements IInstallConsoleProvi
 			// If the page provides summary information
 			if (page instanceof IInstallSummaryProvider) {
 				IInstallSummaryProvider provider = (IInstallSummaryProvider)page;
-				buffer.append(provider.getInstallSummary());
+				String summary = provider.getInstallSummary();
+				if (summary != null) {
+					buffer.append(summary);
+				}
 			}
 		}
 		
 		return buffer.toString();
 	}
-	
+
 	/**
 	 * Updates the summary.
 	 */
 	private void updateSummary() {
 		// Install summary
-		if (RepositoryManager.getDefault().hasInstallUnits()) {
-			setInformationTitle(InstallMessages.SummaryMessage);
+		if (RepositoryManager.getDefault().hasInstallUnits() || getInstallMode().isMirror()) {
+			String finishText = ((InstallWizard)getWizard()).getFinishText();
+			setInformationTitle(NLS.bind(InstallMessages.SummaryMessage0, finishText));
+
 			setInformation(getInstallSummary());
 		}
 		// Nothing to install
@@ -119,24 +121,6 @@ public class SummaryPage extends InformationPage implements IInstallConsoleProvi
 			if (!plan.getStatus().isOK()) {
 				status = new Status(IStatus.ERROR, Installer.ID, plan.getErrorMessage());
 			}
-			// Plan successful, check required space
-			else {
-				IPath installLocation = Installer.getDefault().getInstallManager().getInstallLocation();
-				if (installLocation != null) {
-					File installDirectory = installLocation.toFile();
-					while (!installDirectory.exists()) {
-						installDirectory = installDirectory.getParentFile();
-					}
-					long bytesFree = installDirectory.getUsableSpace();
-					if (plan.getSize() > bytesFree) {
-						String message = MessageFormat.format(
-								InstallMessages.SummaryPage_0,
-								new Object[] { UIUtils.formatBytes(plan.getSize()),
-										UIUtils.formatBytes(bytesFree) });
-						status = new Status(IStatus.WARNING, Installer.ID, message);
-					}
-				}
-			}						
 		}
 		
 		return status;
@@ -158,7 +142,12 @@ public class SummaryPage extends InformationPage implements IInstallConsoleProvi
 			summary += getStatusMessage(new IStatus[] { status });
 		}
 
-		ConsoleYesNoPrompter prompter = new ConsoleYesNoPrompter(summary, InstallMessages.SummaryPage_ProceedPrompt, true);
+		ConsoleYesNoPrompter prompter = new ConsoleYesNoPrompter(
+				summary, 
+				getInstallMode().isMirror() ? 
+						InstallMessages.SummaryPage_SavePrompt : 
+						InstallMessages.SummaryPage_InstallPrompt, 
+				true);
 		String response = prompter.getConsoleResponse(input);
 		if (response == null) {
 			// Installation cancelled
@@ -185,7 +174,7 @@ public class SummaryPage extends InformationPage implements IInstallConsoleProvi
 				public void run() {
 					status[0] = getInstallPlanStatus();
 				}
-			});
+			}, 2000);
 			
 			// Show plan error/warning status
 			if (!status[0].isOK()) {

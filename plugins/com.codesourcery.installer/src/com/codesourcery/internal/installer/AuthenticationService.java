@@ -27,10 +27,8 @@ import org.eclipse.equinox.p2.core.UIServices;
 public class AuthenticationService extends UIServices {
 	/** Service instance */
 	private static AuthenticationService service = new AuthenticationService();
-	/** Password */
-	private String password;
-	/** User name */
-	private String userName;
+	/** Authentification info */
+	private ConfigAuthenticationInfo authentificationInfo = new ConfigAuthenticationInfo();
 	
 	/**
 	 * Constructor
@@ -53,7 +51,7 @@ public class AuthenticationService extends UIServices {
 	 * @param userName User name
 	 */
 	public void setUserName(String userName) {
-		this.userName = userName;
+		authentificationInfo.setUserName(userName);
 	}
 	
 	/**
@@ -62,7 +60,7 @@ public class AuthenticationService extends UIServices {
 	 * @return User name
 	 */
 	public String getUserName() {
-		return userName;
+		return authentificationInfo.getUserName();
 	}
 
 	/**
@@ -71,7 +69,7 @@ public class AuthenticationService extends UIServices {
 	 * @param password Password
 	 */
 	public void setPassword(String password) {
-		this.password = password;
+		authentificationInfo.setPassword(password);
 	}
 	
 	/**
@@ -80,18 +78,18 @@ public class AuthenticationService extends UIServices {
 	 * @return Password
 	 */
 	public String getPassword() {
-		return password;
+		return authentificationInfo.getPassword();
 	}
 	
 	@Override
 	public AuthenticationInfo getUsernamePassword(String location) {
-		return new AuthenticationInfo(getUserName(), getPassword(), false);
+		return authentificationInfo;
 	}
 
 	@Override
 	public AuthenticationInfo getUsernamePassword(String location,
 			AuthenticationInfo previousInfo) {
-		return new AuthenticationInfo(getUserName(), getPassword(), false);
+		return authentificationInfo;
 	}
 
 	@Override
@@ -107,5 +105,50 @@ public class AuthenticationService extends UIServices {
 			}
 		}
 		return new TrustInfo(trusted, false, true);
+	}
+	
+	/**
+	 * Configurable authentification information.
+	 */
+	private class ConfigAuthenticationInfo extends AuthenticationInfo {
+		private String username;
+		private String password;
+
+		/**
+		 * Constructor
+		 */
+		public ConfigAuthenticationInfo() {
+			super(null, null, false);
+			this.username = null;
+			this.password = null;
+		}
+
+		/**
+		 * Sets the user name.
+		 * 
+		 * @param username User name
+		 */
+		public void setUserName(String username) {
+			this.username = username;
+		}
+		
+		@Override
+		public String getUserName() {
+			return username;
+		}
+		
+		/**
+		 * Sets the password.
+		 * 
+		 * @param password Password
+		 */
+		public void setPassword(String password) {
+			this.password = password;
+		}
+
+		@Override
+		public String getPassword() {
+			return password;
+		}
 	}
 }

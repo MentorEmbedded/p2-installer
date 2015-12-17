@@ -13,60 +13,53 @@ package com.codesourcery.internal.installer.ui.pages;
 import java.net.URI;
 import java.text.MessageFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.Iterator;
 
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.ListenerList;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
-import org.eclipse.equinox.p2.metadata.IInstallableUnit;
-import org.eclipse.jface.viewers.ISelection;
-import org.eclipse.jface.viewers.ISelectionChangedListener;
-import org.eclipse.jface.viewers.ISelectionProvider;
-import org.eclipse.jface.viewers.IStructuredSelection;
+import org.eclipse.equinox.p2.metadata.IVersionedId;
+import org.eclipse.jface.viewers.CheckStateChangedEvent;
+import org.eclipse.jface.viewers.ICheckStateListener;
 import org.eclipse.jface.viewers.ITableLabelProvider;
 import org.eclipse.jface.viewers.LabelProvider;
-import org.eclipse.jface.viewers.SelectionChangedEvent;
-import org.eclipse.jface.viewers.StructuredSelection;
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.custom.ScrolledComposite;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
-import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.FontData;
 import org.eclipse.swt.graphics.Image;
-import org.eclipse.swt.graphics.Point;
-import org.eclipse.swt.graphics.RGB;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
-import org.eclipse.swt.widgets.Display;
-import org.eclipse.swt.widgets.ExpandBar;
-import org.eclipse.swt.widgets.ExpandItem;
 import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.Text;
 
+import com.codesourcery.installer.IInstallComponent;
 import com.codesourcery.installer.IInstallConsoleProvider;
+import com.codesourcery.installer.IInstallConstraint;
 import com.codesourcery.installer.IInstallData;
 import com.codesourcery.installer.IInstallDescription;
 import com.codesourcery.installer.IInstallMode;
+import com.codesourcery.installer.IInstallValues;
 import com.codesourcery.installer.Installer;
 import com.codesourcery.installer.console.ConsoleListPrompter;
-import com.codesourcery.installer.ui.IInstallComponent;
+import com.codesourcery.installer.console.ConsoleYesNoPrompter;
+import com.codesourcery.installer.ui.FormattedLabel;
 import com.codesourcery.installer.ui.IInstallSummaryProvider;
 import com.codesourcery.installer.ui.InstallWizardPage;
-import com.codesourcery.internal.installer.IInstallConstants;
 import com.codesourcery.internal.installer.IInstallPlan;
 import com.codesourcery.internal.installer.IInstallRepositoryListener;
 import com.codesourcery.internal.installer.IInstallerImages;
+import com.codesourcery.internal.installer.InstallManager;
 import com.codesourcery.internal.installer.InstallMessages;
 import com.codesourcery.internal.installer.RepositoryManager;
+import com.codesourcery.internal.installer.ui.DetailTree;
+import com.codesourcery.internal.installer.ui.DetailTree.ImageType;
+import com.codesourcery.internal.installer.ui.DetailTreeItem;
 import com.codesourcery.internal.installer.ui.SpinnerProgress;
 import com.codesourcery.internal.installer.ui.UIUtils;
 
@@ -74,60 +67,46 @@ import com.codesourcery.internal.installer.ui.UIUtils;
  * Page to show components for the install.  Optional components can be selected.
  * This page supports console.
  */
-public class ComponentsPage extends InstallWizardPage implements IInstallSummaryProvider, IInstallConsoleProvider, IInstallRepositoryListener {
+public class ComponentsPage extends InstallWizardPage implements IInstallSummaryProvider, IInstallConsoleProvider, IInstallRepositoryListener, ICheckStateListener {
 	/** Component name column */
 	private static final int COLUMN_NAME = 0;
 	/** Component version column */
 	private static final int COLUMN_VERSION = 1;
 	
-	/** Margin around components area */
-	private static final int COMPONENTS_MARGIN = 2;
-	/** Indent of component description */
-	private static final int COMPONENT_DESCRIPTION_INDENT = 16;
-	/** Component header height */
-	private static final int COMPONENT_HEADER_HEIGHT = 45;
-	
 	/** Message label */
 	protected Label messageLabel;
 	/** Console list */
 	protected ConsoleListPrompter<IInstallComponent> consoleList;
-	/** Expansion bar */
-	protected ExpandBar componentsBar;
-	/** Required components expansion item */
-	protected ExpandItem requiredList;
-	/** Required components panel */
-	protected ComponentsPanel requiredComponentsPanel;
-	/** Optional components expansion item */
-	protected ExpandItem optionalList;
-	/** Optional components panel */
-	protected ComponentsPanel optionalComponentsPanel;
-	/** Title font */
-	protected Font titleFont;
-	/** Dimmed color #1 */
-	protected Color dimColor1;
-	/** Dimmed color #2 */
-	protected Color dimColor2;
+	/** Description font */
+	protected Font descriptionFont;
 	/** Button area */
 	protected Composite buttonArea;
 	/** Select all button */
 	protected Button selectAllButton;
 	/** Deselect all button */
 	protected Button deselectAllButton;
-	/** Components scrolled container */
-	protected ScrolledComposite componentContainer;
-	/** Label to display the install size */
-	protected Label installSizeLabel;
 	/** Status area containing the install size label and progress bar */
-	protected Composite statusArea;
-	/** Progress bar for the size calculation */
-	protected SpinnerProgress progressBar;
+	protected StatusPanel statusArea;
 	/** Last calculated install size */
-	protected long installSize;
+	//protected long installSize;
 	/** Install description */
 	private IInstallDescription installDescription;
 	/** Job to compute install plan */
 	private InstallPlanJob installPlanJob = new InstallPlanJob();
-	
+	/** Components tree */
+	private DetailTree tree;
+	/** <code>true</code> if update is required */
+	private boolean needsUpdate = true;
+	/** Status for selection problems */
+	private IStatus selectionStatus;
+	/** Install plan */
+	private IInstallPlan installPlan;
+	/** Label provider */
+	private ComponentLabelProvider labelProvider;
+	/** Warning console prompter */
+	private ConsoleYesNoPrompter warningConsolePrompter;
+	/** Last computed available space */
+	private long lastAvailableSpace = -1;
 	
 	/**
 	 * Constructor
@@ -140,144 +119,80 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	public ComponentsPage(String pageName, String title, IInstallDescription installDescription) {
 		super(pageName, title);
 		this.installDescription = installDescription;
+
+		// Label provider
+		labelProvider = new ComponentLabelProvider();
+	}
+
+	/**
+	 * Returns the install description.
+	 * 
+	 * @return Install description
+	 */
+	private IInstallDescription getInstallDescription() {
+		return installDescription;
 	}
 	
 	/**
-	 * Returns if components version should be displayed.
+	 * Returns if the size status area should be shown.
 	 * 
-	 * @return <code>true</code> to display components version
+	 * @return <code>true</code> if size status area should be shown
 	 */
-	public boolean getHideComponentsVersion() {
-		return installDescription.getHideComponentsVersion();
+	private boolean getShowSizeStatus() {
+		return (getInstallDescription().getInstallSizeFormat() != null);
+	}
+	
+	/**
+	 * Returns the components label provider.
+	 * 
+	 * @return Label provider
+	 */
+	private ComponentLabelProvider getLabelProvider() {
+		return labelProvider;
 	}
 	
 	@Override
 	public void dispose() {
 		RepositoryManager.getDefault().removeRepositoryListener(this);
 		
-		if (titleFont != null) {
-			titleFont.dispose();
-		}
-		if (dimColor1 != null) {
-			dimColor1.dispose();
-		}
-		if (dimColor2 != null) {
-			dimColor2.dispose();
+		if (descriptionFont != null) {
+			descriptionFont.dispose();
 		}
 		
 		super.dispose();
 	}
 
-	/**
-	 * Returns the title font.
-	 * 
-	 * @return Title font
-	 */
-	private Font getTitleFont() {
-		return titleFont;
-	}
-	
-	/**
-	 * Returns the first dimmed color.
-	 * 
-	 * @return Dimmed color
-	 */
-	private Color getDimColor1() {
-		return dimColor1;
-	}
-	
-	/**
-	 * Returns the second dimmed color.
-	 * 
-	 * @return Dimmed color
-	 */
-	private Color getDimColor2() {
-		return dimColor2;
-	}
-	
 	@SuppressWarnings("synthetic-access")
 	@Override
 	public Control createContents(Composite parent) {
 		Composite area = new Composite(parent, SWT.NONE);
 		GridLayout areaLayout = new GridLayout();
 		areaLayout.verticalSpacing = 0;
+		areaLayout.marginWidth = 0;
+		areaLayout.marginHeight = 0;
 		area.setLayout(areaLayout);
 		area.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
 
 		// Create bold font
 		FontData[] fd = getFont().getFontData();
-		fd[0].setStyle(SWT.BOLD);
-		titleFont = new Font(getShell().getDisplay(), fd[0]);
-		
-		// Create dimmed colors
-		RGB dimRGB = blendRGB(getShell().getDisplay().getSystemColor(SWT.COLOR_LIST_FOREGROUND).getRGB(), 
-				getShell().getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND).getRGB(), 
-				45);
-		dimColor1 = new Color(getShell().getDisplay(), dimRGB);
-		dimRGB = blendRGB(getShell().getDisplay().getSystemColor(SWT.COLOR_LIST_SELECTION).getRGB(), 
-				getShell().getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND).getRGB(), 
-				75);
-		dimColor2 = new Color(getShell().getDisplay(), dimRGB);
+		fd[0].setHeight(fd[0].getHeight() - 1);
+		descriptionFont = new Font(getShell().getDisplay(), fd[0]);
 		
 		// Message label
 		messageLabel = new Label(area, SWT.WRAP);
 		messageLabel.setLayoutData(new GridData(SWT.FILL, SWT.BEGINNING, true, false, 1, 1));
 
-		// Scrolled composite container
-		componentContainer = new ScrolledComposite(area, SWT.BORDER | SWT.H_SCROLL | SWT.V_SCROLL);
-		componentContainer.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
-		componentContainer.setExpandHorizontal(true);
-		componentContainer.setExpandVertical(true);
-		
-		// Create the components bar
-		componentsBar = new ExpandBar(componentContainer, SWT.NONE );
-		componentsBar.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
-		componentsBar.setSpacing(COMPONENTS_MARGIN);
-		componentsBar.setBackground(getShell().getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND));
-		componentsBar.setBackgroundMode(SWT.INHERIT_DEFAULT);
-		componentContainer.setContent(componentsBar);
-		
-		// Create required components section
-		requiredList = new ExpandItem(componentsBar, SWT.NONE);
-		requiredList.setText(InstallMessages.ComponentsPage_Required );
-		requiredList.setImage(Installer.getDefault().getImageRegistry().get(IInstallerImages.COMPONENT));
-		// Create required components panel
-		requiredComponentsPanel = new ComponentsPanel(componentsBar);
-		requiredList.setControl(requiredComponentsPanel);
-		
-		// Create optional components section
-		optionalList = new ExpandItem(componentsBar, SWT.NONE);
-		optionalList.setText(InstallMessages.ComponentsPage_Optional);
-		optionalList.setImage(Installer.getDefault().getImageRegistry().get(IInstallerImages.COMPONENT_OPTIONAL));
-		// Create optional components panel
-		optionalComponentsPanel = new ComponentsPanel(componentsBar);
-		optionalList.setControl(optionalComponentsPanel);
-		optionalComponentsPanel.addSelectionChangedListener(new ISelectionChangedListener() {
-			@Override
-			public void selectionChanged(SelectionChangedEvent event) {
-				IStructuredSelection selection = (IStructuredSelection)event.getSelection();
-				IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
-				for (IInstallComponent component : components) {
-					if (component.isOptional()) {
-						component.setInstall(false);
-						Iterator<?> iter = selection.iterator();
-						while (iter.hasNext()) {
-							if (component.equals(iter.next())) {
-								component.setInstall(true);
-								break;
-							}
-						}
-					}
-				}
-				
-				// Update install space for new component selection
-				updateInstallPlan();
-				// Update button state
-				updateButtons();
-				// Validate selection
-				validate();
-			}
-		});
+		// Components tree
+		tree = new DetailTree(area, SWT.BORDER | SWT.V_SCROLL | SWT.H_SCROLL | SWT.WRAP | SWT.DOUBLE_BUFFERED);
+		tree.setFont(getFont());
+		tree.setDescriptionFont(descriptionFont);
+		tree.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
+		// Set images
+		tree.setImage(ImageType.COLLAPSED, Installer.getDefault().getImageRegistry().get(IInstallerImages.TREE_COLLAPSE));
+		tree.setImage(ImageType.EXPANDED, Installer.getDefault().getImageRegistry().get(IInstallerImages.TREE_EXPAND));
+		tree.setImage(ImageType.UNCHECKED, Installer.getDefault().getImageRegistry().get(IInstallerImages.TREE_UNCHECKED));
+		tree.setImage(ImageType.CHECKED, Installer.getDefault().getImageRegistry().get(IInstallerImages.TREE_CHECKED));
+		tree.setImage(ImageType.NOCHECK, Installer.getDefault().getImageRegistry().get(IInstallerImages.TREE_NOCHECK));
 		
 		// Button area
 		buttonArea = new Composite(area, SWT.NONE);
@@ -304,22 +219,11 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 			}
 		});
 		
-		statusArea = new Composite(area, SWT.NONE);
-		GridLayout gl = new GridLayout(1, false);
-		gl.horizontalSpacing = 0;
-		gl.verticalSpacing = 0;
-		gl.marginHeight = 0;
-		gl.marginWidth = 0;
-		statusArea.setLayout(gl);
-		statusArea.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
-		
-		progressBar = new SpinnerProgress(statusArea, SWT.NONE);
-		progressBar.setText(InstallMessages.ComponentsPage_ComputingSize);
-		progressBar.setLayoutData(new GridData(SWT.END, SWT.CENTER, true, false, 1, 1));
-		installSizeLabel = new Label(statusArea, SWT.NONE);
-		installSizeLabel.setLayoutData(new GridData(SWT.END, SWT.CENTER, true, false, 1, 1));
-		
-		setProgressVisible(false);
+		// Status area
+		if (getShowSizeStatus()) {
+			statusArea = new StatusPanel(area, SWT.NONE);
+			statusArea.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
+		}
 		
 		// Listen to component changes
 		RepositoryManager.getDefault().addRepositoryListener(this);
@@ -331,24 +235,26 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	}
 	
 	/**
+	 * Returns the components tree.
+	 * 
+	 * @return Tree
+	 */
+	private DetailTree getTree() {
+		return tree;
+	}
+	
+	/**
 	 * Selects/deselects all optional components.
 	 * 
 	 * @param select <code>true</code> to select all, <code>false</code> to
 	 * deselect all
 	 */
 	private void selectAllOptional(boolean select) {
-		if (optionalList != null) {
-			ComponentsPanel panel = (ComponentsPanel)optionalList.getControl();
-			// Select all
-			if (select) {
-				panel.setSelection(new StructuredSelection(panel.getComponents()));
-			}
-			// Deselect all
-			else {
-				panel.setSelection(new StructuredSelection(new IInstallComponent[0]));
-			}
-		}
-	}
+		getTree().setAllChecked(select);
+		updateButtons();
+		updateInstallPlan();
+		validateSelection(null);
+}
 
 	/**
 	 * Returns the components title.
@@ -366,111 +272,164 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 		super.setVisible(visible);
 		
 		// Update page in case component attributes changed
-		if (visible && !RepositoryManager.getDefault().isLoading()) {
+		if (visible) {
 			updatePage();
+			// Update install plan for new components
+			updateInstallPlan();
 		}
 	}
 
+	/**
+	 * Adds a new component.
+	 * 
+	 * @param component Component to add
+	 * @param parent Parent item or <code>null</code>
+	 */
+	private void addComponent(IInstallComponent component, DetailTreeItem parent) {
+		// If component is included
+		if (component.isIncluded()) {
+			// Create item, optional components get a check-box
+			DetailTreeItem item;
+			// Member of other item
+			if (parent == null) {
+				item = new DetailTreeItem(getTree(), component.isOptional() ? SWT.CHECK : SWT.NONE);
+			}
+			// Root item
+			else {
+				item = new DetailTreeItem(parent, component.isOptional() ? SWT.CHECK : SWT.NONE);
+			}
+			item.setData(component);
+			item.setText(getLabelProvider().getText(component));
+			String description = component.getDescription();
+			if (description != null) {
+				item.setDescription(component.getDescription());
+			}			
+			
+			// Set component installed
+			item.setChecked(component.getInstall());
+			
+			// Component group
+			if (component.hasMembers()) {
+				IInstallComponent[] groupComponents = component.getMembers();
+				for (IInstallComponent groupComponent : groupComponents) {
+					addComponent(groupComponent, item);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Sets the page to update the next time it is displayed.
+	 * 
+	 * @param needsUpdate <code>true</code> to update page
+	 */
+	private void setUpdatePage(boolean needsUpdate) {
+		this.needsUpdate = needsUpdate;
+	}
+	
+	/**
+	 * Returns if the page should update the next time it is displayed.
+	 * 
+	 * @return <code>true</code> if the page will be updated
+	 */
+	private boolean getUpdatePage() {
+		return needsUpdate;
+	}
+
+	/**
+	 * Adds components to the page.
+	 */
+	private void addComponents() {
+		// Remove existing components
+		getTree().removeAll();
+
+		// First set of components to show
+		ArrayList<IInstallComponent> first = new ArrayList<IInstallComponent>();
+		// Second set of components to show
+		ArrayList<IInstallComponent> second = new ArrayList<IInstallComponent>();
+
+		// Add components.  By default, order the required components first
+		IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents(true);
+		for (IInstallComponent component : components) {
+			if (component.isOptional()) {
+				second.add(component);
+			}
+			else {
+				first.add(component);
+			}
+		}
+		// Option to order optional components firs is set
+		if (getInstallDescription().getShowOptionalComponentsFirst()) {
+			ArrayList<IInstallComponent> swap = first;
+			first = second;
+			second = swap;
+		}
+		// Add first set of components
+		for (IInstallComponent component : first) {
+			addComponent(component, null);
+		}
+		// Add second set of components
+		for (IInstallComponent component : second) {
+			addComponent(component, null);
+		}
+	}
+	
 	/**
 	 * Updates the page.
 	 */
 	private void updatePage() {
-		// Width
-		int minWidth = 0;
-		// Height
-		int minHeight = 0;
+		// No update required
+		if (!getUpdatePage())
+			return;
+		setUpdatePage(false);
 		
-		// Components have been loaded
-		if (!RepositoryManager.getDefault().isLoading()) {
-			hideBusy();
+		setPageComplete(true);
+		messageLabel.setText(getComponentsTitle());
 
-			setPageComplete(true);
-			messageLabel.setText(getComponentsTitle());
+		// Stop listening for checked events
+		getTree().removeCheckStateListener(this);
 
-			// Add required and optional components
-			IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
-			ArrayList<IInstallComponent> requiredComponents = new ArrayList<IInstallComponent>();
-			ArrayList<IInstallComponent> optionalComponents = new ArrayList<IInstallComponent>();
-			for (IInstallComponent component : components) {
-				// Component is included
-				if (component.isIncluded()) {
-					if (component.isOptional()) {
-						optionalComponents.add(component);
-					}
-					else {
-						requiredComponents.add(component);
+		// Add components
+		addComponents();
+		
+		// Set expanded components
+		IVersionedId[] expandedRoots = getInstallDescription().getWizardExpandedRoots();
+		if ((expandedRoots != null) && (expandedRoots.length != 0)) {
+			DetailTreeItem[] items = getTree().getAllItems();
+			for (DetailTreeItem item : items) {
+				if (item.hasChildren()) {
+					IInstallComponent component = (IInstallComponent)item.getData();
+					for (IVersionedId expandedRoot : expandedRoots) {
+						if (component.getInstallUnit().getId().equals(expandedRoot.getId())) {
+							item.expandAll();
+							break;
+						}
 					}
 				}
 			}
-			
-			// Required components
-			requiredComponentsPanel.setComponents(requiredComponents.toArray(new IInstallComponent[requiredComponents.size()]), false, getHideComponentsVersion());
-			Point requiredSize = requiredComponentsPanel.computeSize(SWT.DEFAULT, SWT.DEFAULT);
-			requiredList.setHeight(requiredSize.y);
-			minWidth = requiredSize.x;
-			// Expand the section
-			requiredList.setExpanded(true);
-
-			// Optional components
-			optionalComponentsPanel.setComponents(optionalComponents.toArray(new IInstallComponent[optionalComponents.size()]), true, getHideComponentsVersion());
-			Point optionalSize = optionalComponentsPanel.computeSize(SWT.DEFAULT, SWT.DEFAULT);
-			optionalList.setHeight(optionalSize.y);
-			if (optionalSize.x > minWidth)
-				minWidth = optionalSize.x;
-			// Expand the section
-			optionalList.setExpanded(true);
-
-			// Layout the components bar parent before computing sizes
-			componentsBar.getParent().layout(true);
-			// Compute minimum height to display all items
-			// Note: Do not compute the size of componentsBar for minimum height.
-			// Although, this works on Windows, it returns incorrect value on
-			// GTK.  
-			// It is possible for ExpandBar.getHeaderHeight() to return
-			// a negative value.
-			minHeight = requiredSize.y + COMPONENT_HEADER_HEIGHT + componentsBar.getSpacing() +
-					optionalSize.y + COMPONENT_HEADER_HEIGHT + componentsBar.getSpacing();
-
-			updateInstallPlan();
-			
-			// Update buttons
-			updateButtons();
-		}
-		// Components not yet loaded
-		else {
-			setPageComplete(false);
-			showBusy(InstallMessages.ComponentsPage_LoadingInstallInformation);
 		}
 		
-		// Update the scrolled container size
-		componentContainer.setMinHeight(minHeight);
-		componentContainer.setMinWidth(minWidth);
-	}
-
-	/**
-	 * Sets the visibility of the progress bar.
-	 * @param visible
-	 */
-	private void setProgressVisible(final boolean visible) {
-		getShell().getDisplay().syncExec(new Runnable() {
-			@Override
-			public void run() {
-				progressBar.setVisible(visible);
-				progressBar.setProgress(visible);
-				int dimensionsProgress = (visible) ? SWT.DEFAULT : 0;
-				int dimensionsLabel = (visible) ? 0 : SWT.DEFAULT;
-				((GridData)progressBar.getLayoutData()).widthHint = dimensionsProgress;
-				((GridData)progressBar.getLayoutData()).heightHint = dimensionsProgress;
-				
-				installSizeLabel.setVisible(!visible);
-				((GridData)installSizeLabel.getLayoutData()).widthHint = dimensionsLabel;
-				((GridData)installSizeLabel.getLayoutData()).heightHint = dimensionsLabel;
-				
-				statusArea.layout(true);
-			}
-		});
+		// Listen for checked events
+		getTree().addCheckStateListener(this);
+		// Update buttons
+		updateButtons();
 	}
 	
+	@Override
+	protected void autoUpdate() {
+		if (installPlan != null) {
+			long availableSpace = installPlan.getAvailableSpace();
+			// If available space changed
+			if (availableSpace != lastAvailableSpace) {
+				lastAvailableSpace = availableSpace;
+				// Update to clear any warning for insufficient installation space
+				updateStatus();
+				// Update size status to reflect changes in available space
+				updateSizeStatus();
+			}
+		}
+	}
+
 	/**
 	 * Updates the install plan.
 	 */
@@ -484,49 +443,585 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 	}
 	
 	/**
-	 * Sets the install size label.
-	 * @param text
-	 */
-	private void setStatusText(final String text) {
-		getShell().getDisplay().syncExec(new Runnable() {
-			@Override
-			public void run() {
-				installSizeLabel.setText(text);
-				statusArea.layout(true);
-			}
-		});
-	}
-	
-	/**
 	 * Updates the enabled/disable state of buttons.
 	 */
 	private void updateButtons() {
-		if (optionalList != null) {
-			buttonArea.setEnabled(true);
-			
-			boolean allSelected = true;
-			boolean oneSelected = false;
-			IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
-			for (IInstallComponent component : components) {
-				if (component.isOptional()) {
-					if (component.getInstall()) {
-						oneSelected = true;
-					}
-					else {
-						allSelected = false;
-					}
+		boolean allSelected = true;
+		boolean oneSelected = false;
+		
+		DetailTreeItem[] items = getTree().getAllItems();
+		for (DetailTreeItem item : items) {
+			IInstallComponent component = (IInstallComponent)item.getData();
+			if (component.isOptional()) {
+				if (item.isChecked()) {
+					oneSelected = true;
+				}
+				else {
+					allSelected = false;
 				}
 			}
-			
-			selectAllButton.setEnabled(!allSelected);
-			deselectAllButton.setEnabled(oneSelected);
 		}
-		else {
+
+		// No items
+		if (items.length == 0) {
 			selectAllButton.setEnabled(false);
 			deselectAllButton.setEnabled(false);
 		}
+		// Select all is enabled if all are not selected
+		// Deselect all is enabled if at least one is selected
+		else {
+			selectAllButton.setEnabled(!allSelected);
+			deselectAllButton.setEnabled(oneSelected);
+		}
+	}
+
+	@Override
+	public String getInstallSummary() {
+		StringBuffer output = new StringBuffer();
+		output.append(InstallMessages.ComponentsPage_Summary_Installed);
+		output.append('\n');
+		consoleList = getConsolePrompter();
+		consoleList.setCheckedString(
+				"[" + InstallMessages.Yes + "]", 
+				"[" + InstallMessages.No +" ]");
+		output.append(consoleList.toString(false, false, false));
+		output.append('\n');
+		
+		return output.toString();
+	}
+
+	/**
+	 * Sets the component install states from the checked items.
+	 */
+	private void saveInstallState() {
+		if (!isConsoleMode()) {
+			DetailTreeItem[] items = getTree().getAllItems();
+			for (DetailTreeItem item : items) {
+				IInstallComponent component = (IInstallComponent)item.getData();
+				component.setInstall(item.isChecked());
+			}
+		}
+	}
+
+	/**
+	 * Sets the checked items according to component install states.
+	 */
+	private void updateInstallState() {
+		if (!isConsoleMode()) {
+			DetailTreeItem[] items = getTree().getAllItems();
+			for (DetailTreeItem item : items) {
+				IInstallComponent component = (IInstallComponent)item.getData();
+				item.setChecked(component.getInstall());
+			}
+		}
 	}
 	
+	@Override
+	public void saveInstallData(IInstallData data) throws CoreException {
+		// Save install states
+		saveInstallState();
+		
+		// Save install size
+		if (installPlan != null) {
+			data.setProperty(IInstallValues.INSTALL_SIZE, Long.toString(installPlan.getSize()));
+		}
+	}
+	
+	/**
+	 * Traverses install components and member components and adds them to a list.
+	 * 
+	 * @param items List for items
+	 * @param component Component to add
+	 */
+	private void addConsoleItem(ArrayList<IInstallComponent> items, IInstallComponent component) {
+		// Do not add excluded components
+		if (!component.isIncluded())
+			return;
+		
+		items.add(component);
+		if (component.hasMembers()) {
+			for (IInstallComponent member : component.getMembers()) {
+				addConsoleItem(items, member);
+			}
+		}
+	}
+
+	/**
+	 * Returns the console name for an install component.
+	 * 
+	 * @param component Install component
+	 * @return Console name
+	 */
+	private String getConsoleName(IInstallComponent component) {
+		StringBuffer name = new StringBuffer();
+		// Indent for parents
+		IInstallComponent parent = component.getParent();
+		while (parent != null) {
+			name.append("  ");
+			parent = parent.getParent();
+		}
+		// Append component information
+		name.append(getLabelProvider().getColumnText(component, COLUMN_NAME));
+		return name.toString();
+	}
+
+	/**
+	 * Returns the console prompter.
+	 * 
+	 * @return Console prompter
+	 */
+	private ConsoleListPrompter<IInstallComponent> getConsolePrompter() {
+		ConsoleListPrompter<IInstallComponent> prompter = new ConsoleListPrompter<IInstallComponent>(getComponentsTitle());
+		
+		// Add console items
+		ArrayList<IInstallComponent> items = new ArrayList<IInstallComponent>();
+		IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents(true);
+		for (IInstallComponent component : components) {
+			addConsoleItem(items, component);
+		}
+		
+		// Add items
+		for (IInstallComponent item : items) {
+			// Item is member of other item
+			if (item.getParent() != null) {
+				int parentIndex = prompter.getItemIndex(item.getParent());
+				prompter.addItem(parentIndex, getConsoleName(item), item, item.getInstall(),
+						item.isOptional());
+			}
+			// Root item
+			else {
+				prompter.addItem(getConsoleName(item), item, item.getInstall(),
+						item.isOptional());
+			}
+		}
+		
+		return prompter;
+	}
+	
+	@Override
+	public String getConsoleResponse(String input)
+			throws IllegalArgumentException {
+		String response = null;
+
+		// Warning prompter active
+		if (warningConsolePrompter != null) {
+			response = warningConsolePrompter.getConsoleResponse(input);
+			// Continue
+			if (warningConsolePrompter.getResult()) {
+				return null;
+			}
+			// Do not continue
+			else {
+				warningConsolePrompter = null;
+				input = null;
+			}
+		}
+		
+		// Initial response
+		if (input == null) {
+			// Create console items list
+			consoleList = getConsolePrompter();
+		}
+
+		// Get response
+		response = consoleList.getConsoleResponse(input);
+		
+		// Save install selections
+		ArrayList<IInstallComponent> selectedComponents = new ArrayList<IInstallComponent>();
+		consoleList.getSelectedData(selectedComponents);
+		
+		//Traverse through all install components and mark only selected components for installation.
+		IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents(false);
+		for (IInstallComponent component : components) {
+			if (component.isOptional()) {
+				component.setInstall(false);
+				if (selectedComponents.contains(component))
+					component.setInstall(true);
+			}
+		}
+
+		// Report any selection error
+		String status = validateConstraints();
+		if (status != null) {
+			System.out.println(status);
+		}
+
+		// Validate result
+		if (response == null) {
+			// Compute plan
+			final IInstallPlan plan = RepositoryManager.getDefault().computeInstallPlan(null);
+			
+			if (plan != null) {
+				// Error in plan
+				if (plan.getStatus().getSeverity() == IStatus.ERROR) {
+					response = MessageFormat.format("ERROR: {0}\n{1}", plan.getErrorMessage(), consoleList.toString());
+				}
+				// Show warnings and/or information and prompt to continue
+				else if (plan.getStatus().getSeverity() == IStatus.WARNING) {
+					String message = plan.getErrorMessage();
+					if (message != null) {
+						warningConsolePrompter = new ConsoleYesNoPrompter(plan.getErrorMessage(), 
+								InstallMessages.Continue, true);
+						response = warningConsolePrompter.getConsoleResponse(null);
+					}
+				}
+			}
+		}
+		
+		// Validate selections
+		if (response == null) {
+			status = validateConstraints();
+			// Selection error
+			if (status != null) {
+				response = MessageFormat.format("ERROR: {0}\n{1}",  //$NON-NLS-1$
+						status,
+						consoleList.toString());
+			}
+		}
+		
+		return response;
+	}
+	
+	/**
+	 * Updates the page status.
+	 */
+	private void updateStatus() {
+		ArrayList<IStatus> status = new ArrayList<IStatus>();
+		// Selection status
+		if (selectionStatus != null) {
+			status.add(selectionStatus);
+		}
+		// Provision status
+		if (installPlan != null) {
+			IStatus installStatus = installPlan.getStatus();
+			if ((installStatus != null) && !installStatus.isOK()) {
+				status.add(new Status(
+						installStatus.getSeverity(), 
+						installStatus.getPlugin(), 
+						installPlan.getErrorMessage(), 
+						installStatus.getException()));
+			}
+		}
+		
+		// Checker status
+		InstallManager manager = (InstallManager)Installer.getDefault().getInstallManager();
+		IStatus[] checkerStatus = manager.verifyInstallComponentSelection(getCheckedComponents());
+		for (IStatus s : checkerStatus) {
+			status.add(s);
+		}
+		
+		IStatus[] totalStatus = status.toArray(new IStatus[status.size()]);
+
+		// Set status
+		setStatus((totalStatus.length > 0) ? totalStatus : null);
+		if (!isConsoleMode()) {
+			if (totalStatus.length > 0) {
+				showStatus(totalStatus);
+			}
+			else {
+				hideStatus();
+			}
+		}
+
+		// Set complete if no errors
+		setPageComplete(!hasStatusError());
+	}
+	
+	/**
+	 * Formats a comma delimited components list.
+	 * 
+	 * @param components Components
+	 * @return Components list
+	 */
+	private String formatComponentList(IInstallComponent[] components) {
+		StringBuffer names = new StringBuffer();
+		for (IInstallComponent component : components) {
+			if (names.length() > 0) {
+				names.append(", ");
+			}
+			names.append(getLabelProvider().getText(component));
+		}
+		
+		return names.toString();
+	}
+
+	/**
+	 * Returns the currently checked install components.
+	 * 
+	 * @return Install components
+	 */
+	private IInstallComponent[] getCheckedComponents() {
+		DetailTreeItem[] items = getTree().getCheckedItems();
+		IInstallComponent[] components = new IInstallComponent[items.length];
+		for (int index = 0; index < components.length; index ++) {
+			components[index] = (IInstallComponent)items[index].getData();
+		}
+		
+		return components;
+	}
+
+	/**
+	 * Returns the install components.
+	 * 
+	 * @return Install components
+	 */
+	private IInstallComponent[] getInstallComponents() {
+		ArrayList<IInstallComponent> toInstall = new ArrayList<IInstallComponent>(); 
+		IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents(false);
+		for (IInstallComponent component : components) {
+			if (component.getInstall() && component.isIncluded()) {
+				toInstall.add(component);
+			}
+		}
+		
+		return toInstall.toArray(new IInstallComponent[toInstall.size()]);
+	}
+
+	/**
+	 * Validates component constraints.
+	 * 
+	 * @return Constraint problem message or <code>null</code> if all constraints
+	 * are met.
+	 */
+	public String validateConstraints() {
+		saveInstallState();
+		
+		String error = null;
+		// Get constraints
+		IInstallConstraint[] constraints = getInstallDescription().getInstallConstraints();
+		if (constraints != null) {
+			// Get selected components
+			IInstallComponent[] checkedComponents = getInstallComponents();
+			// Verify constraints
+			for (IInstallConstraint constraint : constraints) {
+				if (!constraint.validate(checkedComponents)) {
+					error = getConstraintError(constraint);
+					break;
+				}
+			}
+		}
+		
+		return error;
+	}
+
+	/**
+	 * Sets the installed state of components.
+	 * 
+	 * @param components Components to set
+	 * @param install <code>true</code> to install
+	 */
+	public void setInstallState(IInstallComponent[] components, boolean install) {
+		for (IInstallComponent component : components) {
+			component.setInstall(install);
+			if (component.hasMembers()) {
+				setInstallState(component.getMembers(), install);
+			}
+		}
+		
+		updateInstallState();
+	}
+
+	/**
+	 * Attempts to handle constraint problems when a component state changes
+	 * by selecting or de-selecting components.
+	 * 
+	 * @param item Component item that changed state
+	 */
+	public void handleConstraints(DetailTreeItem item) {
+		// Selected components
+		IInstallComponent[] checkedComponents = getCheckedComponents();
+
+		// Install constraints
+		IInstallConstraint[] constraints = getInstallDescription().getInstallConstraints();
+		if (constraints != null) {
+			// Check each constraint
+			for (IInstallConstraint constraint : constraints) {
+				// Constraint failed
+				if (!constraint.validate(checkedComponents)) {
+					switch(constraint.getConstraint()) {
+					// One of a set of components must be selected
+					case ONE_OF:
+						// Nothing can be done
+						break;
+					// One component requires others
+					case REQUIRES:
+						IInstallComponent[] targets = constraint.getTargets();
+						IInstallComponent component = (IInstallComponent)item.getData();
+						// If component is set to install but requires other components.
+						// Set the other components to install.
+						if (component.equals(constraint.getSource()) || component.isMemberOf(constraint.getSource())) {
+							setInstallState(targets, true);
+						}
+						// Component is not set to be installed, but is required by other
+						// components.  Set other components to not install.
+						else {
+							setInstallState(new IInstallComponent[] { constraint.getSource() }, false);
+						}
+						break;
+					// Only of of a set of components can be selected
+					case ONLY_ONE:
+						// Set other components to not install
+						ArrayList<IInstallComponent> notInstall = new ArrayList<IInstallComponent>();
+						IInstallComponent source = (IInstallComponent)item.getData();
+						for (IInstallComponent target : constraint.getTargets()) {
+							if (!source.equals(target) && !source.isMemberOf(target)) {
+								notInstall.add(target);
+							}
+						}
+						setInstallState(notInstall.toArray(new IInstallComponent[notInstall.size()]), false);
+						break;
+					}
+				}
+			}
+		}
+	}
+	
+	/**
+	 * Returns an error message for a failed constraint.
+	 * 
+	 * @param constraint Constraint
+	 * @return Error message
+	 */
+	private String getConstraintError(IInstallConstraint constraint) {
+		String error = null;
+		
+		if (constraint != null) {
+			switch (constraint.getConstraint()) {
+			// One of a set of components must be selected
+			case ONE_OF:
+				error = NLS.bind(InstallMessages.Error_ConstraintOneRequired0, 
+						formatComponentList(constraint.getTargets()));
+				break;
+			// One component requires others
+			case REQUIRES:
+				String sourceName = getLabelProvider().getText(constraint.getSource());
+				error = NLS.bind(InstallMessages.Error_ConstraintRequires1, sourceName, formatComponentList(constraint.getTargets()));
+				break;
+			// Only one of a set of components can be selected
+			case ONLY_ONE:
+				error = NLS.bind(InstallMessages.Error_Constraint0, formatComponentList(constraint.getTargets()));
+				break;
+			}
+		}
+		
+		return error;
+	}
+
+	/**
+	 * Validates the current selection and shows a status.
+	 * 
+	 * @param item Tree item or <code>null</code>
+	 */
+	private void validateSelection(DetailTreeItem item) {
+		boolean statusChanged = false;
+		String error = validateConstraints();
+		if (error != null) {
+			// If constraints are not satisfied, attempt to correct the selection
+			if (item != null) {
+				handleConstraints(item);
+			}
+			// Check constraints again
+			String recheckError = validateConstraints();
+			// Constraints still have errors
+			if (recheckError != null) {
+				selectionStatus = new Status(IStatus.ERROR, Installer.ID, recheckError);
+				statusChanged = true;
+			}
+			// Constraints were correct, show information that action was taken
+			else {
+				selectionStatus = new Status(IStatus.INFO, Installer.ID, error);
+				statusChanged = true;
+			}
+		}
+		// Clear any error status, but leave any information status to inform
+		// user that some action was taken to correct the constraint.
+		else if ((selectionStatus != null) && !(selectionStatus.getSeverity() == IStatus.INFO)) {
+			selectionStatus = null;
+			statusChanged = true;
+		}
+		
+		// Update status
+		if (statusChanged) {
+			updateStatus();
+		}
+	}
+	
+	@Override
+	public void checkStateChanged(CheckStateChangedEvent event) {
+		DetailTreeItem item = (DetailTreeItem)event.getElement();
+		IInstallComponent component = (IInstallComponent)item.getData();
+		if (component.isOptional()) {
+			// Updated install state
+			component.setInstall(item.isChecked());
+			
+			// Update install space for new component selection
+			updateInstallPlan();
+			// Update button state
+			updateButtons();
+			// Validate selection
+			validateSelection(item);
+		}
+	}
+
+	@Override
+	public boolean validate() {
+		// Check constraint errors
+		String constraintError = validateConstraints();
+		if (constraintError != null) {
+			selectionStatus = new Status(IStatus.ERROR, Installer.ID, constraintError);
+		}
+		else {
+			selectionStatus = null;
+		}
+		// Update status
+		updateStatus();
+		
+		return (selectionStatus == null);
+	}
+
+	@Override
+	public void repositoryStatus(final RepositoryStatus status) {
+		getShell().getDisplay().syncExec(new Runnable() {
+			@Override
+			public void run() {
+				// Repositories loading
+				if (status == IInstallRepositoryListener.RepositoryStatus.loadingStarted) {
+					showBusy(InstallMessages.ComponentsPage_LoadingInstallInformation);
+					setPageComplete(false);
+				}
+				// Repositories loaded
+				else if (status == IInstallRepositoryListener.RepositoryStatus.loadingCompleted) {
+					hideBusy();
+					setUpdatePage(true);
+					updatePage();
+					validate();
+				}
+			}
+		});
+	}
+
+	@Override
+	public void installComponentsChanged() {
+		// Mark the page to be updated when it is displayed
+		setUpdatePage(true);
+	}
+
+	@Override
+	public void repositoryError(URI location, String errorMessage) {
+	}
+
+	@Override
+	public void installComponentChanged(IInstallComponent component) {
+		// Mark the page to be updated when it is displayed
+		setUpdatePage(true);
+	}
+
+	@Override
+	public boolean isSupported() {
+		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
+		return mode.isInstall();
+	}
+
 	/**
 	 * Component label provider
 	 */
@@ -548,13 +1043,8 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 			if (element instanceof IInstallComponent) {
 				IInstallComponent component = (IInstallComponent)element;
 				if (columnIndex == 0) {
-					// Add-on component
-					String addon = (String)component.getProperty(IInstallComponent.PROPERTY_ADDON);
-					if (Boolean.TRUE.toString().equals(addon)) {
-						image = null;
-					}
 					// Optional component
-					else if (component.isOptional()) {
+					if (component.isOptional()) {
 						image = null;
 					}
 					// Required component
@@ -576,6 +1066,9 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 				// Name column
 				if (columnIndex == COLUMN_NAME) {
 					text = component.getName();
+					if (getInstallDescription().getShowComponentVersions()) {
+						text += " (" + component.getInstallUnit().getVersion().toString() + ")";
+					}
 				}
 				// Version column
 				else if (columnIndex == COLUMN_VERSION) {
@@ -587,465 +1080,30 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 		}
 	}
 
-	@Override
-	public String getInstallSummary() {
-		StringBuffer buffer = new StringBuffer();
-
-		ArrayList<IInstallableUnit> toAdd = new ArrayList<IInstallableUnit>();
-		ArrayList<IInstallableUnit> toRemove = new ArrayList<IInstallableUnit>();
-		RepositoryManager.getDefault().getInstallUnits(toAdd, toRemove);
-		
-		// Added components
-		ArrayList<IInstallComponent> addedComponents = new ArrayList<IInstallComponent>();
-		// Removed components
-		ArrayList<IInstallComponent> removedComponents = new ArrayList<IInstallComponent>();
-		
-		IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
-		for (IInstallComponent component : components) {
-			if (toAdd.contains(component.getInstallUnit())) {
-				addedComponents.add(component);
-			}
-			else if (toRemove.contains(component.getInstallUnit())) {
-				removedComponents.add(component);
-			}
-		}
-		
-		// If an existing installation is being updated (otherwise it is a new
-		// install or upgrade).
-		boolean update = Installer.getDefault().getInstallManager().getInstallMode().isUpdate();
-
-		// Added components summary
-		if (addedComponents.size() > 0) {
-			buffer.append(update? InstallMessages.ComponentsPage_Added : InstallMessages.ComponentsPage_Installed);
-			for (IInstallComponent component : addedComponents) {
-				buffer.append("\n\t");
-				buffer.append(component.getName());
-				if (!getHideComponentsVersion()) {
-					buffer.append(" (");
-					buffer.append(component.getInstallUnit().getVersion().toString());
-					buffer.append(')');
-				}
-			}
-		}
-		// Removed components summary
-		if (removedComponents.size() > 0) {
-			if (buffer.length() > 0) {
-				buffer.append('\n');
-			}
-			buffer.append(update ? InstallMessages.ComponentsPage_Removed : InstallMessages.ComponentsPage_NotInstalled);
-			for (IInstallComponent component : removedComponents) {
-				buffer.append("\n\t");
-				buffer.append(component.getName());
-				if (!getHideComponentsVersion()) {
-					buffer.append(" (");
-					buffer.append(component.getInstallUnit().getVersion().toString());
-					buffer.append(')');
-				}
-			}
-		}
-
-		if (buffer.length() > 0) {
-			buffer.append("\n\n");
-		}
-
-		return buffer.toString();
-	}
-
-	@Override
-	public void saveInstallData(IInstallData data) {
-		// Save install size
-		data.setProperty(IInstallConstants.PROPERTY_INSTALL_SIZE, installSize);
-	}
-	
-	@Override
-	public String getConsoleResponse(String input)
-			throws IllegalArgumentException {
-		String response = null;
-
-		// Initial response
-		if (input == null) {
-			// Wait for the load
-			RepositoryManager.getDefault().waitForLoad();
-
-			// Create console items list
-			ComponentLabelProvider labelProvider = new ComponentLabelProvider();
-			consoleList = new ConsoleListPrompter<IInstallComponent>(getComponentsTitle());
-			IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
-			// Sort components by name
-			Arrays.sort(components, new Comparator<IInstallComponent>() {
-				@Override
-				public int compare(IInstallComponent arg0,
-						IInstallComponent arg1) {
-					return arg0.getName().compareTo(arg1.getName());
-				}
-			});
-			// Add components
-			for (IInstallComponent component : components) {
-				consoleList.addItem(labelProvider.getColumnText(component, COLUMN_NAME) + " - " + labelProvider.getColumnText(component, COLUMN_VERSION), //$NON-NLS-1$
-						component,
-						component.getInstall(),
-						component.isOptional());
-			}
-		}
-
-		// Get response
-		response = consoleList.getConsoleResponse(input);
-		// Set selected roots
-		if (response == null) {
-			ArrayList<IInstallComponent> selectedComponents = new ArrayList<IInstallComponent>();
-			consoleList.getSelectedData(selectedComponents);
-			IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
-			for (IInstallComponent component : components) {
-				if (component.isOptional()) {
-					component.setInstall(false);
-					for (IInstallComponent selectedComponent : selectedComponents) {
-						if (component.equals(selectedComponent)) {
-							component.setInstall(true);
-							break;
-						}
-					}
-				}
-			}
-			
-			// Compute plan
-			final IInstallPlan plan = RepositoryManager.getDefault().computeInstallPlan(null);
-			// Error in install plan
-			if ((plan != null) && (plan.getStatus().getSeverity() == IStatus.ERROR)) {
-				response = MessageFormat.format("ERROR: {0}\n{1}", plan.getErrorMessage(), consoleList.toString());
-			}
-			// Validate selections
-			else {
-				String status = getSelectionMessage();
-				// Selection error
-				if (status != null) {
-					response = MessageFormat.format("ERROR: {0}\n{1}",  //$NON-NLS-1$
-							status,
-							consoleList.toString());
-				}
-			}
-		}
-		
-		return response;
-	}
-	
 	/**
-	 * Blends c1 and c2 based in the provided ratio.
-	 * 
-	 * @param c1
-	 *            first color
-	 * @param c2
-	 *            second color
-	 * @param ratio
-	 *            percentage of the first color in the blend (0-100)
-	 * @return the RGB value of the blended color
-	 * 
-	 * copied from FormColors.java
+	 * Updates the size status text.
 	 */
-	public RGB blendRGB(RGB c1, RGB c2, int ratio) {
-		int r = blend(c1.red, c2.red, ratio);
-		int g = blend(c1.green, c2.green, ratio);
-		int b = blend(c1.blue, c2.blue, ratio);
-		return new RGB(r, g, b);
-	}
-
-	/**
-	 * Blends two color values
-	 * 
-	 * @param v1 First color value
-	 * @param v2 Second color value
-	 * @param ratio Ratio
-	 * @return Blended color value
-	 */
-	private int blend(int v1, int v2, int ratio) {
-		int b = (ratio * v1 + (100 - ratio) * v2) / 100;
-		return Math.min(255, b);
-	}
-
-	/**
-	 * Returns the status message for any selection error.
-	 * 
-	 * @return Status message or <code>null</code> if no error
-	 */
-	private String getSelectionMessage() {
-		String message = null;
-		
-		IInstallComponent[] components = RepositoryManager.getDefault().getInstallComponents();
-		for (IInstallComponent component : components) {
-			if (component.getInstall()) {
-				IInstallComponent[] requiredComponents = component.getRequiredComponents();
-				if (requiredComponents != null) {
-					for (IInstallComponent requiredComponent : requiredComponents) {
-						if (!requiredComponent.getInstall()) {
-							message = MessageFormat.format("{0} requires {1}.",  //$NON-NLS-1$
-									component.getName(),
-									requiredComponent.getName());
-							break;
-						}
-					}
+	private void updateSizeStatus() {
+		if (getShowSizeStatus()) {
+			if (installPlan != null) {
+				String msg;
+				if (installPlan.getSize() == -1) {
+					msg = MessageFormat.format(InstallMessages.RequiredSizeFormat0, 
+							UIUtils.formatBytes(installPlan.getRequiredSize()));
 				}
-			}
-		}
-
-		return message;
-	}
-	
-	@Override
-	public boolean validate() {
-		String message = getSelectionMessage();
-		
-		// Show status for problems in selection
-		if (message != null) {
-			IStatus status = new Status(IStatus.ERROR, Installer.ID, message);
-			showStatus(new IStatus[] { status });
-		}
-		// Hide status if no problems
-		else {
-			hideStatus();
-		}
-		setPageComplete(message == null);
-		
-		return (message == null);
-	}
-
-	@Override
-	public void repositoryStatus(final RepositoryStatus status) {
-		getShell().getDisplay().syncExec(new Runnable() {
-			@Override
-			public void run() {
-				// Repositories loading
-				if (status == IInstallRepositoryListener.RepositoryStatus.loadingStarted) {
-					showBusy(InstallMessages.ComponentsPage_LoadingInstallInformation);
-					setPageComplete(false);
-				}
-				// Repositories loaded
-				else if (status == IInstallRepositoryListener.RepositoryStatus.loadingCompleted) {
-					hideBusy();
-					updatePage();
-					validate();
-				}
-			}
-		});
-	}
-
-	@Override
-	public void repositoryLoaded(URI location, IInstallComponent[] components) {
-	}
-
-	@Override
-	public void repositoryError(URI location, String errorMessage) {
-	}
-
-	/**
-	 * A panel that displays the name, version, and description for list of
-	 * components.
-	 */
-	private class ComponentsPanel extends Composite implements ISelectionProvider {
-		/** Components for panel */
-		private IInstallComponent[] components;
-		/** Selection listeners */
-		private ListenerList selectionListeners = new ListenerList();
-		/** Items */
-		private ArrayList<Composite> items = new ArrayList<Composite>();
-		/** Title buttons */
-		private ArrayList<Button> titleButtons = new ArrayList<Button>();
-		
-		/**
-		 * Constructor
-		 * 
-		 * @param parent Parent
-		 */
-		public ComponentsPanel(Composite parent) {
-			super(parent, SWT.NONE);
-			
-			// Set colors
-			Display display = getShell().getDisplay();
-			setBackground(display.getSystemColor(SWT.COLOR_LIST_BACKGROUND));
-			setForeground(display.getSystemColor(SWT.COLOR_LIST_FOREGROUND));
-			
-			// Layout
-			GridLayout layout = new GridLayout(1, false);
-			layout.marginHeight = 2;
-			layout.marginWidth  = 2;
-			layout.verticalSpacing = 0;
-			setLayout(layout);
-		}
-
-		/**
-		 * Sets the components for the panel.
-		 * 
-		 * @param components Components
-		 * @param optional <code>true</code> if components are optional
-		 */
-		public void setComponents(IInstallComponent[] components, boolean optional, boolean hideVersion) {
-			this.components = components;
-			
-			for (Composite item : items) {
-				item.dispose();
-			}
-			items.clear();
-			titleButtons.clear();
-			
-			ComponentLabelProvider labelProvider = new ComponentLabelProvider();
-			
-			// Create items for each component
-			for (IInstallComponent component : components) {
-				// Component item area
-				// |-name-|-version|
-				// |--description--|
-				Composite itemArea = new Composite(this, SWT.NONE);
-				itemArea.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
-				GridLayout itemLayout = new GridLayout(1, false);
-				itemLayout.marginWidth = 0;
-				itemLayout.marginHeight = 2;
-				itemLayout.verticalSpacing = 0;
-				itemArea.setLayout(itemLayout);
-				itemArea.setBackground(getBackground());
-				items.add(itemArea);
-
-				// Title area
-				Composite titleArea = new Composite(itemArea, SWT.NONE);
-				GridLayout titleLayout = new GridLayout(3, false);
-				titleLayout.marginWidth = 0;
-				titleLayout.marginHeight = 0;
-				titleArea.setLayout(titleLayout);
-				titleArea.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 1, 1));
-				titleArea.setBackground(getBackground());
-				
-				Label icon = new Label(titleArea, SWT.NONE);
-				icon.setLayoutData(new GridData(SWT.CENTER, SWT.CENTER, false, false, 1, 1));
-				icon.setImage(labelProvider.getImage(component));
-				
-				String componentName = labelProvider.getColumnText(component, COLUMN_NAME);
-				// If the components is optional, create a check-box so
-				// it can be selected/unselected.
-				if (optional) {
-					final Button titleButton = new Button(titleArea, SWT.CHECK);
-					titleButton.setLayoutData(new GridData(SWT.BEGINNING, SWT.CENTER, false, false, 1, 1));
-					titleButton.setText(componentName);
-					titleButton.setFont(getTitleFont());
-					titleButton.setSelection(component.getInstall());
-					titleButton.setData(component);
-					titleButton.addSelectionListener(new SelectionAdapter() {
-						@Override
-						public void widgetSelected(SelectionEvent e) {
-							// Update listeners
-							fireSelectionChanged();
-						}
-					});
-					titleButton.setBackground(getBackground());
-					titleButtons.add(titleButton);
-				}
-				// Required component
 				else {
-					Label titleLabel = new Label(titleArea, SWT.NONE);
-					titleLabel.setLayoutData(new GridData(SWT.BEGINNING, SWT.CENTER, false, false, 1, 1));
-					titleLabel.setText(componentName);
-					titleLabel.setFont(getTitleFont());
-					titleLabel.setBackground(getBackground());
-					titleLabel.setForeground(getForeground());
+					msg = MessageFormat.format(getInstallDescription().getInstallSizeFormat(),
+							UIUtils.formatBytes(installPlan.getSize()),
+							UIUtils.formatBytes(installPlan.getRequiredSize()),
+							UIUtils.formatBytes(installPlan.getAvailableSpace()));
 				}
 				
-				// Component version
-				if (!hideVersion) {
-					Label versionLabel = new Label(titleArea, SWT.NONE);
-					versionLabel.setLayoutData(new GridData(SWT.BEGINNING, SWT.CENTER, true, false, 1, 1));
-					versionLabel.setText(component.getInstallUnit().getVersion().toString());
-					versionLabel.setForeground(getDimColor2());
-					versionLabel.setBackground(getBackground());
-				}
-				
-				// Component description
-				String description = component.getDescription();
-				if (description != null) {
-					Text descriptionText = new Text(itemArea, SWT.MULTI | SWT.WRAP );
-					descriptionText.setEditable(false);
-					GridData descriptionData = new GridData(SWT.FILL, SWT.CENTER, false, false, 1, 1);
-					descriptionData.horizontalIndent = COMPONENT_DESCRIPTION_INDENT;
-					descriptionText.setLayoutData(descriptionData);
-					descriptionText.setText(description);
-					descriptionText.setForeground(getDimColor1());
-					descriptionText.setBackground(getBackground());
-				}
-			}
-			
-			layout(true);
-		}
-
-		/**
-		 * Fires a selection changed event to all listeners.
-		 */
-		private void fireSelectionChanged() {
-			Object[] listeners = selectionListeners.getListeners();
-			SelectionChangedEvent event = new SelectionChangedEvent(this, getSelection());
-			for (Object listener : listeners) {
-				try {
-					((ISelectionChangedListener)listener).selectionChanged(event);
-				}
-				catch (Exception e) {
-					e.printStackTrace();
-				}
+				statusArea.setText(msg);
 			}
 		}
 		
-		/**
-		 * Returns the components.
-		 * 
-		 * @return Components
-		 */
-		public IInstallComponent[] getComponents() {
-			return components;
-		}
-
-		@Override
-		public void addSelectionChangedListener(
-				ISelectionChangedListener listener) {
-			selectionListeners.add(listener);
-		}
-
-		@Override
-		public ISelection getSelection() {
-			ArrayList<IInstallComponent> items = new ArrayList<IInstallComponent>();
-			for (Button titleButton : titleButtons) {
-				if (titleButton.getSelection()) {
-					items.add((IInstallComponent)titleButton.getData());
-				}
-			}
-			
-			return new StructuredSelection(items.toArray(new IInstallComponent[items.size()]));
-		}
-
-		@Override
-		public void removeSelectionChangedListener(
-				ISelectionChangedListener listener) {
-			selectionListeners.remove(listener);
-		}
-
-		@Override
-		public void setSelection(ISelection selection) {
-			if (selection instanceof IStructuredSelection) {
-				for (Button titleButton : titleButtons) {
-					IInstallComponent buttonComponent = (IInstallComponent)titleButton.getData();
-					boolean selected = false;
-					Iterator<?> iter = ((IStructuredSelection) selection).iterator();
-					while (iter.hasNext()) {
-						IInstallComponent selectedComponent = (IInstallComponent)iter.next();
-						if (buttonComponent.equals(selectedComponent)) {
-							selected = true;
-							break;
-						}
-					}
-					
-					titleButton.setSelection(selected);
-				}
-				fireSelectionChanged();
-			}
-		}
-	}
-	
-	@Override
-	public boolean isSupported() {
-		IInstallMode mode = Installer.getDefault().getInstallManager().getInstallMode();
-		return mode.isInstall();
+		// Start automatically updating so the available space is re-computed as the file system is changed
+		startAutoUpdate();
 	}
 	
 	/**
@@ -1066,39 +1124,96 @@ public class ComponentsPage extends InstallWizardPage implements IInstallSummary
 			getShell().getDisplay().syncExec(new Runnable() {
 				@Override
 				public void run() {
-					setProgressVisible(true);
+					if (getShowSizeStatus()) {
+						statusArea.setProgressVisible(true);
+					}
 				}
 			});
 			// Compute plan
-			final IInstallPlan plan = RepositoryManager.getDefault().computeInstallPlan(monitor);
+			if (Installer.getDefault().getInstallManager().getInstallMode().isMirror()) {
+				installPlan = RepositoryManager.getDefault().computeCacheSize(monitor);
+			}
+			else {
+				installPlan = RepositoryManager.getDefault().computeInstallPlan(monitor);
+			}
+			
 			// Hide progress and update install plan size and status
-			if ((plan != null) && !(getShell() == null) && !getShell().isDisposed()) {
+			if ((installPlan != null) && !(getShell() == null) && !getShell().isDisposed()) {
 				getShell().getDisplay().syncExec(new Runnable() {
 					@Override
 					public void run() {
+						statusArea.setProgressVisible(false);
 						// Update size information
-						setProgressVisible(false);
-						ComponentsPage.this.installSize = plan.getSize();
-						String msg = MessageFormat
-								.format(InstallMessages.ComponentsPage_0,
-										UIUtils.formatBytes(installSize));
-						setStatusText(msg);
-						
-						// Update plan status
-						if (plan.getStatus().isOK()) {
-							hideStatus();
-						}
-						else {
-							String errorMessage = plan.getErrorMessage();
-							if (errorMessage != null) {
-								showStatus(new IStatus[] { new Status(IStatus.WARNING, Installer.ID, errorMessage) });
-							}
-						}
+						updateSizeStatus();
+						updateStatus();
 					}
 				});
 			}
 			
 			return Status.OK_STATUS;
+		}
+	}
+
+	/**
+	 * Panel to show size information.
+	 */
+	private class StatusPanel extends Composite {
+		/** Size progress */
+		private SpinnerProgress progressBar;
+		/** Size label */
+		private FormattedLabel installSizeLabel;
+
+		/**
+		 * Constructor
+		 * 
+		 * @param parent Parent for panel
+		 * @param style Style flags
+		 */
+		public StatusPanel(Composite parent, int style) {
+			super(parent, style);
+			
+			GridLayout layout = new GridLayout(1, true);
+			layout.marginTop = 8;
+			layout.marginWidth = 2;
+			layout.marginBottom = layout.horizontalSpacing = layout.verticalSpacing = 0;
+			setLayout(layout);
+
+			progressBar = new SpinnerProgress(this, SWT.NONE);
+			progressBar.setText(InstallMessages.ComponentsPage_ComputingSize);
+			progressBar.setLayoutData(new GridData(SWT.END, SWT.CENTER, true, false, 1, 1));
+			installSizeLabel = new FormattedLabel(this, SWT.NONE);
+			installSizeLabel.setLayoutData(new GridData(SWT.END, SWT.CENTER, true, false, 1, 1));
+			
+			setProgressVisible(false);
+		}
+		
+		/**
+		 * Sets the visibility of the progress bar.
+		 * 
+		 * @param visible <code>true</code> to set progress bar visible
+		 */
+		public void setProgressVisible(final boolean visible) {
+			progressBar.setVisible(visible);
+			progressBar.setProgress(visible);
+			int dimensionsProgress = (visible) ? SWT.DEFAULT : 0;
+			int dimensionsLabel = (visible) ? 0 : SWT.DEFAULT;
+			((GridData)progressBar.getLayoutData()).widthHint = dimensionsProgress;
+			((GridData)progressBar.getLayoutData()).heightHint = dimensionsProgress;
+			
+			installSizeLabel.setVisible(!visible);
+			((GridData)installSizeLabel.getLayoutData()).widthHint = dimensionsLabel;
+			((GridData)installSizeLabel.getLayoutData()).heightHint = dimensionsLabel;
+			
+			layout(true);
+		}
+		
+		/**
+		 * Sets the install size label.
+		 * @param text
+		 */
+		public void setText(final String text) {
+			installSizeLabel.setText(text);
+			layout(true);
 		}
 	}
 }

@@ -11,9 +11,11 @@
 package com.codesourcery.internal.installer;
 
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 
 import org.eclipse.core.runtime.CoreException;
@@ -35,6 +37,13 @@ public abstract class InstallOperation {
 	 * Runs the install operation.
 	 */
 	public abstract void run();
+	
+	/**
+	 * Shows an error to the user.
+	 * 
+	 * @param message Error message
+	 */
+	public abstract void showError(String message);
 	
 	/**
 	 * Returns the install manager.
@@ -75,10 +84,17 @@ public abstract class InstallOperation {
 		if (status == null)
 			return;
 		
-		if (getStatusFile() != null) {
+		IPath statusFile = getStatusFile();
+		if (statusFile != null) {
 			BufferedWriter writer = null;
 			try {
-				writer = new BufferedWriter(new FileWriter(getStatusFile().toOSString()));
+				// Create directories for file if needed
+				File statusDirectory = getStatusFile().removeLastSegments(1).toFile();
+				if (!statusDirectory.exists()) {
+					Files.createDirectories(statusDirectory.toPath());
+				}
+				//writer = new BufferedWriter(new FileWriter(getStatusFile().toOSString()));
+				writer = new BufferedWriter(new FileWriter(statusFile.toFile()));
 				
 				// Successful
 				if (status.isOK()) {
@@ -150,6 +166,19 @@ public abstract class InstallOperation {
 		}
 		catch (Exception e) {
 			Installer.fail("Failed to launch uninstaller.", e);
+		}
+	}
+	
+	/**
+	 * Cleans up and removes any installation directories created.
+	 * Call this method if the installation is cancelled.
+	 */
+	protected void cleanupInstallation() {
+		try {
+			Installer.getDefault().getInstallManager().setInstallLocation(null, null);
+		}
+		catch (Exception e) {
+			Installer.log(e);
 		}
 	}
 }
