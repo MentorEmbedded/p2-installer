@@ -1,5 +1,8 @@
 p2-installer
 ============
+```diff
+- THIS PROJECT IS NO LONGER ACTIVE.
+```
 
 ![Screenshot](https://raw.github.com/MentorEmbedded/p2-installer/master/screenshot.png)
 
